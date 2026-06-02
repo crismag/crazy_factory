@@ -8,9 +8,11 @@
   "automatic_commit_enabled": false,
   "automatic_merge_enabled": false,
   "scheduled_operation_enabled": false,
-  "last_successful_run": "2026-06-02T20:37:12Z",
+  "last_successful_run": "2026-06-02T20:44:41Z",
   "last_failed_run": null,
   "failure_count": 0,
   "recovery_instructions": "Read state/active_run.json, state/project_state.json, and the active project's MASTER_CHECKLIST.md before selecting work.",
-  "last_architect_source": "ollama"
+  "last_architect_source": "ollama",
+  "last_planner_source": "ollama",
+  "last_role_completed": "reporter"
 }

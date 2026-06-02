@@ -10,5 +10,8 @@
   "current_blocker": null,
   "failure_count": 0,
   "recovery_instructions": "Read apps/demo_app/factory_tasks/MASTER_CHECKLIST.md, MILESTONES.md, CURRENT_TASK.md, and NEXT_ACTION.md. Review DEMO-M1 evidence, then plan DEMO-002 without generating application code.",
-  "last_architect_source": "ollama"
+  "last_architect_source": "ollama",
+  "last_planner_source": "ollama",
+  "last_role_completed": "reporter",
+  "task_id": "DEMO-002"
 }

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Run one conservative Crazy Factory Phase 1.5 validation tick.
+"""Run one conservative Crazy Factory Phase 2 planning tick.
 
 The validation loop loads configuration, resolves the active application,
 loads persistent state, respects pause and stop flags, reads project planning
-context, and asks the Architect model for a task expansion when local Ollama is
-available. If Ollama is unavailable, deterministic fallback planning keeps the
-tick useful and recoverable.
+context. It asks the Architect model for a task expansion and then asks the
+Planner model for a bounded next action. If Ollama is unavailable,
+deterministic fallback planning keeps the tick useful and recoverable.
 
 The loop may update two fixed planning files, approved report files, and JSON
 state snapshots. It cannot modify application source code, choose arbitrary
@@ -46,15 +46,17 @@ from repo_tools import (  # noqa: E402
 
 
 @dataclass(frozen=True)
-class ArchitectResult:
-    """Architect planning text and its provenance.
+class RoleResult:
+    """Planning text and provenance for one worker role.
 
     Attributes:
-        content: Planning-only task expansion text.
+        role: Worker role that produced the planning text.
+        content: Planning-only worker output.
         source: ``"ollama"`` or ``"fallback"``.
         detail: Human-readable explanation for reports.
     """
 
+    role: str
     content: str
     source: str
     detail: str
@@ -76,7 +78,7 @@ def load_configuration(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def validate_dry_run_settings(factory: dict[str, Any]) -> None:
-    """Reject settings that exceed Phase 1.5 authority.
+    """Reject settings that exceed Phase 2 authority.
 
     Args:
         factory: Parsed ``factory`` configuration mapping.
@@ -192,7 +194,7 @@ def requested_control_action(factory_state: dict[str, Any]) -> str | None:
 
 def fallback_architect_result(
     project_name: str, project_state: dict[str, Any], reason: str
-) -> ArchitectResult:
+) -> RoleResult:
     """Create deterministic planning text when Ollama is unavailable.
 
     Args:
@@ -219,7 +221,7 @@ def fallback_architect_result(
         "- Do not edit arbitrary files.\n"
         "- Do not commit, push, merge, or activate scheduling.\n"
     )
-    return ArchitectResult(content, "fallback", reason)
+    return RoleResult("architect", content, "fallback", reason)
 
 
 def request_architect_result(
@@ -231,7 +233,7 @@ def request_architect_result(
     models_config: dict[str, Any],
     max_lines: int,
     tasks: dict[str, str],
-) -> ArchitectResult:
+) -> RoleResult:
     """Ask Ollama for a planning-only Architect expansion when available.
 
     Args:
@@ -282,10 +284,105 @@ def request_architect_result(
     except (KeyError, TypeError, ValueError, OllamaConnectionError) as exc:
         reason = f"Ollama unavailable or invalid; used fallback: {exc}"
         return fallback_architect_result(project_name, project_state, reason)
-    return ArchitectResult(content, "ollama", f"Architect model `{model}`")
+    return RoleResult(
+        "architect", content, "ollama", f"Architect model `{model}`"
+    )
 
 
-def render_task_expansion(result: ArchitectResult) -> str:
+def fallback_planner_result(
+    project_state: dict[str, Any], reason: str
+) -> RoleResult:
+    """Create a deterministic next action when Ollama is unavailable.
+
+    Args:
+        project_state: Active project state snapshot.
+        reason: Human-readable fallback reason.
+
+    Returns:
+        Planning-only fallback Planner result.
+    """
+    task = project_state["current_task"]
+    content = (
+        f"Continue planning-only review for `{task}`. "
+        "Read `TASK_EXPANSION.md`, choose one bounded documentation or "
+        "planning follow-up, and keep application writes disabled until "
+        "owner approval."
+    )
+    return RoleResult("planner", content, "fallback", reason)
+
+
+def request_planner_result(
+    *,
+    project_name: str,
+    project: dict[str, Any],
+    project_state: dict[str, Any],
+    factory_config: dict[str, Any],
+    models_config: dict[str, Any],
+    max_lines: int,
+    tasks: dict[str, str],
+    architect_result: RoleResult,
+) -> RoleResult:
+    """Ask Ollama for a planning-only next action when available.
+
+    Args:
+        project_name: Active application workbench name.
+        project: Active project configuration mapping.
+        project_state: Active project state snapshot.
+        factory_config: Parsed ``config/factory.yaml`` mapping.
+        models_config: Parsed ``config/models.yaml`` mapping.
+        max_lines: Maximum context lines loaded from each file.
+        tasks: Repository-relative task filenames and their content.
+        architect_result: Architect expansion handed to the Planner.
+
+    Returns:
+        Ollama-backed result or deterministic fallback result.
+    """
+    prompt_package = build_prompt_package(
+        role="planner",
+        project_name=project_name,
+        project_context_root=str(project["context_root"]),
+        max_lines_per_file=max_lines,
+    )
+    model = str(models_config["models"]["planner"])
+    ollama = factory_config["ollama"]
+    client = OllamaClient(
+        base_url=str(ollama["base_url"]),
+        timeout_seconds=int(ollama["timeout_seconds"]),
+        stream=bool(ollama["stream"]),
+    )
+    instruction = (
+        "Create one concise planning-only next action based on the Architect "
+        "expansion. Do not generate code. Do not request arbitrary file "
+        "edits. "
+        "Keep application writes disabled until owner approval."
+    )
+    task_context = "\n\n".join(
+        f"## Task Source: {path}\n\n{text.rstrip()}"
+        for path, text in tasks.items()
+    )
+    messages = [
+        {"role": "system", "content": instruction},
+        {
+            "role": "user",
+            "content": (
+                f"{prompt_package.prompt}\n\n"
+                f"## Architect Expansion\n\n{architect_result.content}\n\n"
+                f"{task_context}"
+            ),
+        },
+    ]
+    try:
+        response = client.chat(model, messages)
+        content = str(response["message"]["content"]).strip()
+        if not content:
+            raise ValueError("Ollama returned empty Planner content")
+    except (KeyError, TypeError, ValueError, OllamaConnectionError) as exc:
+        reason = f"Ollama unavailable or invalid; used fallback: {exc}"
+        return fallback_planner_result(project_state, reason)
+    return RoleResult("planner", content, "ollama", f"Planner model `{model}`")
+
+
+def render_task_expansion(result: RoleResult) -> str:
     """Render Architect planning text as a repository task record.
 
     Args:
@@ -296,7 +393,7 @@ def render_task_expansion(result: ArchitectResult) -> str:
     """
     return (
         "# Task Expansion\n\n"
-        "## Architect Validation Source\n\n"
+        "## Architect Dry-Run Source\n\n"
         f"- Source: `{result.source}`\n"
         f"- Detail: {result.detail}\n\n"
         "## Expansion\n\n"
@@ -304,28 +401,27 @@ def render_task_expansion(result: ArchitectResult) -> str:
     )
 
 
-def render_next_action(result: ArchitectResult) -> str:
-    """Render a bounded next-action record.
+def render_next_action(result: RoleResult) -> str:
+    """Render the Planner's bounded next-action record.
 
     Args:
-        result: Architect result used to explain provenance.
+        result: Planner result used to explain provenance.
 
     Returns:
         Markdown next-action document.
     """
     return (
         "# Next Action\n\n"
-        "Review the Architect validation expansion in `TASK_EXPANSION.md`. "
-        "Choose one planning-only follow-up and keep application writes "
-        "disabled until owner approval.\n\n"
-        "## Validation Source\n\n"
+        "## Planner Dry-Run Source\n\n"
         f"- Source: `{result.source}`\n"
-        f"- Detail: {result.detail}\n"
+        f"- Detail: {result.detail}\n\n"
+        "## Recommended Next Action\n\n"
+        f"{result.content.rstrip()}\n"
     )
 
 
 def planning_paths(root: Path, project: dict[str, Any]) -> tuple[str, str]:
-    """Return the only two application task files writable in Phase 1.5.
+    """Return the only two application task files writable in Phase 2.
 
     Args:
         root: Absolute repository root.
@@ -351,29 +447,38 @@ def update_success_state(
     factory_state: dict[str, Any],
     active_run: dict[str, Any],
     project_state: dict[str, Any],
-    result: ArchitectResult,
+    architect_result: RoleResult,
+    planner_result: RoleResult,
 ) -> str:
-    """Update in-memory state after a successful validation tick.
+    """Update in-memory state after a successful Phase 2 dry run.
 
     Args:
         factory_state: Global mutable state snapshot.
         active_run: Mutable active-run state snapshot.
         project_state: Mutable project state snapshot.
-        result: Architect validation result.
+        architect_result: Completed Architect result.
+        planner_result: Completed Planner result.
 
     Returns:
         UTC completion timestamp written into state.
     """
     completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     factory_state["last_successful_run"] = completed_at
-    factory_state["last_architect_source"] = result.source
+    factory_state["last_architect_source"] = architect_result.source
+    factory_state["last_planner_source"] = planner_result.source
+    factory_state["last_role_completed"] = "reporter"
     active_run["run_status"] = "idle"
     active_run["current_phase"] = "WAIT"
+    active_run["last_role_completed"] = "reporter"
+    active_run["task_id"] = project_state["current_task"]
     active_run["resume_from"] = (
-        "Review TASK_EXPANSION.md and NEXT_ACTION.md. "
+        "Resume from the Planner recommendation in NEXT_ACTION.md. "
         "Keep application writes disabled until owner approval."
     )
-    project_state["last_architect_source"] = result.source
+    project_state["last_architect_source"] = architect_result.source
+    project_state["last_planner_source"] = planner_result.source
+    project_state["last_role_completed"] = "reporter"
+    project_state["task_id"] = project_state["current_task"]
     return completed_at
 
 
@@ -415,7 +520,7 @@ def persist_state(
 
 
 def main() -> int:
-    """Execute one Phase 1.5 dry-run validation tick.
+    """Execute one Phase 2 Architect and Planner dry-run tick.
 
     Returns:
         Process exit code ``0`` after completion, pause, or stop.
@@ -463,7 +568,7 @@ def main() -> int:
         repo_root=root,
         max_lines_per_file=max_lines,
     )
-    result = request_architect_result(
+    architect_result = request_architect_result(
         project_name=project_name,
         project=project,
         project_state=project_state,
@@ -477,18 +582,34 @@ def main() -> int:
     task_expansion_path, next_action_path = planning_paths(root, project)
     safe_write_text(
         task_expansion_path,
-        render_task_expansion(result),
+        render_task_expansion(architect_result),
         repo_root=root,
         allowed_roots=[task_root],
     )
+    planner_result = request_planner_result(
+        project_name=project_name,
+        project=project,
+        project_state=project_state,
+        factory_config=factory_config,
+        models_config=models_config,
+        max_lines=max_lines,
+        tasks=tasks,
+        architect_result=architect_result,
+    )
     safe_write_text(
         next_action_path,
-        render_next_action(result),
+        render_next_action(planner_result),
         repo_root=root,
         allowed_roots=[task_root],
     )
 
-    update_success_state(factory_state, active_run, project_state, result)
+    update_success_state(
+        factory_state,
+        active_run,
+        project_state,
+        architect_result,
+        planner_result,
+    )
     persist_state(
         root=root,
         state_dir=state_dir,
@@ -507,17 +628,22 @@ def main() -> int:
         factory_state=factory_state,
         active_run=active_run,
         project_state=project_state,
-        architect_source=result.source,
-        architect_detail=result.detail,
+        architect_source=architect_result.source,
+        architect_detail=architect_result.detail,
+        planner_source=planner_result.source,
+        planner_detail=planner_result.detail,
+        last_role_completed="reporter",
         planning_files=planning_files,
         repo_root=root,
     )
 
-    print("Crazy Factory Phase 1.5 validation tick complete")
+    print("Crazy Factory Phase 2 Architect + Planner dry run complete")
     print(f"Active project: {project_name}")
     print(f"Context files read: {len(contexts)}")
     print(f"Task files read: {len(tasks)}")
-    print(f"Architect planning source: {result.source}")
+    print(f"Architect planning source: {architect_result.source}")
+    print(f"Planner planning source: {planner_result.source}")
+    print("Last role completed: reporter")
     print(f"Report written: {report_path.relative_to(root)}")
     print(
         "Safety: planning files only; no app code, commit, or push attempted"

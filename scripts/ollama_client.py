@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Provide a small non-streaming Ollama chat client for future phases.
 
-The Phase 1.5 dry-run loop uses this deliberately narrow integration boundary
-around Ollama's ``/api/chat`` endpoint for planning-only Architect requests.
-Connection failures are converted into a domain-specific exception so the
-coordinator can fall back cleanly.
+The Phase 2 dry-run loop uses this deliberately narrow integration boundary
+around Ollama's ``/api/chat`` endpoint for planning-only Architect and Planner
+requests. Connection failures are converted into a domain-specific exception
+so the coordinator can fall back cleanly.
 
 Example:
     Create a client for a later approved integration phase::

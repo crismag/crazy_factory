@@ -67,6 +67,9 @@ def append_dry_run_report(
     project_state: dict[str, Any],
     architect_source: str,
     architect_detail: str,
+    planner_source: str,
+    planner_detail: str,
+    last_role_completed: str,
     planning_files: list[str],
     repo_root: str | Path | None = None,
 ) -> Path:
@@ -84,6 +87,9 @@ def append_dry_run_report(
         project_state: Active project state snapshot.
         architect_source: Whether planning came from Ollama or fallback logic.
         architect_detail: Human-readable explanation of the planning source.
+        planner_source: Whether planning came from Ollama or fallback logic.
+        planner_detail: Human-readable explanation of the planning source.
+        last_role_completed: Last worker role completed during the run.
         planning_files: Fixed planning files updated during the tick.
         repo_root: Optional explicit repository root, primarily for tests.
 
@@ -119,16 +125,24 @@ def append_dry_run_report(
         + "- What remains? Read the active project's `MASTER_CHECKLIST.md`.\n"
         + f"- Where do I resume? {active_run['resume_from']}\n"
         + f"- Current blocker: `{project_state['current_blocker']}`\n"
-        + "\n## Architect Validation\n\n"
+        + "\n## Architect Dry Run\n\n"
         + f"- Source: `{architect_source}`\n"
         + f"- Detail: {architect_detail}\n"
         + "- Planning files updated:\n"
-        + "".join(f"  - `{path}`\n" for path in planning_files)
+        + "".join(f"  - `{path}`\n" for path in planning_files[:1])
+        + "\n## Planner Dry Run\n\n"
+        + f"- Source: `{planner_source}`\n"
+        + f"- Detail: {planner_detail}\n"
+        + "- Planning files updated:\n"
+        + "".join(f"  - `{path}`\n" for path in planning_files[1:])
+        + "\n## Reporter Outcome\n\n"
+        + f"- Last role completed: `{last_role_completed}`\n"
         + "\n## Repository Status\n\n```text\n"
         + (git_status or "clean")
         + "\n```\n\n"
         + "## Safety Record\n\n"
         + f"- Architect planning source: `{architect_source}`.\n"
+        + f"- Planner planning source: `{planner_source}`.\n"
         + "- No application code was modified.\n"
         + "- No git commit or push was attempted.\n"
     )
@@ -137,6 +151,8 @@ def append_dry_run_report(
         f"- Active project: `{project_name}`\n"
         f"- Result: created `{app_report_path}`\n"
         f"- Architect planning source: `{architect_source}`\n"
+        f"- Planner planning source: `{planner_source}`\n"
+        f"- Last role completed: `{last_role_completed}`\n"
         "- Safety: no application edit, commit, or push attempted.\n"
     )
     daily_entry = (

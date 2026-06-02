@@ -1,16 +1,14 @@
 # Task Expansion
 
-## Architect Validation Source
+## Architect Dry-Run Source
 
 - Source: `ollama`
 - Detail: Architect model `cogito:14b`
 
 ## Expansion
 
-I recommend validating the completed DEMO-M1 milestone by checking that all mission-state recovery questions can be answered from persistent files. Specifically:
+Based on the provided context, I recommend one safe next action:
 
-1. Verify `CURRENT_STATE.md` contains mission-state metadata for DEMO-M1 completion.
-2. Confirm `ARCHITECTURE_NOTES.md` documents initial project structure and boundaries.
-3. Ensure the bootstrap record in `PROJECT_MEMORY.md` is updated to reflect M1 validation.
+**Review and update `CURRENT_STATE.md`** to reflect completion of the `DEMO-M1` milestone according to the validation checklist.
 
-Once these are confirmed, draft a simple DEMO-002 task focused on documenting technical requirements before proceeding with any code generation.
+This review will ensure proper mission-state preservation and allow for clean progression to the planned DEMO-002 task. The Architect's expansion indicates this as a critical step in confirming M1 completeness before proceeding with any code generation work on the demo app.

@@ -1,6 +1,6 @@
 # Model Strategy
 
-## Phase 1.5 Assignments
+## Phase 2 Assignments
 
 | Worker | Ollama model |
 | --- | --- |
@@ -14,9 +14,10 @@
 
 ## Current Boundary
 
-Phase 1.5 ticks may call the local Architect model for planning-only task
-expansion. When Ollama is unavailable or returns an invalid response, the tick
-must use deterministic fallback planning and exit cleanly.
+Phase 2 ticks may call local Architect and Planner models for planning-only
+outputs. When Ollama is unavailable or returns an invalid response, the tick
+must use deterministic fallback planning, report the fallback, and exit
+cleanly.
 
 The initial configured reviewer is `gemma4:latest`. A later planning phase may
 define when to fall back to `cogito:14b`.

@@ -25,7 +25,8 @@ never be implied by silence.
 
 - No continuous runner is active.
 - No automatic commit or merge capability is active.
-- Ollama use is limited to planning-only Architect validation with fallback.
+- Ollama use is limited to planning-only Architect and Planner roles with
+  fallback.
 
 ## Recommended Human Review
 

@@ -65,6 +65,8 @@ def activity_summary() -> str:
         f"Project: {project_state['project']}\n"
         f"Milestone: {project_state['current_milestone']}\n"
         f"Task: {project_state['current_task']}\n"
+        f"State task ID: {project_state.get('task_id')}\n"
+        f"Last role completed: {project_state.get('last_role_completed')}\n"
         f"Last checkpoint: {project_state['last_completed_checkpoint']}\n"
         f"Current blocker: {project_state['current_blocker']}\n"
         f"Resume from: {active_run['resume_from']}\n\n"

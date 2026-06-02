@@ -8,5 +8,7 @@
   "current_checkpoint": null,
   "last_completed_checkpoint": "DEMO-MISSION-STATE-001",
   "current_blocker": null,
-  "resume_from": "Review TASK_EXPANSION.md and NEXT_ACTION.md. Keep application writes disabled until owner approval."
+  "last_role_completed": "reporter",
+  "task_id": "DEMO-002",
+  "resume_from": "Resume from the Planner recommendation in NEXT_ACTION.md. Keep application writes disabled until owner approval."
 }

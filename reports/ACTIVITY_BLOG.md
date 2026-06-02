@@ -39,3 +39,12 @@ This file records human-readable progress summaries from Crazy Factory.
 - Result: created `apps/demo_app/factory_reports/session-20260602T203712Z.md`
 - Architect planning source: `ollama`
 - Safety: no application edit, commit, or push attempted.
+
+## 2026-06-02T20:44:41Z - Dry-run tick
+
+- Active project: `demo_app`
+- Result: created `apps/demo_app/factory_reports/session-20260602T204441Z.md`
+- Architect planning source: `ollama`
+- Planner planning source: `ollama`
+- Last role completed: `reporter`
+- Safety: no application edit, commit, or push attempted.

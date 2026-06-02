@@ -24,7 +24,7 @@ own memory, checklist, milestones, backlog, reports, and next action.
 
 ## Current Constraint
 
-Continuous unattended execution is a future capability. Phase 1.5 records
+Continuous unattended execution is a future capability. Phase 2 records
 mission state and recovery information and validates a planning-only local
-Architect loop. It does not activate scheduling, automatic application edits,
-automatic commits, or automatic merges.
+Architect and Planner loop. It does not activate scheduling, automatic
+application edits, automatic commits, or automatic merges.
