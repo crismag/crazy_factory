@@ -125,23 +125,29 @@ class ValidationVerdict:
 def _coerce_str(value: Any) -> str:
     """Coerce a JSON scalar to a trimmed string.
 
+    Only genuine scalars (str, int, float, bool) become text. Objects and
+    arrays are discarded to an empty string rather than ``repr``-ed, so a
+    nested structure in a text field surfaces as missing content and is
+    rejected by the validator instead of passing as garbage.
+
     Args:
         value: Arbitrary parsed JSON value.
 
     Returns:
-        Stripped string, or an empty string for ``None``.
+        Stripped string, or an empty string for ``None`` or non-scalar values.
     """
-    if value is None:
-        return ""
-    return str(value).strip()
+    if isinstance(value, (str, int, float)):
+        return str(value).strip()
+    return ""
 
 
 def _coerce_str_list(value: Any) -> list[str]:
-    """Coerce a JSON value into a list of non-empty strings.
+    """Coerce a JSON value into a list of non-empty scalar strings.
 
     A single string is wrapped as a one-item list so loosely structured model
-    output still parses. Empty entries are dropped so validation can rely on
-    list length to mean "has real content".
+    output still parses. Empty entries and non-scalar elements (nested objects
+    or arrays) are dropped, so validation can rely on list length to mean "has
+    real, usable content".
 
     Args:
         value: Arbitrary parsed JSON value.
@@ -149,15 +155,14 @@ def _coerce_str_list(value: Any) -> list[str]:
     Returns:
         List of trimmed, non-empty strings.
     """
-    if value is None:
-        return []
     if isinstance(value, str):
         text = value.strip()
         return [text] if text else []
     if isinstance(value, (list, tuple)):
         items = [_coerce_str(item) for item in value]
         return [item for item in items if item]
-    # A lone scalar (number/bool) becomes a single descriptive entry.
+    # A lone scalar (number/bool) becomes a single descriptive entry; objects
+    # and null coerce to an empty string and yield an empty list.
     text = _coerce_str(value)
     return [text] if text else []
 
@@ -326,6 +331,29 @@ def contract_to_dict(
         },
     }
     return body
+
+
+def is_contract_actionable(record: dict[str, Any]) -> bool:
+    """Report whether a persisted contract may be acted on by a worker.
+
+    This is the single gate a future Coder phase must use. Owner authorization
+    alone is not sufficient: a contract is actionable only when the owner has
+    set ``authorized: true`` *and* the engine validated it as ``valid``. A
+    contract that was rejected by validation can never become actionable just
+    by flipping ``authorized``.
+
+    Args:
+        record: A parsed ``planned_task.json`` mapping.
+
+    Returns:
+        ``True`` only when the contract is both owner-authorized and valid.
+    """
+    if record.get("authorized") is not True:
+        return False
+    validation = record.get("validation")
+    if not isinstance(validation, dict):
+        return False
+    return validation.get("status") == "valid"
 
 
 def render_planned_task_md(

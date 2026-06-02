@@ -21,10 +21,12 @@ from factory_tick import (  # noqa: E402
     ContractResult,
     RoleResult,
     contract_paths,
+    contract_status_label,
     fallback_architect_result,
     fallback_planner_result,
     load_active_project,
     load_configuration,
+    load_existing_contract,
     planning_paths,
     render_next_action,
     render_task_expansion,
@@ -32,6 +34,7 @@ from factory_tick import (  # noqa: E402
     request_architect_result,
     request_planner_result,
     request_task_contract,
+    run_contract_stage,
     update_success_state,
     validate_dry_run_settings,
 )
@@ -40,7 +43,9 @@ from repo_tools import read_markdown_directory, safe_write_text  # noqa: E402
 from report_writer import append_dry_run_report  # noqa: E402
 from task_contract import (  # noqa: E402
     PlannedTask,
+    ValidationVerdict,
     contract_to_dict,
+    is_contract_actionable,
     parse_planned_task,
     render_planned_task_md,
     validate_planned_task,
@@ -639,8 +644,168 @@ class TaskContractTests(unittest.TestCase):
             )
             report = report_path.read_text(encoding="utf-8")
             self.assertIn("Task Contract", report)
-            self.assertIn("authorized: false", report.lower())
+            self.assertIn("authorized: false", report.replace("`", "").lower())
             self.assertIn("No acceptance criteria", report)
+
+
+class ContractHardeningTests(unittest.TestCase):
+    """Verify the fixes for unwired/unhandled Phase 3 corners."""
+
+    def setUp(self) -> None:
+        """Store the repository root for tests that read fixtures."""
+        self.repo_root = Path(__file__).resolve().parents[1]
+
+    def test_nested_object_in_text_field_is_rejected(self) -> None:
+        """Fix #3: an object in a text field is empty, not stringified."""
+        data = _valid_contract_dict()
+        data["validation_plan"] = {"checklist_items": ["a", "b"]}
+        task = parse_planned_task(json.dumps(data))
+        self.assertEqual(task.validation_plan, "")
+        verdict = validate_planned_task(task)
+        self.assertFalse(verdict.valid)
+        self.assertTrue(any("validation_plan" in r for r in verdict.reasons))
+
+    def test_nested_objects_in_list_are_dropped(self) -> None:
+        """Fix #3: object elements in a list field are discarded."""
+        data = _valid_contract_dict()
+        data["acceptance_criteria"] = [{"k": "v"}, "real criterion"]
+        task = parse_planned_task(json.dumps(data))
+        self.assertEqual(task.acceptance_criteria, ["real criterion"])
+
+    def test_actionable_requires_authorized_and_valid(self) -> None:
+        """Fix #2: actionable needs authorized=true AND status valid."""
+        valid_authorized = {
+            "authorized": True,
+            "validation": {"status": "valid"},
+        }
+        self.assertTrue(is_contract_actionable(valid_authorized))
+        # Authorized but rejected must never be actionable.
+        self.assertFalse(
+            is_contract_actionable(
+                {"authorized": True, "validation": {"status": "rejected"}}
+            )
+        )
+        # Valid but unauthorized is not actionable.
+        self.assertFalse(
+            is_contract_actionable(
+                {"authorized": False, "validation": {"status": "valid"}}
+            )
+        )
+        self.assertFalse(is_contract_actionable({"authorized": True}))
+
+    def test_preserves_authorized_contract_without_regenerating(self) -> None:
+        """Fix #1: an authorized valid contract is kept, not overwritten."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            task_root = root / "apps/demo/factory_tasks"
+            task_root.mkdir(parents=True)
+            project = {
+                "root": "apps/demo",
+                "task_root": "apps/demo/factory_tasks",
+                "context_root": "apps/demo/factory_context",
+            }
+            authorized = {
+                "task_id": "DEMO-002",
+                "authorized": True,
+                "validation": {"status": "valid", "reasons": []},
+            }
+            contract_file = task_root / "planned_task.json"
+            original = json.dumps(authorized, indent=2)
+            contract_file.write_text(original, encoding="utf-8")
+
+            # chat must never be called when a contract is preserved.
+            with patch(
+                "factory_tick.OllamaClient.chat",
+                side_effect=AssertionError("must not regenerate"),
+            ):
+                result, json_path, _ = run_contract_stage(
+                    project_name="demo",
+                    root=root,
+                    project=project,
+                    factory_config={"ollama": {}},
+                    models_config={"models": {"planner": "cogito:14b"}},
+                    max_lines=20,
+                    tasks={"CURRENT_TASK.md": "# Current Task"},
+                    architect_result=RoleResult("a", "x", "ollama", "m"),
+                    planner_result=RoleResult("p", "y", "ollama", "m"),
+                )
+            self.assertTrue(result.preserved)
+            self.assertEqual(result.source, "preserved")
+            # File content is untouched (authorization survives).
+            self.assertEqual(
+                contract_file.read_text(encoding="utf-8"), original
+            )
+
+    def test_load_existing_contract_handles_missing_and_corrupt(self) -> None:
+        """Fix #1: missing or corrupt contracts load as absent."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "t").mkdir()
+            self.assertIsNone(
+                load_existing_contract("t/planned_task.json", root)
+            )
+            corrupt = root / "t/planned_task.json"
+            corrupt.write_text("not json", encoding="utf-8")
+            self.assertIsNone(
+                load_existing_contract("t/planned_task.json", root)
+            )
+
+    def test_preserved_state_marks_authorized_and_clears_failures(
+        self,
+    ) -> None:
+        """Fix #1/#5: preserved run is healthy and clears failure state."""
+        contract = ContractResult(
+            None,
+            ValidationVerdict(True, []),
+            "preserved",
+            "kept",
+            preserved=True,
+        )
+        factory_state: dict[str, object] = {"failure_count": 3}
+        active_run: dict[str, object] = {"current_blocker": "x"}
+        project_state: dict[str, object] = {
+            "current_task": "DEMO-002",
+            "failure_count": 3,
+            "current_blocker": "planning_contract_rejected",
+        }
+        update_success_state(
+            factory_state,
+            active_run,
+            project_state,
+            RoleResult("a", "x", "ollama", "m"),
+            RoleResult("p", "y", "ollama", "m"),
+            contract_result=contract,
+        )
+        self.assertEqual(project_state["last_contract_status"], "authorized")
+        self.assertTrue(project_state["contract_authorized"])
+        self.assertEqual(project_state["failure_count"], 0)
+        self.assertIsNone(project_state["current_blocker"])
+        self.assertEqual(contract_status_label(contract), "authorized")
+
+    def test_valid_contract_resets_prior_failures(self) -> None:
+        """Fix #5: a clean valid contract clears earlier failure counters."""
+        task = parse_planned_task(json.dumps(_valid_contract_dict()))
+        contract = ContractResult(
+            task, validate_planned_task(task), "ollama", "m"
+        )
+        factory_state: dict[str, object] = {"failure_count": 2}
+        active_run: dict[str, object] = {}
+        project_state: dict[str, object] = {
+            "current_task": "DEMO-002",
+            "failure_count": 2,
+            "current_blocker": "planning_contract_rejected",
+        }
+        update_success_state(
+            factory_state,
+            active_run,
+            project_state,
+            RoleResult("a", "x", "ollama", "m"),
+            RoleResult("p", "y", "ollama", "m"),
+            contract_result=contract,
+        )
+        self.assertEqual(project_state["failure_count"], 0)
+        self.assertEqual(factory_state["failure_count"], 0)
+        self.assertIsNone(project_state["current_blocker"])
 
 
 if __name__ == "__main__":

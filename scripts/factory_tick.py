@@ -48,6 +48,7 @@ from task_contract import (  # noqa: E402
     PlannedTask,
     ValidationVerdict,
     contract_to_dict,
+    is_contract_actionable,
     parse_planned_task,
     render_planned_task_md,
     validate_planned_task,
@@ -78,14 +79,17 @@ class ContractResult:
     Attributes:
         task: Parsed planned task, or ``None`` when none could be produced.
         verdict: Validation verdict for the contract.
-        source: ``"ollama"`` or ``"fallback"``.
+        source: ``"ollama"``, ``"fallback"``, or ``"preserved"``.
         detail: Human-readable explanation for reports.
+        preserved: ``True`` when an existing owner-authorized valid contract
+            was kept and no new contract was generated this run.
     """
 
     task: PlannedTask | None
     verdict: ValidationVerdict
     source: str
     detail: str
+    preserved: bool = False
 
 
 def load_configuration(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -588,6 +592,124 @@ def contract_paths(root: Path, project: dict[str, Any]) -> tuple[str, str]:
     )
 
 
+def load_existing_contract(
+    contract_json_path: str, root: Path
+) -> dict[str, Any] | None:
+    """Load an existing ``planned_task.json`` record if one is present.
+
+    Args:
+        contract_json_path: Repository-relative contract path.
+        root: Absolute repository root.
+
+    Returns:
+        Parsed contract mapping, or ``None`` when no readable contract exists.
+    """
+    target = resolve_repo_path(contract_json_path, root)
+    if not target.is_file():
+        return None
+    try:
+        return safe_load_json(contract_json_path, root)
+    except ValueError:
+        # A corrupt or non-object contract is treated as absent so the tick
+        # can regenerate it rather than fail.
+        return None
+
+
+def run_contract_stage(
+    *,
+    project_name: str,
+    root: Path,
+    project: dict[str, Any],
+    factory_config: dict[str, Any],
+    models_config: dict[str, Any],
+    max_lines: int,
+    tasks: dict[str, str],
+    architect_result: RoleResult,
+    planner_result: RoleResult,
+) -> tuple[ContractResult, str, str]:
+    """Produce or preserve the structured task contract for this tick.
+
+    If an owner-authorized valid contract already exists, it is preserved and
+    no new contract is generated, so owner authorization survives later ticks
+    until a Coder phase consumes it. Otherwise a fresh contract is requested,
+    validated, and written to the two fixed contract files.
+
+    Args:
+        project_name: Active application workbench name.
+        root: Absolute repository root.
+        project: Active project configuration mapping.
+        factory_config: Parsed ``config/factory.yaml`` mapping.
+        models_config: Parsed ``config/models.yaml`` mapping.
+        max_lines: Maximum context lines loaded from each file.
+        tasks: Repository-relative task filenames and their content.
+        architect_result: Architect expansion handed to the contract step.
+        planner_result: Planner next action handed to the contract step.
+
+    Returns:
+        Contract result and the two repository-relative contract paths.
+    """
+    task_root = str(project["task_root"])
+    contract_json_path, planned_task_path = contract_paths(root, project)
+
+    existing = load_existing_contract(contract_json_path, root)
+    if existing is not None and is_contract_actionable(existing):
+        result = ContractResult(
+            task=None,
+            verdict=ValidationVerdict(True, []),
+            source="preserved",
+            detail=(
+                "Owner-authorized valid contract preserved; no new contract "
+                "was generated this run."
+            ),
+            preserved=True,
+        )
+        return result, contract_json_path, planned_task_path
+
+    result = request_task_contract(
+        project_name=project_name,
+        project=project,
+        factory_config=factory_config,
+        models_config=models_config,
+        max_lines=max_lines,
+        tasks=tasks,
+        architect_result=architect_result,
+        planner_result=planner_result,
+    )
+    safe_write_json(
+        contract_json_path,
+        contract_to_dict(result.task, result.verdict, result.source),
+        repo_root=root,
+        allowed_roots=[task_root],
+    )
+    safe_write_text(
+        planned_task_path,
+        render_planned_task_md(
+            result.task,
+            result.verdict,
+            source=result.source,
+            detail=result.detail,
+        ),
+        repo_root=root,
+        allowed_roots=[task_root],
+    )
+    return result, contract_json_path, planned_task_path
+
+
+def contract_status_label(contract_result: ContractResult) -> str:
+    """Return the reporting label for a contract outcome.
+
+    Args:
+        contract_result: Contract result for the current tick.
+
+    Returns:
+        ``"authorized"`` when preserved, otherwise ``"valid"`` or
+        ``"rejected"``.
+    """
+    if contract_result.preserved:
+        return "authorized"
+    return "valid" if contract_result.verdict.valid else "rejected"
+
+
 def update_success_state(
     factory_state: dict[str, Any],
     active_run: dict[str, Any],
@@ -662,19 +784,36 @@ def _apply_contract_state(
         contract_result: Validated structured contract outcome.
         completed_at: UTC completion timestamp for the current tick.
     """
+    # A preserved contract is one the owner already authorized; it is healthy
+    # and is held for a future Coder phase rather than regenerated.
+    if contract_result.preserved:
+        _record_contract_status(
+            factory_state, active_run, project_state, "authorized", []
+        )
+        project_state["contract_authorized"] = True
+        _clear_failure_state(factory_state, active_run, project_state)
+        active_run["resume_from"] = (
+            "An owner-authorized valid contract exists in planned_task.json. "
+            "Holding for the Coder phase (not yet implemented); no new "
+            "contract was generated. Application writes remain disabled."
+        )
+        return
+
     status = "valid" if contract_result.verdict.valid else "rejected"
-    reasons = list(contract_result.verdict.reasons)
-    factory_state["last_contract_status"] = status
-    factory_state["last_contract_source"] = contract_result.source
-    project_state["last_contract_status"] = status
-    project_state["last_contract_reasons"] = reasons
+    _record_contract_status(
+        factory_state,
+        active_run,
+        project_state,
+        status,
+        list(contract_result.verdict.reasons),
+    )
     # Authorization is owner-only and is never granted by the factory.
     project_state["contract_authorized"] = False
-    active_run["last_contract_status"] = status
 
     if contract_result.verdict.valid:
-        active_run["current_blocker"] = None
-        project_state["current_blocker"] = None
+        # A clean valid contract is a recovery point: clear prior failures so
+        # the Watcher does not report a stall after planning recovers.
+        _clear_failure_state(factory_state, active_run, project_state)
         active_run["resume_from"] = (
             "Owner review required: PLANNED_TASK.md is valid but "
             "authorized=false. Set planned_task.json authorized=true to "
@@ -696,6 +835,46 @@ def _apply_contract_state(
         "Planning contract rejected; see PLANNED_TASK.md validation reasons. "
         "Re-plan the current task. Application writes remain disabled."
     )
+
+
+def _record_contract_status(
+    factory_state: dict[str, Any],
+    active_run: dict[str, Any],
+    project_state: dict[str, Any],
+    status: str,
+    reasons: list[str],
+) -> None:
+    """Record the contract status string across state snapshots.
+
+    Args:
+        factory_state: Global mutable state snapshot.
+        active_run: Mutable active-run state snapshot.
+        project_state: Mutable project state snapshot.
+        status: Contract status (``"valid"``, ``"rejected"``, ``"authorized"``).
+        reasons: Validation rejection reasons, if any.
+    """
+    factory_state["last_contract_status"] = status
+    active_run["last_contract_status"] = status
+    project_state["last_contract_status"] = status
+    project_state["last_contract_reasons"] = reasons
+
+
+def _clear_failure_state(
+    factory_state: dict[str, Any],
+    active_run: dict[str, Any],
+    project_state: dict[str, Any],
+) -> None:
+    """Clear failure counters and blockers after a healthy planning run.
+
+    Args:
+        factory_state: Global mutable state snapshot.
+        active_run: Mutable active-run state snapshot.
+        project_state: Mutable project state snapshot.
+    """
+    factory_state["failure_count"] = 0
+    project_state["failure_count"] = 0
+    active_run["current_blocker"] = None
+    project_state["current_blocker"] = None
 
 
 def persist_state(
@@ -819,37 +998,18 @@ def main() -> int:
         allowed_roots=[task_root],
     )
 
-    contract_result = request_task_contract(
-        project_name=project_name,
-        project=project,
-        factory_config=factory_config,
-        models_config=models_config,
-        max_lines=max_lines,
-        tasks=tasks,
-        architect_result=architect_result,
-        planner_result=planner_result,
-    )
-    contract_json_path, planned_task_path = contract_paths(root, project)
-    safe_write_json(
-        contract_json_path,
-        contract_to_dict(
-            contract_result.task,
-            contract_result.verdict,
-            contract_result.source,
-        ),
-        repo_root=root,
-        allowed_roots=[task_root],
-    )
-    safe_write_text(
-        planned_task_path,
-        render_planned_task_md(
-            contract_result.task,
-            contract_result.verdict,
-            source=contract_result.source,
-            detail=contract_result.detail,
-        ),
-        repo_root=root,
-        allowed_roots=[task_root],
+    contract_result, contract_json_path, planned_task_path = (
+        run_contract_stage(
+            project_name=project_name,
+            root=root,
+            project=project,
+            factory_config=factory_config,
+            models_config=models_config,
+            max_lines=max_lines,
+            tasks=tasks,
+            architect_result=architect_result,
+            planner_result=planner_result,
+        )
     )
 
     update_success_state(
@@ -868,7 +1028,8 @@ def main() -> int:
         project_state=project_state,
     )
     planning_files = [task_expansion_path, next_action_path]
-    contract_status = "valid" if contract_result.verdict.valid else "rejected"
+    contract_status = contract_status_label(contract_result)
+    contract_authorized = contract_result.preserved
     report_path = append_dry_run_report(
         project_name=project_name,
         project_report_root=str(project["report_root"]),
@@ -890,9 +1051,15 @@ def main() -> int:
         contract_detail=contract_result.detail,
         contract_reasons=list(contract_result.verdict.reasons),
         contract_files=[contract_json_path, planned_task_path],
+        contract_authorized=contract_authorized,
         repo_root=root,
     )
 
+    authorized_text = (
+        "true (owner-authorized)"
+        if contract_authorized
+        else ("false (owner approval required)")
+    )
     print("Crazy Factory Phase 3 planning-contract dry run complete")
     print(f"Active project: {project_name}")
     print(f"Context files read: {len(contexts)}")
@@ -901,7 +1068,7 @@ def main() -> int:
     print(f"Planner planning source: {planner_result.source}")
     print(f"Contract source: {contract_result.source}")
     print(f"Contract validation: {contract_status}")
-    print("Contract authorized: false (owner approval required)")
+    print(f"Contract authorized: {authorized_text}")
     print("Last role completed: reporter")
     print(f"Report written: {report_path.relative_to(root)}")
     print(
