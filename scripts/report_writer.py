@@ -71,6 +71,11 @@ def append_dry_run_report(
     planner_detail: str,
     last_role_completed: str,
     planning_files: list[str],
+    contract_status: str | None = None,
+    contract_source: str | None = None,
+    contract_detail: str | None = None,
+    contract_reasons: list[str] | None = None,
+    contract_files: list[str] | None = None,
     repo_root: str | Path | None = None,
 ) -> Path:
     """Write a dry-run report and append top-level activity summaries.
@@ -91,6 +96,12 @@ def append_dry_run_report(
         planner_detail: Human-readable explanation of the planning source.
         last_role_completed: Last worker role completed during the run.
         planning_files: Fixed planning files updated during the tick.
+        contract_status: Structured-contract verdict (``"valid"`` or
+            ``"rejected"``), or ``None`` when no contract step ran.
+        contract_source: Whether the contract came from Ollama or fallback.
+        contract_detail: Human-readable explanation of the contract source.
+        contract_reasons: Rejection reasons for the contract, if any.
+        contract_files: Contract files written during the tick.
         repo_root: Optional explicit repository root, primarily for tests.
 
     Returns:
@@ -104,6 +115,25 @@ def append_dry_run_report(
     stamp = _timestamp(now)
     report_name = f"session-{_filename_timestamp(now)}.md"
     app_report_path = str(Path(project_report_root) / report_name)
+    contract_section = ""
+    if contract_status is not None:
+        contract_section = (
+            "\n## Task Contract\n\n"
+            f"- Source: `{contract_source}`\n"
+            f"- Detail: {contract_detail}\n"
+            f"- Validation status: `{contract_status}`\n"
+            "- Authorized: `false` (owner approval required)\n"
+            + (
+                "- Rejection reasons:\n"
+                + "".join(
+                    f"  - {reason}\n" for reason in (contract_reasons or [])
+                )
+                if contract_status == "rejected"
+                else ""
+            )
+            + "- Contract files written:\n"
+            + "".join(f"  - `{path}`\n" for path in (contract_files or []))
+        )
     body = (
         f"# Factory Session Report\n\n"
         f"- Timestamp: `{stamp}`\n"
@@ -135,6 +165,7 @@ def append_dry_run_report(
         + f"- Detail: {planner_detail}\n"
         + "- Planning files updated:\n"
         + "".join(f"  - `{path}`\n" for path in planning_files[1:])
+        + contract_section
         + "\n## Reporter Outcome\n\n"
         + f"- Last role completed: `{last_role_completed}`\n"
         + "\n## Repository Status\n\n```text\n"
@@ -144,6 +175,8 @@ def append_dry_run_report(
         + f"- Architect planning source: `{architect_source}`.\n"
         + f"- Planner planning source: `{planner_source}`.\n"
         + "- No application code was modified.\n"
+        + "- Task contract authorization remains owner-only "
+        + "(`authorized: false`).\n"
         + "- No git commit or push was attempted.\n"
     )
     entry = (

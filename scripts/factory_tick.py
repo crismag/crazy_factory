@@ -43,6 +43,15 @@ from repo_tools import (  # noqa: E402
     safe_write_json,
     safe_write_text,
 )
+from task_contract import (  # noqa: E402
+    ContractParseError,
+    PlannedTask,
+    ValidationVerdict,
+    contract_to_dict,
+    parse_planned_task,
+    render_planned_task_md,
+    validate_planned_task,
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +67,23 @@ class RoleResult:
 
     role: str
     content: str
+    source: str
+    detail: str
+
+
+@dataclass(frozen=True)
+class ContractResult:
+    """Outcome of requesting and validating a structured task contract.
+
+    Attributes:
+        task: Parsed planned task, or ``None`` when none could be produced.
+        verdict: Validation verdict for the contract.
+        source: ``"ollama"`` or ``"fallback"``.
+        detail: Human-readable explanation for reports.
+    """
+
+    task: PlannedTask | None
+    verdict: ValidationVerdict
     source: str
     detail: str
 
@@ -382,6 +408,102 @@ def request_planner_result(
     return RoleResult("planner", content, "ollama", f"Planner model `{model}`")
 
 
+def request_task_contract(
+    *,
+    project_name: str,
+    project: dict[str, Any],
+    factory_config: dict[str, Any],
+    models_config: dict[str, Any],
+    max_lines: int,
+    tasks: dict[str, str],
+    architect_result: RoleResult,
+    planner_result: RoleResult,
+) -> ContractResult:
+    """Ask Ollama for a JSON task contract and validate it.
+
+    The Planner model is asked to emit a single structured JSON object. The
+    response is parsed and validated. When Ollama is unavailable, the response
+    is empty, or the contract cannot be parsed, the result is a *rejected*
+    contract rather than a trusted one. The factory never authorizes a
+    contract on its own; ``authorized`` stays ``False`` regardless of verdict.
+
+    Args:
+        project_name: Active application workbench name.
+        project: Active project configuration mapping.
+        factory_config: Parsed ``config/factory.yaml`` mapping.
+        models_config: Parsed ``config/models.yaml`` mapping.
+        max_lines: Maximum context lines loaded from each file.
+        tasks: Repository-relative task filenames and their content.
+        architect_result: Architect expansion handed to the contract step.
+        planner_result: Planner next action handed to the contract step.
+
+    Returns:
+        Contract result containing the parsed task (or ``None``) and verdict.
+    """
+    prompt_package = build_prompt_package(
+        role="planner",
+        project_name=project_name,
+        project_context_root=str(project["context_root"]),
+        max_lines_per_file=max_lines,
+    )
+    model = str(models_config["models"]["planner"])
+    ollama = factory_config["ollama"]
+    client = OllamaClient(
+        base_url=str(ollama["base_url"]),
+        timeout_seconds=int(ollama["timeout_seconds"]),
+        stream=bool(ollama["stream"]),
+    )
+    instruction = (
+        "Return ONLY a single JSON object describing one bounded task "
+        "contract. Use these keys: task_id, title, objective, scope (array "
+        "of strings), exclusions (array of strings), inputs (array of "
+        "strings), acceptance_criteria (array of strings), validation_plan, "
+        "risks (array of strings), approval_status. Set approval_status to "
+        '"pending". Do not include an authorized field and do not propose an '
+        "approved status; only the owner authorizes work. Keep scope small "
+        "and bounded, and provide explicit exclusions. Do not reference push, "
+        "merge, secrets, or production. Do not generate application code."
+    )
+    task_context = "\n\n".join(
+        f"## Task Source: {path}\n\n{text.rstrip()}"
+        for path, text in tasks.items()
+    )
+    messages = [
+        {"role": "system", "content": instruction},
+        {
+            "role": "user",
+            "content": (
+                f"{prompt_package.prompt}\n\n"
+                f"## Architect Expansion\n\n{architect_result.content}\n\n"
+                f"## Planner Next Action\n\n{planner_result.content}\n\n"
+                f"{task_context}"
+            ),
+        },
+    ]
+    try:
+        response = client.chat(model, messages, response_format="json")
+    except OllamaConnectionError as exc:
+        reason = f"Ollama unavailable; no validated contract produced: {exc}"
+        return ContractResult(
+            None, ValidationVerdict(False, [reason]), "fallback", reason
+        )
+    try:
+        content = str(response["message"]["content"]).strip()
+        if not content:
+            raise ValueError("Ollama returned empty contract content")
+        task = parse_planned_task(content)
+    except (KeyError, TypeError, ValueError, ContractParseError) as exc:
+        reason = f"Contract parse failed: {exc}"
+        return ContractResult(
+            None,
+            ValidationVerdict(False, [reason]),
+            "ollama",
+            f"Planner model `{model}` (unparseable contract)",
+        )
+    verdict = validate_planned_task(task)
+    return ContractResult(task, verdict, "ollama", f"Planner model `{model}`")
+
+
 def render_task_expansion(result: RoleResult) -> str:
     """Render Architect planning text as a repository task record.
 
@@ -443,14 +565,46 @@ def planning_paths(root: Path, project: dict[str, Any]) -> tuple[str, str]:
     )
 
 
+def contract_paths(root: Path, project: dict[str, Any]) -> tuple[str, str]:
+    """Return the two fixed contract files writable in Phase 3.
+
+    Args:
+        root: Absolute repository root.
+        project: Active project configuration mapping.
+
+    Returns:
+        Repository-relative ``planned_task.json`` and ``PLANNED_TASK.md`` paths.
+
+    Raises:
+        RuntimeError: If the task directory escapes the project workbench.
+    """
+    project_root = resolve_repo_path(str(project["root"]), root)
+    task_root = resolve_repo_path(str(project["task_root"]), root)
+    if task_root != project_root and project_root not in task_root.parents:
+        raise RuntimeError("Task root must stay inside the project workbench")
+    return (
+        str(Path(str(project["task_root"])) / "planned_task.json"),
+        str(Path(str(project["task_root"])) / "PLANNED_TASK.md"),
+    )
+
+
 def update_success_state(
     factory_state: dict[str, Any],
     active_run: dict[str, Any],
     project_state: dict[str, Any],
     architect_result: RoleResult,
     planner_result: RoleResult,
+    *,
+    contract_result: ContractResult | None = None,
 ) -> str:
-    """Update in-memory state after a successful Phase 2 dry run.
+    """Update in-memory state after a Phase 3 planning dry run.
+
+    The tick itself always completes (records, validates, reports), so the run
+    is recorded as successful. A *rejected* contract is a normal planning
+    outcome, not a crash: it bumps the failure counters and sets a blocker so
+    the Watcher can detect repeated planning failures, while the run still
+    exits cleanly. ``authorized`` is never set here; only the owner may flip
+    it.
 
     Args:
         factory_state: Global mutable state snapshot.
@@ -458,6 +612,7 @@ def update_success_state(
         project_state: Mutable project state snapshot.
         architect_result: Completed Architect result.
         planner_result: Completed Planner result.
+        contract_result: Validated structured contract outcome, if produced.
 
     Returns:
         UTC completion timestamp written into state.
@@ -479,7 +634,68 @@ def update_success_state(
     project_state["last_planner_source"] = planner_result.source
     project_state["last_role_completed"] = "reporter"
     project_state["task_id"] = project_state["current_task"]
+
+    if contract_result is not None:
+        _apply_contract_state(
+            factory_state,
+            active_run,
+            project_state,
+            contract_result,
+            completed_at,
+        )
     return completed_at
+
+
+def _apply_contract_state(
+    factory_state: dict[str, Any],
+    active_run: dict[str, Any],
+    project_state: dict[str, Any],
+    contract_result: ContractResult,
+    completed_at: str,
+) -> None:
+    """Record contract verdict into persistent state snapshots.
+
+    Args:
+        factory_state: Global mutable state snapshot.
+        active_run: Mutable active-run state snapshot.
+        project_state: Mutable project state snapshot.
+        contract_result: Validated structured contract outcome.
+        completed_at: UTC completion timestamp for the current tick.
+    """
+    status = "valid" if contract_result.verdict.valid else "rejected"
+    reasons = list(contract_result.verdict.reasons)
+    factory_state["last_contract_status"] = status
+    factory_state["last_contract_source"] = contract_result.source
+    project_state["last_contract_status"] = status
+    project_state["last_contract_reasons"] = reasons
+    # Authorization is owner-only and is never granted by the factory.
+    project_state["contract_authorized"] = False
+    active_run["last_contract_status"] = status
+
+    if contract_result.verdict.valid:
+        active_run["current_blocker"] = None
+        project_state["current_blocker"] = None
+        active_run["resume_from"] = (
+            "Owner review required: PLANNED_TASK.md is valid but "
+            "authorized=false. Set planned_task.json authorized=true to "
+            "approve before any Coder phase. Application writes remain "
+            "disabled."
+        )
+        return
+
+    factory_state["last_failed_run"] = completed_at
+    factory_state["failure_count"] = (
+        int(factory_state.get("failure_count", 0)) + 1
+    )
+    project_state["failure_count"] = (
+        int(project_state.get("failure_count", 0)) + 1
+    )
+    active_run["current_blocker"] = "planning_contract_rejected"
+    project_state["current_blocker"] = "planning_contract_rejected"
+    active_run["resume_from"] = (
+        "Planning contract rejected; see PLANNED_TASK.md validation reasons. "
+        "Re-plan the current task. Application writes remain disabled."
+    )
 
 
 def persist_state(
@@ -603,12 +819,46 @@ def main() -> int:
         allowed_roots=[task_root],
     )
 
+    contract_result = request_task_contract(
+        project_name=project_name,
+        project=project,
+        factory_config=factory_config,
+        models_config=models_config,
+        max_lines=max_lines,
+        tasks=tasks,
+        architect_result=architect_result,
+        planner_result=planner_result,
+    )
+    contract_json_path, planned_task_path = contract_paths(root, project)
+    safe_write_json(
+        contract_json_path,
+        contract_to_dict(
+            contract_result.task,
+            contract_result.verdict,
+            contract_result.source,
+        ),
+        repo_root=root,
+        allowed_roots=[task_root],
+    )
+    safe_write_text(
+        planned_task_path,
+        render_planned_task_md(
+            contract_result.task,
+            contract_result.verdict,
+            source=contract_result.source,
+            detail=contract_result.detail,
+        ),
+        repo_root=root,
+        allowed_roots=[task_root],
+    )
+
     update_success_state(
         factory_state,
         active_run,
         project_state,
         architect_result,
         planner_result,
+        contract_result=contract_result,
     )
     persist_state(
         root=root,
@@ -618,6 +868,7 @@ def main() -> int:
         project_state=project_state,
     )
     planning_files = [task_expansion_path, next_action_path]
+    contract_status = "valid" if contract_result.verdict.valid else "rejected"
     report_path = append_dry_run_report(
         project_name=project_name,
         project_report_root=str(project["report_root"]),
@@ -634,15 +885,23 @@ def main() -> int:
         planner_detail=planner_result.detail,
         last_role_completed="reporter",
         planning_files=planning_files,
+        contract_status=contract_status,
+        contract_source=contract_result.source,
+        contract_detail=contract_result.detail,
+        contract_reasons=list(contract_result.verdict.reasons),
+        contract_files=[contract_json_path, planned_task_path],
         repo_root=root,
     )
 
-    print("Crazy Factory Phase 2 Architect + Planner dry run complete")
+    print("Crazy Factory Phase 3 planning-contract dry run complete")
     print(f"Active project: {project_name}")
     print(f"Context files read: {len(contexts)}")
     print(f"Task files read: {len(tasks)}")
     print(f"Architect planning source: {architect_result.source}")
     print(f"Planner planning source: {planner_result.source}")
+    print(f"Contract source: {contract_result.source}")
+    print(f"Contract validation: {contract_status}")
+    print("Contract authorized: false (owner approval required)")
     print("Last role completed: reporter")
     print(f"Report written: {report_path.relative_to(root)}")
     print(

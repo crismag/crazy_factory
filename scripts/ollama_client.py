@@ -45,7 +45,10 @@ class OllamaClient:
     stream: bool = False
 
     def chat(
-        self, model: str, messages: list[dict[str, str]]
+        self,
+        model: str,
+        messages: list[dict[str, str]],
+        response_format: str | None = None,
     ) -> dict[str, Any]:
         """Send one non-streaming chat request to Ollama.
 
@@ -53,6 +56,8 @@ class OllamaClient:
             model: Ollama model identifier, such as ``"cogito:14b"``.
             messages: Ordered chat messages. Each dictionary should include
                 ``role`` and ``content`` keys.
+            response_format: Optional Ollama ``format`` value. Pass ``"json"``
+                to request a structured JSON response. Defaults to free text.
 
         Returns:
             Parsed JSON object returned by Ollama.
@@ -68,9 +73,14 @@ class OllamaClient:
             )
         # Always send ``stream: false`` because response streaming requires a
         # separate incremental parser and is intentionally outside bootstrap.
-        payload = json.dumps(
-            {"model": model, "messages": messages, "stream": False}
-        ).encode("utf-8")
+        request_body: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+        }
+        if response_format is not None:
+            request_body["format"] = response_format
+        payload = json.dumps(request_body).encode("utf-8")
         request = Request(
             f"{self.base_url.rstrip('/')}/api/chat",
             data=payload,
