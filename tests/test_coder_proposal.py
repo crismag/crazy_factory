@@ -167,6 +167,27 @@ class ValidateTests(unittest.TestCase):
             self.assertFalse(verdict.valid, bad)
             self.assertIn(bad, verdict.blocked_paths)
 
+    def test_rejects_root_readme(self) -> None:
+        """The root README is never an allowed proposal target."""
+        data = _valid_proposal_dict()
+        data["files_to_modify"] = ["README.md"]
+        data["files_to_create"] = []
+        verdict = self._validate(parse_coder_proposal(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertIn("README.md", verdict.blocked_paths)
+
+    def test_rejects_delete_outside_workbench(self) -> None:
+        """files_to_delete is bounded by the same allowed-target rule."""
+        data = _valid_proposal_dict()
+        data["files_to_create"] = []
+        data["files_to_modify"] = []
+        data["files_to_delete"] = ["factory/governance/ALLOWED_ACTIONS.md"]
+        verdict = self._validate(parse_coder_proposal(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertIn(
+            "factory/governance/ALLOWED_ACTIONS.md", verdict.blocked_paths
+        )
+
     def test_rejects_parent_traversal(self) -> None:
         """Reject parent-traversal paths even under an allowed prefix."""
         data = _valid_proposal_dict()
