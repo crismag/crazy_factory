@@ -341,6 +341,104 @@ class StageTests(unittest.TestCase):
                 {"root": "apps/demo_app", "task_root": "reports"},
             )
 
+    def test_preserves_valid_proposal_without_regenerating(self) -> None:
+        """A valid proposal for the same task is preserved, not regenerated."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = self._project(root)
+            task_root = root / "apps/demo/factory_tasks"
+            (task_root / "planned_task.json").write_text(
+                json.dumps(_authorized_contract_dict()), encoding="utf-8"
+            )
+            # A previously generated, owner-reviewed valid proposal on disk,
+            # in-bounds for project "demo".
+            existing = {
+                "proposal_id": "CP-001",
+                "task_id": "DEMO-002",
+                "summary": "s",
+                "objective": "o",
+                "files_to_create": [],
+                "files_to_modify": ["apps/demo/docs/README.md"],
+                "files_to_delete": [],
+                "proposed_tests": [],
+                "implementation_steps": ["append a note"],
+                "estimated_risk": "low",
+                "notes": "",
+                "validation": {"status": "valid", "reasons": []},
+            }
+            (task_root / "coder_proposal.json").write_text(
+                json.dumps(existing), encoding="utf-8"
+            )
+            with patch(
+                "coder_proposal.OllamaClient.chat",
+                side_effect=AssertionError("must not regenerate proposal"),
+            ):
+                result, _, _ = run_coder_stage(
+                    project_name="demo",
+                    root=root,
+                    project=project,
+                    factory_config={"ollama": {}},
+                    models_config={"models": {"coder": "x"}},
+                    max_lines=20,
+                    max_files=5,
+                    contract_json_path="apps/demo/factory_tasks/"
+                    "planned_task.json",
+                )
+            self.assertEqual(result.source, "preserved")
+            self.assertTrue(result.activated)
+            assert result.proposal is not None
+            self.assertEqual(result.proposal.proposal_id, "CP-001")
+
+    def test_stale_proposal_for_other_task_is_not_preserved(self) -> None:
+        """A valid proposal for a different task is regenerated, not kept."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = self._project(root)
+            task_root = root / "apps/demo/factory_tasks"
+            (task_root / "planned_task.json").write_text(
+                json.dumps(_authorized_contract_dict()), encoding="utf-8"
+            )
+            stale = {
+                "proposal_id": "CP-OLD",
+                "task_id": "OTHER-999",
+                "summary": "s",
+                "objective": "o",
+                "files_to_create": [],
+                "files_to_modify": ["apps/demo/docs/README.md"],
+                "files_to_delete": [],
+                "proposed_tests": [],
+                "implementation_steps": ["x"],
+                "estimated_risk": "low",
+                "notes": "",
+                "validation": {"status": "valid", "reasons": []},
+            }
+            (task_root / "coder_proposal.json").write_text(
+                json.dumps(stale), encoding="utf-8"
+            )
+            fake = ProposalResult(
+                None,
+                ProposalVerdict(False, ["regenerated"], [], []),
+                "ollama",
+                "m",
+                activated=True,
+            )
+            with patch(
+                "coder_proposal.request_coder_proposal", return_value=fake
+            ):
+                result, _, _ = run_coder_stage(
+                    project_name="demo",
+                    root=root,
+                    project=project,
+                    factory_config={"ollama": {}},
+                    models_config={"models": {"coder": "x"}},
+                    max_lines=20,
+                    max_files=5,
+                    contract_json_path="apps/demo/factory_tasks/"
+                    "planned_task.json",
+                )
+            # Regeneration path was taken (stale proposal not preserved).
+            self.assertEqual(result.source, "ollama")
+
     def test_skips_without_authorized_contract(self) -> None:
         """No authorized contract -> Coder skipped, no artifacts, no call."""
         with tempfile.TemporaryDirectory() as temp_dir:
