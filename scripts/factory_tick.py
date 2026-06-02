@@ -38,6 +38,10 @@ from contract_stage import (  # noqa: E402
     contract_status_label,
     run_contract_stage,
 )
+from checkpoint_commit import (  # noqa: E402
+    checkpoint_status_label,
+    run_checkpoint_stage,
+)
 from proposal_applier import (  # noqa: E402
     application_status_label,
     run_application_stage,
@@ -228,6 +232,21 @@ def main() -> int:
         timeout_seconds=int(validation_config.get("timeout_seconds", 60)),
     )
 
+    coder_summary = (
+        coder_result.proposal.summary if coder_result.proposal else ""
+    )
+    checkpoint_result, checkpoint_report = run_checkpoint_stage(
+        project_name=project_name,
+        root=root,
+        project=project,
+        factory_config=factory_config,
+        contract_json_path=contract_json_path,
+        proposal_json_path=proposal_json_path,
+        application_json_path=patch_plan_json,
+        validation_json_path=validation_json,
+        summary=coder_summary,
+    )
+
     update_success_state(
         factory_state,
         active_run,
@@ -239,6 +258,7 @@ def main() -> int:
         application_result=application_result,
         test_plan_result=test_plan_result,
         validation_result=validation_result,
+        checkpoint_result=checkpoint_result,
     )
     persist_state(
         root=root,
@@ -312,6 +332,11 @@ def main() -> int:
             if (test_plan is not None and test_plan_result.verdict.valid)
             else []
         ),
+        checkpoint_status=checkpoint_status_label(checkpoint_result),
+        checkpoint_id=checkpoint_result.checkpoint_id,
+        checkpoint_commit=checkpoint_result.commit_sha,
+        checkpoint_committed=checkpoint_result.committed,
+        checkpoint_excluded=list(checkpoint_result.excluded_files),
         repo_root=root,
     )
 
@@ -322,8 +347,8 @@ def main() -> int:
     )
     application_status = application_status_label(application_result)
     print(
-        "Crazy Factory Phase 6 planning + proposal + application + "
-        "validation dry run complete"
+        "Crazy Factory Phase 7 planning + proposal + application + "
+        "validation + checkpoint dry run complete"
     )
     print(f"Active project: {project_name}")
     print(f"Context files read: {len(contexts)}")
@@ -342,6 +367,10 @@ def main() -> int:
         f"Test plan: {test_plan_status_label(test_plan_result)} | "
         f"Validation: {validation_status_label(validation_result)} "
         f"(executed: {str(validation_result.executed).lower()})"
+    )
+    print(
+        f"Checkpoint: {checkpoint_status_label(checkpoint_result)} "
+        f"(committed: {str(checkpoint_result.committed).lower()})"
     )
     print("Last role completed: reporter")
     print(f"Report written: {report_path.relative_to(root)}")

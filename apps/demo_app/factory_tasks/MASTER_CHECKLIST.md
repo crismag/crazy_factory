@@ -54,3 +54,12 @@ task completion state.
 - [x] Execution gated by `validation.allow_run` (default off → skipped).
 - [x] Blocked/failed checks block checkpoint promotion; recorded in state.
 - [ ] Owner enables `validation.allow_run` to execute real checks.
+
+## `DEMO-PHASE7` Checkpoint Commit Engine
+
+- [x] Commit only when contract+proposal+application+validation all pass.
+- [x] Auto-commit gated by `git.allow_auto_commit` (default off).
+- [x] Stage only allowed commit paths; never engine/config/VCS files.
+- [x] Commit message derived from the contract; checkpoint log + report.
+- [x] Only safe git subcommands, shell-free; no push/merge/reset/rebase.
+- [ ] Owner enables `git.allow_auto_commit` after reviewing checkpoints.

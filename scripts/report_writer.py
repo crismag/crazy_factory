@@ -227,6 +227,39 @@ def _render_validation_section(
     )
 
 
+def _render_checkpoint_section(
+    *,
+    status: str | None,
+    checkpoint_id: str | None,
+    commit: str | None,
+    committed: bool,
+    excluded: list[str] | None,
+) -> str:
+    """Render the optional Checkpoint section of a session report.
+
+    Args:
+        status: Checkpoint verdict, or ``None`` to omit the section.
+        checkpoint_id: Checkpoint identifier, when committed.
+        commit: Commit hash, when committed.
+        committed: Whether a checkpoint commit was created.
+        excluded: Changed files outside the allowed commit paths.
+
+    Returns:
+        Markdown section text, or empty when ``status`` is ``None``.
+    """
+    if status is None:
+        return ""
+    return (
+        "\n## Checkpoint\n\n"
+        f"- Status: `{status}`\n"
+        f"- Committed: `{str(committed).lower()}`\n"
+        f"- Checkpoint ID: `{checkpoint_id}`\n"
+        f"- Commit: `{commit}`\n"
+        + "- Excluded (outside allowed commit paths):\n"
+        + "".join(f"  - `{p}`\n" for p in (excluded or []))
+    )
+
+
 def append_dry_run_report(
     *,
     project_name: str,
@@ -269,6 +302,11 @@ def append_dry_run_report(
     validation_executed: bool = False,
     validation_checks: list[str] | None = None,
     validation_files: list[str] | None = None,
+    checkpoint_status: str | None = None,
+    checkpoint_id: str | None = None,
+    checkpoint_commit: str | None = None,
+    checkpoint_committed: bool = False,
+    checkpoint_excluded: list[str] | None = None,
     repo_root: str | Path | None = None,
 ) -> Path:
     """Write a dry-run report and append top-level activity summaries.
@@ -320,6 +358,12 @@ def append_dry_run_report(
         validation_executed: Whether any check was actually executed.
         validation_checks: ``"status command"`` lines for each check.
         validation_files: Validation artifact files written this tick.
+        checkpoint_status: Checkpoint verdict label, or ``None`` when the
+            checkpoint stage did not run.
+        checkpoint_id: Checkpoint identifier, when committed.
+        checkpoint_commit: Commit hash, when committed.
+        checkpoint_committed: Whether a checkpoint commit was created.
+        checkpoint_excluded: Changed files outside the allowed commit paths.
         repo_root: Optional explicit repository root, primarily for tests.
 
     Returns:
@@ -366,6 +410,13 @@ def append_dry_run_report(
         validation_checks=validation_checks,
         validation_files=validation_files,
     )
+    checkpoint_section = _render_checkpoint_section(
+        status=checkpoint_status,
+        checkpoint_id=checkpoint_id,
+        commit=checkpoint_commit,
+        committed=checkpoint_committed,
+        excluded=checkpoint_excluded,
+    )
     body = (
         f"# Factory Session Report\n\n"
         f"- Timestamp: `{stamp}`\n"
@@ -401,6 +452,7 @@ def append_dry_run_report(
         + coder_section
         + application_section
         + validation_section
+        + checkpoint_section
         + "\n## Reporter Outcome\n\n"
         + f"- Last role completed: `{last_role_completed}`\n"
         + "\n## Repository Status\n\n```text\n"

@@ -79,6 +79,21 @@
     checkpoint promotion); results recorded in state and report
   - no auto-commit yet
 
+## `DEMO-PHASE7`: Checkpoint Commit Engine
+
+- Status: `active`
+- Purpose: preserve work through git automatically at safe checkpoints — the
+  first phase that may commit.
+- Completion criteria:
+  - commit only when contract, proposal, application, and validation all pass
+  - auto-commit gated by `git.allow_auto_commit` (default off)
+  - stage only files under the allowed commit paths; engine/config/VCS files
+    are never staged
+  - commit message derived from the contract task id
+  - only `git status`/`add`/`commit`/`rev-parse` are ever run, shell-free; no
+    push, merge, reset, rebase, clean, or history rewrite
+  - checkpoint log + report written; state advances the checkpoint marker
+
 ## `DEMO-M3`: Future Application Checkpoint Trial
 
 - Status: `deferred`
