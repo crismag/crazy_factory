@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from coder_proposal import ProposalResult, coder_status_label
 from contract_stage import ContractResult
 from planning_roles import RoleResult
 from repo_tools import safe_load_json, safe_write_json
@@ -109,15 +110,16 @@ def update_success_state(
     planner_result: RoleResult,
     *,
     contract_result: ContractResult | None = None,
+    coder_result: ProposalResult | None = None,
 ) -> str:
-    """Update in-memory state after a Phase 3 planning dry run.
+    """Update in-memory state after a planning (and optional coder) dry run.
 
     The tick itself always completes (records, validates, reports), so the run
-    is recorded as successful. A *rejected* contract is a normal planning
-    outcome, not a crash: it bumps the failure counters and sets a blocker so
-    the Watcher can detect repeated planning failures, while the run still
-    exits cleanly. ``authorized`` is never set here; only the owner may flip
-    it.
+    is recorded as successful. A *rejected* contract or an *activated but
+    rejected* coder proposal is a normal outcome, not a crash: it bumps the
+    failure counters and sets a blocker so the Watcher can detect repeated
+    failures, while the run still exits cleanly. The factory never authorizes
+    a contract or applies a proposal here.
 
     Args:
         factory_state: Global mutable state snapshot.
@@ -126,6 +128,7 @@ def update_success_state(
         architect_result: Completed Architect result.
         planner_result: Completed Planner result.
         contract_result: Validated structured contract outcome, if produced.
+        coder_result: Coder proposal outcome, if the coder stage ran.
 
     Returns:
         UTC completion timestamp written into state.
@@ -156,7 +159,75 @@ def update_success_state(
             contract_result,
             completed_at,
         )
+    if coder_result is not None:
+        _apply_coder_state(
+            factory_state,
+            active_run,
+            project_state,
+            coder_result,
+            completed_at,
+        )
     return completed_at
+
+
+def _apply_coder_state(
+    factory_state: dict[str, Any],
+    active_run: dict[str, Any],
+    project_state: dict[str, Any],
+    coder_result: ProposalResult,
+    completed_at: str,
+) -> None:
+    """Record the coder proposal outcome into persistent state snapshots.
+
+    A skipped coder (no authorized contract) is the normal healthy state and
+    is not a failure. An activated-but-rejected proposal is a recoverable
+    failure: it bumps the failure counters and sets a blocker. A valid
+    proposal points the resume marker at owner review of the proposal.
+
+    Args:
+        factory_state: Global mutable state snapshot.
+        active_run: Mutable active-run state snapshot.
+        project_state: Mutable project state snapshot.
+        coder_result: Coder proposal outcome.
+        completed_at: UTC completion timestamp for the current tick.
+    """
+    status = coder_status_label(coder_result)
+    proposal = coder_result.proposal
+    proposal_id = proposal.proposal_id if proposal else None
+    factory_state["last_coder_status"] = status
+    project_state["last_coder_status"] = status
+    project_state["last_proposal_id"] = proposal_id
+    active_run["last_coder_status"] = status
+
+    if not coder_result.activated:
+        # Coder did not run; the contract-stage resume marker still governs.
+        project_state["last_proposal_verdict"] = "skipped"
+        return
+
+    if coder_result.verdict.valid:
+        project_state["last_proposal_verdict"] = "accepted"
+        active_run["current_blocker"] = None
+        project_state["current_blocker"] = None
+        active_run["resume_from"] = (
+            "Coder proposal generated and valid; review CODER_PROPOSAL.md. "
+            "No files were written. resume_from=coder_proposal."
+        )
+        return
+
+    project_state["last_proposal_verdict"] = "rejected"
+    factory_state["last_failed_run"] = completed_at
+    factory_state["failure_count"] = (
+        int(factory_state.get("failure_count", 0)) + 1
+    )
+    project_state["failure_count"] = (
+        int(project_state.get("failure_count", 0)) + 1
+    )
+    active_run["current_blocker"] = "coder_proposal_rejected"
+    project_state["current_blocker"] = "coder_proposal_rejected"
+    active_run["resume_from"] = (
+        "Coder proposal rejected; see CODER_PROPOSAL.md reasons. No files "
+        "were written. resume_from=coder_proposal."
+    )
 
 
 def _apply_contract_state(

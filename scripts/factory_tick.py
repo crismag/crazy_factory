@@ -30,6 +30,10 @@ import sys
 
 sys.dont_write_bytecode = True
 
+from coder_proposal import (  # noqa: E402
+    coder_status_label,
+    run_coder_stage,
+)
 from contract_stage import (  # noqa: E402
     contract_status_label,
     run_contract_stage,
@@ -164,6 +168,18 @@ def main() -> int:
         )
     )
 
+    max_files = int(factory["max_files_per_run"])
+    coder_result, proposal_json_path, proposal_md_path = run_coder_stage(
+        project_name=project_name,
+        root=root,
+        project=project,
+        factory_config=factory_config,
+        models_config=models_config,
+        max_lines=max_lines,
+        max_files=max_files,
+        contract_json_path=contract_json_path,
+    )
+
     update_success_state(
         factory_state,
         active_run,
@@ -171,6 +187,7 @@ def main() -> int:
         architect_result,
         planner_result,
         contract_result=contract_result,
+        coder_result=coder_result,
     )
     persist_state(
         root=root,
@@ -182,6 +199,13 @@ def main() -> int:
     planning_files = [task_expansion_path, next_action_path]
     contract_status = contract_status_label(contract_result)
     contract_authorized = contract_result.preserved
+    coder_status = coder_status_label(coder_result)
+    coder_proposal = coder_result.proposal
+    coder_files = (
+        [proposal_json_path, proposal_md_path]
+        if coder_result.activated
+        else []
+    )
     report_path = append_dry_run_report(
         project_name=project_name,
         project_report_root=str(project["report_root"]),
@@ -204,6 +228,15 @@ def main() -> int:
         contract_reasons=list(contract_result.verdict.reasons),
         contract_files=[contract_json_path, planned_task_path],
         contract_authorized=contract_authorized,
+        coder_status=coder_status,
+        coder_proposal_id=(
+            coder_proposal.proposal_id if coder_proposal else None
+        ),
+        coder_task_id=coder_proposal.task_id if coder_proposal else None,
+        coder_activated=coder_result.activated,
+        coder_warnings=list(coder_result.verdict.warnings),
+        coder_blocked_paths=list(coder_result.verdict.blocked_paths),
+        coder_files=coder_files,
         repo_root=root,
     )
 
@@ -212,7 +245,7 @@ def main() -> int:
         if contract_authorized
         else ("false (owner approval required)")
     )
-    print("Crazy Factory Phase 3 planning-contract dry run complete")
+    print("Crazy Factory Phase 4 planning + coder-proposal dry run complete")
     print(f"Active project: {project_name}")
     print(f"Context files read: {len(contexts)}")
     print(f"Task files read: {len(tasks)}")
@@ -221,10 +254,13 @@ def main() -> int:
     print(f"Contract source: {contract_result.source}")
     print(f"Contract validation: {contract_status}")
     print(f"Contract authorized: {authorized_text}")
+    print(f"Coder activated: {str(coder_result.activated).lower()}")
+    print(f"Coder proposal verdict: {coder_status}")
     print("Last role completed: reporter")
     print(f"Report written: {report_path.relative_to(root)}")
     print(
-        "Safety: planning files only; no app code, commit, or push attempted"
+        "Safety: planning + proposal only; no app code, commit, or push "
+        "attempted"
     )
     return 0
 

@@ -31,6 +31,22 @@
   - a downstream Coder may act only on an authorized, valid contract
   - no Coder execution, no weakened write boundaries, no auto-authorization
 
+## `DEMO-PHASE4`: Authorized Coder Proposal Engine
+
+- Status: `active`
+- Purpose: prove a Coder can translate an authorized, valid contract into a
+  safe, structured implementation *proposal* without modifying source code.
+- Completion criteria:
+  - the Coder activates only for an owner-authorized, valid contract
+  - a structured proposal (`coder_proposal.json` + `CODER_PROPOSAL.md`) is
+    generated and validated
+  - unsafe proposals (out-of-bounds paths, secrets, destructive ops, empty,
+    over the file limit) are rejected
+  - failure paths (unauthorized/invalid/malformed/Ollama down) exit cleanly
+  - no files are written, no code is applied, no commit/merge/push occurs
+- Non-goals (deferred to Phase 5): file writing, patch application, test
+  execution.
+
 ## `DEMO-M3`: Future Application Checkpoint Trial
 
 - Status: `deferred`
