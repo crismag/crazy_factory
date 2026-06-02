@@ -76,6 +76,7 @@ def append_dry_run_report(
     contract_detail: str | None = None,
     contract_reasons: list[str] | None = None,
     contract_files: list[str] | None = None,
+    contract_authorized: bool = False,
     repo_root: str | Path | None = None,
 ) -> Path:
     """Write a dry-run report and append top-level activity summaries.
@@ -102,6 +103,8 @@ def append_dry_run_report(
         contract_detail: Human-readable explanation of the contract source.
         contract_reasons: Rejection reasons for the contract, if any.
         contract_files: Contract files written during the tick.
+        contract_authorized: Whether the recorded contract is owner-authorized
+            (a preserved contract); the factory never sets this itself.
         repo_root: Optional explicit repository root, primarily for tests.
 
     Returns:
@@ -117,12 +120,22 @@ def append_dry_run_report(
     app_report_path = str(Path(project_report_root) / report_name)
     contract_section = ""
     if contract_status is not None:
+        authorized_line = (
+            "- Authorized: `true` (owner-authorized; preserved)\n"
+            if contract_authorized
+            else "- Authorized: `false` (owner approval required)\n"
+        )
+        files_label = (
+            "- Contract files preserved:\n"
+            if contract_authorized
+            else "- Contract files written:\n"
+        )
         contract_section = (
             "\n## Task Contract\n\n"
             f"- Source: `{contract_source}`\n"
             f"- Detail: {contract_detail}\n"
             f"- Validation status: `{contract_status}`\n"
-            "- Authorized: `false` (owner approval required)\n"
+            + authorized_line
             + (
                 "- Rejection reasons:\n"
                 + "".join(
@@ -131,7 +144,7 @@ def append_dry_run_report(
                 if contract_status == "rejected"
                 else ""
             )
-            + "- Contract files written:\n"
+            + files_label
             + "".join(f"  - `{path}`\n" for path in (contract_files or []))
         )
     body = (
@@ -175,8 +188,8 @@ def append_dry_run_report(
         + f"- Architect planning source: `{architect_source}`.\n"
         + f"- Planner planning source: `{planner_source}`.\n"
         + "- No application code was modified.\n"
-        + "- Task contract authorization remains owner-only "
-        + "(`authorized: false`).\n"
+        + "- Task contract authorization is owner-only; the factory never "
+        + "sets `authorized` itself.\n"
         + "- No git commit or push was attempted.\n"
     )
     entry = (

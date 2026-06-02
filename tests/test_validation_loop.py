@@ -17,22 +17,31 @@ from unittest.mock import patch
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from factory_tick import (  # noqa: E402
+from contract_stage import (  # noqa: E402
     ContractResult,
-    RoleResult,
     contract_paths,
+    contract_status_label,
+    load_existing_contract,
+    request_task_contract,
+    run_contract_stage,
+)
+from mission_state import (  # noqa: E402
+    requested_control_action,
+    update_success_state,
+)
+from planning_roles import (  # noqa: E402
+    RoleResult,
     fallback_architect_result,
     fallback_planner_result,
-    load_active_project,
-    load_configuration,
     planning_paths,
     render_next_action,
     render_task_expansion,
-    requested_control_action,
     request_architect_result,
     request_planner_result,
-    request_task_contract,
-    update_success_state,
+)
+from tick_config import (  # noqa: E402
+    load_active_project,
+    load_configuration,
     validate_dry_run_settings,
 )
 from ollama_client import OllamaConnectionError  # noqa: E402
@@ -40,7 +49,9 @@ from repo_tools import read_markdown_directory, safe_write_text  # noqa: E402
 from report_writer import append_dry_run_report  # noqa: E402
 from task_contract import (  # noqa: E402
     PlannedTask,
+    ValidationVerdict,
     contract_to_dict,
+    is_contract_actionable,
     parse_planned_task,
     render_planned_task_md,
     validate_planned_task,
@@ -158,7 +169,7 @@ class ValidationLoopSmokeTests(unittest.TestCase):
             "current_milestone": "DEMO-M2",
         }
         with patch(
-            "factory_tick.OllamaClient.chat",
+            "planning_roles.OllamaClient.chat",
             side_effect=OllamaConnectionError("offline"),
         ):
             result = request_architect_result(
@@ -187,7 +198,7 @@ class ValidationLoopSmokeTests(unittest.TestCase):
             "architect", "Review architecture.", "fallback", "offline"
         )
         with patch(
-            "factory_tick.OllamaClient.chat",
+            "planning_roles.OllamaClient.chat",
             side_effect=OllamaConnectionError("offline"),
         ):
             result = request_planner_result(
@@ -473,7 +484,7 @@ class TaskContractTests(unittest.TestCase):
         architect_result = RoleResult("architect", "x", "fallback", "off")
         planner_result = RoleResult("planner", "y", "fallback", "off")
         with patch(
-            "factory_tick.OllamaClient.chat",
+            "contract_stage.OllamaClient.chat",
             side_effect=OllamaConnectionError("offline"),
         ):
             result = request_task_contract(
@@ -499,7 +510,7 @@ class TaskContractTests(unittest.TestCase):
         architect_result = RoleResult("architect", "x", "ollama", "m")
         planner_result = RoleResult("planner", "y", "ollama", "m")
         with patch(
-            "factory_tick.OllamaClient.chat",
+            "contract_stage.OllamaClient.chat",
             return_value={"message": {"content": "definitely not json"}},
         ):
             result = request_task_contract(
@@ -526,7 +537,7 @@ class TaskContractTests(unittest.TestCase):
         planner_result = RoleResult("planner", "y", "ollama", "m")
         content = json.dumps(_valid_contract_dict())
         with patch(
-            "factory_tick.OllamaClient.chat",
+            "contract_stage.OllamaClient.chat",
             return_value={"message": {"content": content}},
         ):
             result = request_task_contract(
@@ -639,8 +650,272 @@ class TaskContractTests(unittest.TestCase):
             )
             report = report_path.read_text(encoding="utf-8")
             self.assertIn("Task Contract", report)
-            self.assertIn("authorized: false", report.lower())
+            self.assertIn("authorized: false", report.replace("`", "").lower())
             self.assertIn("No acceptance criteria", report)
+
+
+class ContractHardeningTests(unittest.TestCase):
+    """Verify the fixes for unwired/unhandled Phase 3 corners."""
+
+    def setUp(self) -> None:
+        """Store the repository root for tests that read fixtures."""
+        self.repo_root = Path(__file__).resolve().parents[1]
+
+    def test_nested_object_in_text_field_is_rejected(self) -> None:
+        """Fix #3: an object in a text field is empty, not stringified."""
+        data = _valid_contract_dict()
+        data["validation_plan"] = {"checklist_items": ["a", "b"]}
+        task = parse_planned_task(json.dumps(data))
+        self.assertEqual(task.validation_plan, "")
+        verdict = validate_planned_task(task)
+        self.assertFalse(verdict.valid)
+        self.assertTrue(any("validation_plan" in r for r in verdict.reasons))
+
+    def test_nested_objects_in_list_are_dropped(self) -> None:
+        """Fix #3: object elements in a list field are discarded."""
+        data = _valid_contract_dict()
+        data["acceptance_criteria"] = [{"k": "v"}, "real criterion"]
+        task = parse_planned_task(json.dumps(data))
+        self.assertEqual(task.acceptance_criteria, ["real criterion"])
+
+    def test_actionable_requires_authorized_and_revalidated(self) -> None:
+        """#2/P1: actionable needs authorized=true AND current content valid.
+
+        The cached ``validation.status`` is never trusted; the record's
+        current fields are revalidated on every check.
+        """
+        authorized = {
+            **_valid_contract_dict(),
+            "authorized": True,
+            "validation": {"status": "valid"},
+        }
+        self.assertTrue(is_contract_actionable(authorized))
+
+        # Valid content but unauthorized is not actionable.
+        self.assertFalse(
+            is_contract_actionable({**authorized, "authorized": False})
+        )
+        # P1: authorized but body tampered after the fact (scope emptied),
+        # while a stale "valid" status remains -> not actionable.
+        self.assertFalse(is_contract_actionable({**authorized, "scope": []}))
+        # P1: authorized but a forbidden op slipped into acceptance_criteria.
+        self.assertFalse(
+            is_contract_actionable(
+                {**authorized, "acceptance_criteria": ["git push to origin"]}
+            )
+        )
+        # A stale "valid" status cannot rescue missing required content.
+        self.assertFalse(
+            is_contract_actionable(
+                {"authorized": True, "validation": {"status": "valid"}}
+            )
+        )
+        # Non-mapping input is never actionable.
+        self.assertFalse(is_contract_actionable(["not", "a", "dict"]))
+        self.assertFalse(is_contract_actionable(None))
+
+    def test_forbidden_op_in_acceptance_criteria_is_rejected(self) -> None:
+        """Forbidden ops cannot bypass the scan via acceptance_criteria."""
+        data = _valid_contract_dict()
+        data["acceptance_criteria"] = ["git push to origin"]
+        verdict = validate_planned_task(parse_planned_task(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertTrue(any("forbidden" in r.lower() for r in verdict.reasons))
+
+    def test_forbidden_op_in_validation_plan_is_rejected(self) -> None:
+        """Forbidden ops cannot bypass the scan via validation_plan."""
+        data = _valid_contract_dict()
+        data["validation_plan"] = "merge into main and force push"
+        verdict = validate_planned_task(parse_planned_task(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertTrue(any("forbidden" in r.lower() for r in verdict.reasons))
+
+    def test_exclusions_may_mention_forbidden_ops(self) -> None:
+        """Exclusions remain the safe harbor for negative statements."""
+        data = _valid_contract_dict()
+        data["exclusions"] = [
+            "Do not push to origin",
+            "Do not merge into main",
+        ]
+        verdict = validate_planned_task(parse_planned_task(json.dumps(data)))
+        self.assertTrue(verdict.valid)
+
+    def test_preserves_authorized_contract_without_regenerating(self) -> None:
+        """#1/P2: an authorized valid contract is kept; Markdown refreshed."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            task_root = root / "apps/demo/factory_tasks"
+            task_root.mkdir(parents=True)
+            project = {
+                "root": "apps/demo",
+                "task_root": "apps/demo/factory_tasks",
+                "context_root": "apps/demo/factory_context",
+            }
+            authorized = {
+                **_valid_contract_dict(),
+                "authorized": True,
+                "validation": {"status": "valid", "reasons": []},
+            }
+            contract_file = task_root / "planned_task.json"
+            original = json.dumps(authorized, indent=2)
+            contract_file.write_text(original, encoding="utf-8")
+            # A stale Markdown view still claiming approval is required.
+            md_file = task_root / "PLANNED_TASK.md"
+            md_file.write_text(
+                "# stale\n- Authorized: `false` (owner approval required)\n",
+                encoding="utf-8",
+            )
+
+            # chat must never be called when a contract is preserved.
+            with patch(
+                "contract_stage.OllamaClient.chat",
+                side_effect=AssertionError("must not regenerate"),
+            ):
+                result, _, _ = run_contract_stage(
+                    project_name="demo",
+                    root=root,
+                    project=project,
+                    factory_config={"ollama": {}},
+                    models_config={"models": {"planner": "cogito:14b"}},
+                    max_lines=20,
+                    tasks={"CURRENT_TASK.md": "# Current Task"},
+                    architect_result=RoleResult("a", "x", "ollama", "m"),
+                    planner_result=RoleResult("p", "y", "ollama", "m"),
+                )
+            self.assertTrue(result.preserved)
+            self.assertEqual(result.source, "preserved")
+            # JSON is untouched (owner authorization survives verbatim).
+            self.assertEqual(
+                contract_file.read_text(encoding="utf-8"), original
+            )
+            # P2: Markdown is refreshed to reflect the authorized status.
+            md = md_file.read_text(encoding="utf-8").replace("`", "").lower()
+            self.assertIn("authorized: true", md)
+            self.assertNotIn("owner approval required", md)
+
+    def test_load_existing_contract_handles_missing_and_corrupt(self) -> None:
+        """Fix #1: missing or corrupt contracts load as absent."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "t").mkdir()
+            self.assertIsNone(
+                load_existing_contract("t/planned_task.json", root)
+            )
+            corrupt = root / "t/planned_task.json"
+            corrupt.write_text("not json", encoding="utf-8")
+            self.assertIsNone(
+                load_existing_contract("t/planned_task.json", root)
+            )
+
+    def test_preserved_state_marks_authorized_and_clears_failures(
+        self,
+    ) -> None:
+        """Fix #1/#5: preserved run is healthy and clears failure state."""
+        contract = ContractResult(
+            None,
+            ValidationVerdict(True, []),
+            "preserved",
+            "kept",
+            preserved=True,
+        )
+        factory_state: dict[str, object] = {"failure_count": 3}
+        active_run: dict[str, object] = {"current_blocker": "x"}
+        project_state: dict[str, object] = {
+            "current_task": "DEMO-002",
+            "failure_count": 3,
+            "current_blocker": "planning_contract_rejected",
+        }
+        update_success_state(
+            factory_state,
+            active_run,
+            project_state,
+            RoleResult("a", "x", "ollama", "m"),
+            RoleResult("p", "y", "ollama", "m"),
+            contract_result=contract,
+        )
+        self.assertEqual(project_state["last_contract_status"], "authorized")
+        self.assertTrue(project_state["contract_authorized"])
+        self.assertEqual(project_state["failure_count"], 0)
+        self.assertIsNone(project_state["current_blocker"])
+        self.assertEqual(contract_status_label(contract), "authorized")
+
+    def test_valid_contract_resets_prior_failures(self) -> None:
+        """Fix #5: a clean valid contract clears earlier failure counters."""
+        task = parse_planned_task(json.dumps(_valid_contract_dict()))
+        contract = ContractResult(
+            task, validate_planned_task(task), "ollama", "m"
+        )
+        factory_state: dict[str, object] = {"failure_count": 2}
+        active_run: dict[str, object] = {}
+        project_state: dict[str, object] = {
+            "current_task": "DEMO-002",
+            "failure_count": 2,
+            "current_blocker": "planning_contract_rejected",
+        }
+        update_success_state(
+            factory_state,
+            active_run,
+            project_state,
+            RoleResult("a", "x", "ollama", "m"),
+            RoleResult("p", "y", "ollama", "m"),
+            contract_result=contract,
+        )
+        self.assertEqual(project_state["failure_count"], 0)
+        self.assertEqual(factory_state["failure_count"], 0)
+        self.assertIsNone(project_state["current_blocker"])
+
+    def test_report_includes_authorized_preserved_contract(self) -> None:
+        """P2/report: preserved contract shows authorized + preserved labels."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "reports").mkdir()
+            (root / "apps/demo/factory_reports").mkdir(parents=True)
+            (root / "reports/ACTIVITY_BLOG.md").write_text(
+                "# Activity Blog\n", encoding="utf-8"
+            )
+            (root / "reports/DAILY_REPORT.md").write_text(
+                "# Daily Report\n", encoding="utf-8"
+            )
+            report_path = append_dry_run_report(
+                project_name="demo",
+                project_report_root="apps/demo/factory_reports",
+                mode="dry_run",
+                context_files=["context.md"],
+                task_files=["task.md"],
+                git_status="clean",
+                factory_state={"last_failed_run": None},
+                active_run={"resume_from": "Holding for Coder."},
+                project_state={
+                    "current_task": "DEMO-TEST",
+                    "current_milestone": "DEMO-M",
+                    "last_completed_checkpoint": None,
+                    "failure_count": 0,
+                    "current_blocker": None,
+                },
+                architect_source="ollama",
+                architect_detail="m",
+                planner_source="ollama",
+                planner_detail="m",
+                last_role_completed="reporter",
+                planning_files=["TASK_EXPANSION.md", "NEXT_ACTION.md"],
+                contract_status="authorized",
+                contract_source="preserved",
+                contract_detail="kept",
+                contract_reasons=[],
+                contract_files=["planned_task.json", "PLANNED_TASK.md"],
+                contract_authorized=True,
+                repo_root=root,
+            )
+            report = (
+                report_path.read_text(encoding="utf-8")
+                .replace("`", "")
+                .lower()
+            )
+            self.assertIn(
+                "authorized: true (owner-authorized; preserved)", report
+            )
+            self.assertIn("contract files preserved", report)
+            self.assertNotIn("contract files written", report)
 
 
 if __name__ == "__main__":
