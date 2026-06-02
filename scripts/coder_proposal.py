@@ -654,6 +654,52 @@ def request_coder_proposal(
     )
 
 
+def _preserved_proposal_result(
+    existing: dict[str, Any] | None,
+    project_name: str,
+    contract_task_id: str,
+    max_files: int,
+) -> ProposalResult | None:
+    """Return a preserved proposal result, or ``None`` to regenerate.
+
+    A proposal is preserved only when it exists on disk, names the same task as
+    the current authorized contract, and its *current* fields still revalidate.
+    The cached verdict is not trusted.
+
+    Args:
+        existing: Parsed ``coder_proposal.json`` record, or ``None``.
+        project_name: Active application workbench name.
+        contract_task_id: Task id of the authorized contract.
+        max_files: Maximum number of files a proposal may touch.
+
+    Returns:
+        A preserved :class:`ProposalResult`, or ``None`` when regeneration is
+        required.
+    """
+    if not isinstance(existing, dict):
+        return None
+    proposal = parse_coder_proposal(json.dumps(existing))
+    if not proposal.task_id or proposal.task_id != contract_task_id:
+        return None
+    verdict = validate_proposal(
+        proposal,
+        project_name=project_name,
+        contract_actionable=True,
+        max_files=max_files,
+        contract_task_id=contract_task_id,
+    )
+    if not verdict.valid:
+        return None
+    return ProposalResult(
+        proposal,
+        verdict,
+        "preserved",
+        "Existing valid proposal preserved for the authorized task; no new "
+        "proposal was generated.",
+        activated=True,
+    )
+
+
 def run_coder_stage(
     *,
     project_name: str,
@@ -703,6 +749,20 @@ def run_coder_stage(
             activated=False,
         )
         return result, proposal_json_path, proposal_md_path
+
+    # Preserve an existing valid proposal for this same authorized task
+    # instead of regenerating it. The proposal id a model picks is not stable
+    # across runs, so regenerating would invalidate any owner approval that
+    # targets a specific proposal id. Preserving keeps owner approval usable
+    # until the contract changes. The current fields are re-validated rather
+    # than trusting the cached verdict.
+    existing = load_existing_contract(proposal_json_path, root)
+    contract_task_id = coerce_str(contract_record.get("task_id"))
+    preserved = _preserved_proposal_result(
+        existing, project_name, contract_task_id, max_files
+    )
+    if preserved is not None:
+        return preserved, proposal_json_path, proposal_md_path
 
     result = request_coder_proposal(
         project_name=project_name,
