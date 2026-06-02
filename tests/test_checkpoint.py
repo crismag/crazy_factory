@@ -257,6 +257,28 @@ class StageTests(unittest.TestCase):
             self.assertFalse(result.eligible)
             self.assertFalse(result.committed)
 
+    def test_pre_staged_forbidden_file_is_not_committed(self) -> None:
+        """A forbidden file already in the index never rides the commit."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = self._init_repo(root)
+            # An engine file pre-staged in the index by something else.
+            (root / "scripts").mkdir()
+            (root / "scripts/evil.py").write_text("x = 1\n")
+            subprocess.run(
+                ["git", "add", "scripts/evil.py"], cwd=root, check=True
+            )
+            result, _ = self._run(root, project, self._config(allow=True))
+            self.assertTrue(result.committed)
+            files = subprocess.run(
+                ["git", "show", "--name-only", "--pretty=format:", "HEAD"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+            ).stdout
+            self.assertNotIn("scripts/evil.py", files)
+            self.assertIn("apps/demo/factory_tasks/", files)
+
 
 class StateTests(unittest.TestCase):
     """Verify checkpoint state transitions."""

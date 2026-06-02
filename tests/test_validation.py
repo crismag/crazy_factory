@@ -139,6 +139,21 @@ class RunChecksTests(unittest.TestCase):
         self.assertEqual(results[0].status, "passed")
         self.assertEqual(results[0].returncode, 0)
 
+    def test_failed_check_captures_output(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        results = run_checks(
+            ["python3 -m unittest nonexistent.module.xyz"],
+            root=repo_root,
+            allow_run=True,
+            timeout_seconds=30,
+        )
+        self.assertEqual(results[0].status, "failed")
+        self.assertNotEqual(results[0].returncode, 0)
+        # The failure detail includes a captured output snippet, not just the
+        # exit code, so the report is diagnosable.
+        self.assertIn("|", results[0].detail)
+        self.assertGreater(len(results[0].detail), len("exit code 1"))
+
     def test_summarize_status_precedence(self) -> None:
         result = run_validation(
             test_plan_id="TP",

@@ -142,12 +142,16 @@ def _run_one_check(
     except (FileNotFoundError, OSError) as exc:
         return CheckResult(command, "error", None, f"Could not run: {exc}")
     status = "passed" if completed.returncode == 0 else "failed"
-    return CheckResult(
-        command,
-        status,
-        completed.returncode,
-        f"exit code {completed.returncode}",
-    )
+    detail = f"exit code {completed.returncode}"
+    if completed.returncode != 0:
+        # Surface the tail of the command output so a failed check is
+        # diagnosable from the report. stderr is preferred; stdout is a
+        # fallback. The snippet is bounded and single-lined.
+        raw = (completed.stderr or completed.stdout or "").strip()
+        snippet = " ".join(raw.split())[-400:]
+        if snippet:
+            detail = f"{detail} | {snippet}"
+    return CheckResult(command, status, completed.returncode, detail)
 
 
 def run_checks(

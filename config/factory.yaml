@@ -14,11 +14,15 @@ factory:
 proposal_application:
   mode: preview_only
   allow_apply: false
+  allow_delete: false
   require_owner_approval: true
 
 validation:
   allow_run: false
   timeout_seconds: 60
+
+mission:
+  lock_stale_seconds: 3600
 
 git:
   allow_auto_commit: false

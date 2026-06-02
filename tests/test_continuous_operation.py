@@ -21,7 +21,14 @@ from flags import (  # noqa: E402
     flag_active,
     set_flag,
 )
-from mission_loop import decide_action, render_mission_status_md  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from mission_loop import (  # noqa: E402
+    acquire_lock,
+    decide_action,
+    release_lock,
+    render_mission_status_md,
+)
 from recovery_manager import build_recovery_plan, run_recovery  # noqa: E402
 from satisfaction_checker import (  # noqa: E402
     evaluate_satisfaction,
@@ -269,6 +276,61 @@ class MissionLoopTests(unittest.TestCase):
         self.assertIn("Mission Status", text)
         self.assertIn("Action: `run`", text)
         self.assertIn("pause", text)
+
+
+class LockTests(unittest.TestCase):
+    """Verify the mission lock prevents overlapping runs."""
+
+    def test_acquire_then_blocks_fresh_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "state").mkdir()
+            now = datetime(2026, 6, 2, 12, 0, 0, tzinfo=timezone.utc)
+            self.assertTrue(
+                acquire_lock(
+                    root, "state", pid=111, now=now, stale_seconds=3600
+                )
+            )
+            self.assertTrue((root / "state/mission.lock").is_file())
+            # A second run a minute later cannot acquire the fresh lock.
+            later = now + timedelta(minutes=1)
+            self.assertFalse(
+                acquire_lock(
+                    root, "state", pid=222, now=later, stale_seconds=3600
+                )
+            )
+
+    def test_stale_lock_is_taken_over(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "state").mkdir()
+            now = datetime(2026, 6, 2, 12, 0, 0, tzinfo=timezone.utc)
+            acquire_lock(root, "state", pid=111, now=now, stale_seconds=3600)
+            # Two hours later the lock is stale and may be taken over.
+            much_later = now + timedelta(hours=2)
+            self.assertTrue(
+                acquire_lock(
+                    root,
+                    "state",
+                    pid=333,
+                    now=much_later,
+                    stale_seconds=3600,
+                )
+            )
+
+    def test_release_allows_reacquire(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "state").mkdir()
+            now = datetime(2026, 6, 2, 12, 0, 0, tzinfo=timezone.utc)
+            acquire_lock(root, "state", pid=111, now=now, stale_seconds=3600)
+            release_lock(root, "state")
+            self.assertFalse((root / "state/mission.lock").is_file())
+            self.assertTrue(
+                acquire_lock(
+                    root, "state", pid=222, now=now, stale_seconds=3600
+                )
+            )
 
 
 if __name__ == "__main__":

@@ -273,6 +273,7 @@ def validate_patch_plan(
     approved: bool,
     max_files: int,
     max_lines: int,
+    allow_delete: bool = False,
 ) -> ApplicationVerdict:
     """Validate a patch plan against the Phase 5 safety rules.
 
@@ -283,6 +284,9 @@ def validate_patch_plan(
         approved: Whether the owner approved applying this proposal.
         max_files: Maximum number of files the plan may touch.
         max_lines: Maximum line count per written file.
+        allow_delete: Whether delete operations are permitted. Phase 5
+            defaults to ``False`` (create/modify only); deletes require a
+            separate, explicit opt-in.
 
     Returns:
         Validation verdict over all safety rules.
@@ -316,6 +320,10 @@ def validate_patch_plan(
         if patch.action not in VALID_ACTIONS:
             reasons.append(
                 f"Invalid file action {patch.action!r} for {patch.path}"
+            )
+        if patch.action == "delete" and not allow_delete:
+            reasons.append(
+                f"Delete operations are disabled in this phase: {patch.path}"
             )
         if not _is_allowed_write_path(patch.path, allowed):
             blocked.append(patch.path)
@@ -574,6 +582,7 @@ def request_patch_plan(
     max_lines: int,
     max_files: int,
     mode: str,
+    allow_delete: bool = False,
 ) -> ApplicationResult:
     """Ask the coder model for exact file contents and validate the plan.
 
@@ -674,6 +683,7 @@ def request_patch_plan(
         approved=True,
         max_files=max_files,
         max_lines=max_lines,
+        allow_delete=allow_delete,
     )
     return ApplicationResult(
         plan, verdict, "ollama", f"Coder model `{model}`", mode, activated=True
@@ -685,54 +695,62 @@ def apply_patch_plan(
     *,
     root: Path,
     project: dict[str, Any],
-) -> list[str]:
-    """Write or remove the plan's files inside approved write roots.
+    allow_delete: bool = False,
+) -> tuple[list[str], str | None]:
+    """Write (and optionally remove) the plan's files in approved roots.
 
-    This is called only after every gate and validation has passed and apply
-    mode is explicitly enabled. Each operation is re-checked against the
-    approved write roots before touching the filesystem.
+    Called only after every gate and validation has passed and apply mode is
+    explicitly enabled. Each operation is re-checked against the approved write
+    roots before touching the filesystem. Deletes are skipped unless
+    ``allow_delete`` is set.
+
+    There is intentionally no transactional rollback: if an operation fails
+    mid-sequence the already-written files remain, and this function returns
+    the files written so far plus an error string so the caller can report the
+    *partial* application rather than silently losing track of it.
 
     Args:
         plan: Validated patch plan.
         root: Absolute repository root.
         project: Active project configuration mapping.
+        allow_delete: Whether delete operations may run.
 
     Returns:
-        Repository-relative paths written or removed.
-
-    Raises:
-        RepoSafetyError: If an operation would escape the approved roots.
+        A tuple of (files written or removed, error message or ``None``).
     """
     allowed_roots = [
         f"{project['root']}/app",
         f"{project['root']}/docs",
         f"{project['root']}/tests",
     ]
+    resolved_roots = [resolve_repo_path(r, root) for r in allowed_roots]
     touched: list[str] = []
     for patch in plan.files:
-        if patch.action == "delete":
-            target = resolve_repo_path(patch.path, root)
-            resolved_roots = [
-                resolve_repo_path(r, root) for r in allowed_roots
-            ]
-            if not any(
-                root_dir in target.parents for root_dir in resolved_roots
-            ):
-                raise RepoSafetyError(
-                    f"Delete path is not in an approved root: {patch.path}"
-                )
-            if target.is_file():
-                target.unlink()
+        try:
+            if patch.action == "delete":
+                if not allow_delete:
+                    # Deletes are disabled in this phase; validation should
+                    # already have rejected the plan, but skip defensively.
+                    continue
+                target = resolve_repo_path(patch.path, root)
+                if not any(rd in target.parents for rd in resolved_roots):
+                    raise RepoSafetyError(
+                        f"Delete path is not in an approved root: {patch.path}"
+                    )
+                if target.is_file():
+                    target.unlink()
+                touched.append(patch.path)
+                continue
+            safe_write_text(
+                patch.path,
+                patch.content,
+                repo_root=root,
+                allowed_roots=allowed_roots,
+            )
             touched.append(patch.path)
-            continue
-        safe_write_text(
-            patch.path,
-            patch.content,
-            repo_root=root,
-            allowed_roots=allowed_roots,
-        )
-        touched.append(patch.path)
-    return touched
+        except (RepoSafetyError, OSError) as exc:
+            return touched, f"Apply stopped at {patch.path}: {exc}"
+    return touched, None
 
 
 def run_application_stage(
@@ -776,6 +794,7 @@ def run_application_stage(
     pa_config = factory_config.get("proposal_application", {})
     mode = str(pa_config.get("mode", "preview_only"))
     allow_apply = bool(pa_config.get("allow_apply", False))
+    allow_delete = bool(pa_config.get("allow_delete", False))
     require_owner_approval = bool(
         pa_config.get("require_owner_approval", True)
     )
@@ -819,6 +838,7 @@ def run_application_stage(
         max_lines=max_lines,
         max_files=max_files,
         mode=mode,
+        allow_delete=allow_delete,
     )
 
     if (
@@ -827,14 +847,22 @@ def run_application_stage(
         and result.verdict.valid
         and result.plan is not None
     ):
-        applied_files = apply_patch_plan(
-            result.plan, root=root, project=project
+        applied_files, apply_error = apply_patch_plan(
+            result.plan,
+            root=root,
+            project=project,
+            allow_delete=allow_delete,
+        )
+        detail = (
+            f"Partial application: {apply_error}"
+            if apply_error
+            else "Patch plan applied to the approved write roots."
         )
         result = ApplicationResult(
             result.plan,
             result.verdict,
             result.source,
-            "Patch plan applied to the approved write roots.",
+            detail,
             mode,
             activated=True,
             applied=True,
