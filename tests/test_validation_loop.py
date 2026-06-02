@@ -7,6 +7,7 @@ report and state-write checks.
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -17,7 +18,9 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from factory_tick import (  # noqa: E402
+    ContractResult,
     RoleResult,
+    contract_paths,
     fallback_architect_result,
     fallback_planner_result,
     load_active_project,
@@ -28,12 +31,21 @@ from factory_tick import (  # noqa: E402
     requested_control_action,
     request_architect_result,
     request_planner_result,
+    request_task_contract,
     update_success_state,
     validate_dry_run_settings,
 )
 from ollama_client import OllamaConnectionError  # noqa: E402
 from repo_tools import read_markdown_directory, safe_write_text  # noqa: E402
 from report_writer import append_dry_run_report  # noqa: E402
+from task_contract import (  # noqa: E402
+    PlannedTask,
+    contract_to_dict,
+    parse_planned_task,
+    render_planned_task_md,
+    validate_planned_task,
+)
+from task_contract import ContractParseError  # noqa: E402
 
 
 class ValidationLoopSmokeTests(unittest.TestCase):
@@ -287,6 +299,348 @@ class ValidationLoopSmokeTests(unittest.TestCase):
         )
         self.assertEqual(result.role, "planner")
         self.assertIn("application writes disabled", result.content)
+
+
+def _valid_contract_dict() -> dict[str, object]:
+    """Return a well-formed task-contract mapping for tests."""
+    return {
+        "task_id": "DEMO-002",
+        "title": "Document the planning contract format",
+        "objective": "Describe the planned_task.json schema in demo docs.",
+        "scope": ["Write a short schema description in the docs"],
+        "exclusions": ["No application code changes", "No git operations"],
+        "inputs": ["PLANNED_TASK_TEMPLATE.md"],
+        "acceptance_criteria": [
+            "Schema fields are listed",
+            "Owner confirms accuracy",
+        ],
+        "validation_plan": "Owner reads the doc and confirms it is accurate.",
+        "risks": ["None significant"],
+        "approval_status": "pending",
+    }
+
+
+class TaskContractTests(unittest.TestCase):
+    """Verify Phase 3 structured planning-contract behavior."""
+
+    def setUp(self) -> None:
+        """Store the repository root for tests that read fixtures."""
+        self.repo_root = Path(__file__).resolve().parents[1]
+
+    def test_parse_valid_contract(self) -> None:
+        """Parse a well-formed JSON contract into a planned task."""
+        task = parse_planned_task(json.dumps(_valid_contract_dict()))
+        self.assertEqual(task.task_id, "DEMO-002")
+        self.assertEqual(len(task.acceptance_criteria), 2)
+        self.assertFalse(task.authorized)
+
+    def test_parse_strips_code_fence(self) -> None:
+        """Tolerate JSON wrapped in a Markdown code fence."""
+        fenced = "```json\n" + json.dumps(_valid_contract_dict()) + "\n```"
+        task = parse_planned_task(fenced)
+        self.assertEqual(task.title, "Document the planning contract format")
+
+    def test_parse_coerces_scalar_scope_to_list(self) -> None:
+        """Wrap a single scope string into a one-item list."""
+        data = _valid_contract_dict()
+        data["scope"] = "Write one short doc section"
+        task = parse_planned_task(json.dumps(data))
+        self.assertEqual(task.scope, ["Write one short doc section"])
+
+    def test_parse_rejects_non_json(self) -> None:
+        """Raise a parse error when output is not a JSON object."""
+        with self.assertRaises(ContractParseError):
+            parse_planned_task("not a contract at all")
+        with self.assertRaises(ContractParseError):
+            parse_planned_task("[1, 2, 3]")
+
+    def test_validate_accepts_complete_contract(self) -> None:
+        """Accept a complete, bounded, unauthorized contract."""
+        verdict = validate_planned_task(
+            parse_planned_task(json.dumps(_valid_contract_dict()))
+        )
+        self.assertTrue(verdict.valid)
+        self.assertEqual(verdict.reasons, [])
+
+    def test_validate_rejects_missing_acceptance_criteria(self) -> None:
+        """Reject a contract that defines no completion criteria."""
+        data = _valid_contract_dict()
+        data["acceptance_criteria"] = []
+        verdict = validate_planned_task(parse_planned_task(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertTrue(
+            any("acceptance criteria" in r.lower() for r in verdict.reasons)
+        )
+
+    def test_validate_rejects_missing_exclusions(self) -> None:
+        """Reject a contract with no explicit exclusions."""
+        data = _valid_contract_dict()
+        data["exclusions"] = []
+        verdict = validate_planned_task(parse_planned_task(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertTrue(any("exclusion" in r.lower() for r in verdict.reasons))
+
+    def test_validate_rejects_forbidden_scope(self) -> None:
+        """Reject a contract whose scope references forbidden operations."""
+        data = _valid_contract_dict()
+        data["scope"] = ["git push to origin and merge into main"]
+        verdict = validate_planned_task(parse_planned_task(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertTrue(any("forbidden" in r.lower() for r in verdict.reasons))
+
+    def test_validate_rejects_self_authorization(self) -> None:
+        """Reject any contract that arrives pre-authorized."""
+        data = _valid_contract_dict()
+        data["authorized"] = True
+        verdict = validate_planned_task(parse_planned_task(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertTrue(
+            any("authorized" in r.lower() for r in verdict.reasons)
+        )
+
+    def test_validate_rejects_approved_status(self) -> None:
+        """Reject a contract that proposes an already-approved status."""
+        data = _valid_contract_dict()
+        data["approval_status"] = "approved"
+        verdict = validate_planned_task(parse_planned_task(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+
+    def test_contract_to_dict_forces_authorized_false(self) -> None:
+        """Persist authorized=false even if the task claims otherwise."""
+        task = PlannedTask(
+            task_id="X",
+            title="t",
+            objective="o",
+            validation_plan="v",
+            scope=["s"],
+            exclusions=["e"],
+            acceptance_criteria=["a"],
+            authorized=True,
+        )
+        verdict = validate_planned_task(task)
+        record = contract_to_dict(task, verdict, "ollama")
+        self.assertFalse(record["authorized"])
+        self.assertEqual(record["approval_status"], "pending")
+
+    def test_contract_to_dict_for_missing_task(self) -> None:
+        """Render a rejected record when no contract was produced."""
+        from task_contract import ValidationVerdict
+
+        record = contract_to_dict(
+            None, ValidationVerdict(False, ["offline"]), "fallback"
+        )
+        self.assertFalse(record["authorized"])
+        self.assertEqual(record["validation"]["status"], "rejected")
+        self.assertIsNone(record["task_id"])
+
+    def test_render_planned_task_md_includes_status(self) -> None:
+        """Render owner-facing Markdown noting authorized=false."""
+        task = parse_planned_task(json.dumps(_valid_contract_dict()))
+        verdict = validate_planned_task(task)
+        text = render_planned_task_md(
+            task, verdict, source="ollama", detail="model"
+        )
+        self.assertIn("Planned Task Contract", text)
+        self.assertIn("authorized: false", text.replace("`", "").lower())
+
+    def test_contract_paths_stay_inside_project(self) -> None:
+        """Restrict contract writes to two fixed files in the workbench."""
+        project = {
+            "root": "apps/demo_app",
+            "task_root": "apps/demo_app/factory_tasks",
+        }
+        json_path, md_path = contract_paths(self.repo_root, project)
+        self.assertEqual(
+            json_path, "apps/demo_app/factory_tasks/planned_task.json"
+        )
+        self.assertEqual(
+            md_path, "apps/demo_app/factory_tasks/PLANNED_TASK.md"
+        )
+        with self.assertRaises(RuntimeError):
+            contract_paths(
+                self.repo_root,
+                {"root": "apps/demo_app", "task_root": "reports"},
+            )
+
+    def test_contract_request_falls_back_when_ollama_unavailable(
+        self,
+    ) -> None:
+        """Return a rejected contract when the local model is offline."""
+        factory_config, projects_config = load_configuration(self.repo_root)
+        project_name, project = load_active_project(
+            factory_config["factory"], projects_config
+        )
+        architect_result = RoleResult("architect", "x", "fallback", "off")
+        planner_result = RoleResult("planner", "y", "fallback", "off")
+        with patch(
+            "factory_tick.OllamaClient.chat",
+            side_effect=OllamaConnectionError("offline"),
+        ):
+            result = request_task_contract(
+                project_name=project_name,
+                project=project,
+                factory_config=factory_config,
+                models_config={"models": {"planner": "cogito:14b"}},
+                max_lines=20,
+                tasks={"CURRENT_TASK.md": "# Current Task"},
+                architect_result=architect_result,
+                planner_result=planner_result,
+            )
+        self.assertEqual(result.source, "fallback")
+        self.assertIsNone(result.task)
+        self.assertFalse(result.verdict.valid)
+
+    def test_contract_request_rejects_unparseable_response(self) -> None:
+        """Reject an Ollama response that is not a JSON contract."""
+        factory_config, projects_config = load_configuration(self.repo_root)
+        project_name, project = load_active_project(
+            factory_config["factory"], projects_config
+        )
+        architect_result = RoleResult("architect", "x", "ollama", "m")
+        planner_result = RoleResult("planner", "y", "ollama", "m")
+        with patch(
+            "factory_tick.OllamaClient.chat",
+            return_value={"message": {"content": "definitely not json"}},
+        ):
+            result = request_task_contract(
+                project_name=project_name,
+                project=project,
+                factory_config=factory_config,
+                models_config={"models": {"planner": "cogito:14b"}},
+                max_lines=20,
+                tasks={"CURRENT_TASK.md": "# Current Task"},
+                architect_result=architect_result,
+                planner_result=planner_result,
+            )
+        self.assertEqual(result.source, "ollama")
+        self.assertIsNone(result.task)
+        self.assertFalse(result.verdict.valid)
+
+    def test_contract_request_validates_ollama_contract(self) -> None:
+        """Validate a well-formed contract returned by Ollama."""
+        factory_config, projects_config = load_configuration(self.repo_root)
+        project_name, project = load_active_project(
+            factory_config["factory"], projects_config
+        )
+        architect_result = RoleResult("architect", "x", "ollama", "m")
+        planner_result = RoleResult("planner", "y", "ollama", "m")
+        content = json.dumps(_valid_contract_dict())
+        with patch(
+            "factory_tick.OllamaClient.chat",
+            return_value={"message": {"content": content}},
+        ):
+            result = request_task_contract(
+                project_name=project_name,
+                project=project,
+                factory_config=factory_config,
+                models_config={"models": {"planner": "cogito:14b"}},
+                max_lines=20,
+                tasks={"CURRENT_TASK.md": "# Current Task"},
+                architect_result=architect_result,
+                planner_result=planner_result,
+            )
+        self.assertEqual(result.source, "ollama")
+        self.assertIsNotNone(result.task)
+        self.assertTrue(result.verdict.valid)
+
+    def test_rejected_contract_increments_failure_and_blocks(self) -> None:
+        """Record a rejection as a failure with a blocker, not a crash."""
+        from task_contract import ValidationVerdict
+
+        factory_state: dict[str, object] = {"failure_count": 0}
+        active_run: dict[str, object] = {}
+        project_state: dict[str, object] = {
+            "current_task": "DEMO-002",
+            "failure_count": 0,
+        }
+        contract = ContractResult(
+            None, ValidationVerdict(False, ["bad"]), "ollama", "m"
+        )
+        update_success_state(
+            factory_state,
+            active_run,
+            project_state,
+            RoleResult("architect", "x", "ollama", "m"),
+            RoleResult("planner", "y", "ollama", "m"),
+            contract_result=contract,
+        )
+        self.assertEqual(project_state["failure_count"], 1)
+        self.assertEqual(
+            project_state["current_blocker"], "planning_contract_rejected"
+        )
+        self.assertEqual(project_state["last_contract_status"], "rejected")
+        self.assertIn("rejected", str(active_run["resume_from"]).lower())
+
+    def test_valid_contract_sets_owner_review_resume(self) -> None:
+        """A valid contract waits for owner authorization, no failure bump."""
+        task = parse_planned_task(json.dumps(_valid_contract_dict()))
+        contract = ContractResult(
+            task, validate_planned_task(task), "ollama", "m"
+        )
+        factory_state: dict[str, object] = {"failure_count": 0}
+        active_run: dict[str, object] = {}
+        project_state: dict[str, object] = {
+            "current_task": "DEMO-002",
+            "failure_count": 0,
+        }
+        update_success_state(
+            factory_state,
+            active_run,
+            project_state,
+            RoleResult("architect", "x", "ollama", "m"),
+            RoleResult("planner", "y", "ollama", "m"),
+            contract_result=contract,
+        )
+        self.assertEqual(project_state["failure_count"], 0)
+        self.assertIsNone(project_state["current_blocker"])
+        self.assertFalse(project_state["contract_authorized"])
+        self.assertIn("authorized=true", str(active_run["resume_from"]))
+
+    def test_report_includes_contract_section(self) -> None:
+        """Write a Task Contract section into the session report."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "reports").mkdir()
+            (root / "apps/demo/factory_reports").mkdir(parents=True)
+            (root / "reports/ACTIVITY_BLOG.md").write_text(
+                "# Activity Blog\n", encoding="utf-8"
+            )
+            (root / "reports/DAILY_REPORT.md").write_text(
+                "# Daily Report\n", encoding="utf-8"
+            )
+            report_path = append_dry_run_report(
+                project_name="demo",
+                project_report_root="apps/demo/factory_reports",
+                mode="dry_run",
+                context_files=["context.md"],
+                task_files=["task.md"],
+                git_status="clean",
+                factory_state={"last_failed_run": None},
+                active_run={"resume_from": "Review planning."},
+                project_state={
+                    "current_task": "DEMO-TEST",
+                    "current_milestone": "DEMO-M",
+                    "last_completed_checkpoint": None,
+                    "failure_count": 0,
+                    "current_blocker": None,
+                },
+                architect_source="fallback",
+                architect_detail="offline",
+                planner_source="fallback",
+                planner_detail="offline",
+                last_role_completed="reporter",
+                planning_files=["TASK_EXPANSION.md", "NEXT_ACTION.md"],
+                contract_status="rejected",
+                contract_source="ollama",
+                contract_detail="model",
+                contract_reasons=["No acceptance criteria define completion"],
+                contract_files=["planned_task.json", "PLANNED_TASK.md"],
+                repo_root=root,
+            )
+            report = report_path.read_text(encoding="utf-8")
+            self.assertIn("Task Contract", report)
+            self.assertIn("authorized: false", report.lower())
+            self.assertIn("No acceptance criteria", report)
 
 
 if __name__ == "__main__":

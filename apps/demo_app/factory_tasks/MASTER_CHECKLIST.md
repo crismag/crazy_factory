@@ -17,3 +17,12 @@ task completion state.
 - [ ] Define one tiny approved future demo build task.
 - [ ] Define acceptance criteria and validation checks.
 - [ ] Keep application writes disabled until owner approval.
+
+## `DEMO-PHASE3` Structured Planning Contracts
+
+- [x] Emit a structured task contract from the planning loop.
+- [x] Parse and validate the contract in the engine (opinionated rules).
+- [x] Reject malformed, unbounded, or self-authorizing contracts.
+- [x] Record `authorized: false`; reserve authorization for the owner.
+- [ ] Owner reviews a valid contract and authorizes it (manual).
+- [ ] Add a Coder role gated on an authorized contract (future phase).
