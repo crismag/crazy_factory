@@ -9,6 +9,7 @@ factory:
   max_lines_per_file: 300
   require_report_every_run: true
   require_next_action_every_run: true
+  state_dir: state
 
 ollama:
   base_url: "http://localhost:11434"

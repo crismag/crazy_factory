@@ -2,7 +2,12 @@
 
 ## Overview
 
-Each autonomous work unit follows the lifecycle below. A session may stop after any phase when approval, safety, or context requires owner intervention.
+Each project is a persistent mission. Runs advance that mission through small recoverable checkpoints. A run may stop after any phase when approval, safety, or context requires owner intervention, but it must record where to resume.
+
+Before task selection, every boot or recovery reads durable state, memory,
+checklists, and milestones:
+
+`BOOT -> READ_MEMORY -> READ_STATE -> READ_CHECKLISTS -> READ_MILESTONES`
 
 | Phase | Objective | Primary worker | Required output |
 | --- | --- | --- | --- |
@@ -15,6 +20,7 @@ Each autonomous work unit follows the lifecycle below. A session may stop after 
 | `REPORT` | Summarize work and evidence | Reporter | Session report |
 | `UPDATE_MEMORY` | Preserve durable knowledge | Reporter | Updated context files |
 | `SELECT_NEXT_TASK` | Choose the next candidate or stop | Planner | Next action |
+| `WAIT` | Preserve a clear resume point until the next run | Reporter | Durable idle or blocked state |
 
 ## Phase Contracts
 
@@ -99,3 +105,20 @@ Each autonomous work unit follows the lifecycle below. A session may stop after 
 - Failure: no safe candidate exists or repeated work is stalled.
 - Escalation: use stall detection and notify the owner.
 
+### `WAIT`
+
+- Objective: stop safely without losing mission position.
+- Inputs: next action, current milestone, checkpoint history, blocker state.
+- Outputs: durable resume instructions and an explicit idle, blocked, paused, or satisfied state.
+- Success: a later run can resume without reconstructing context.
+- Failure: the next run would need to guess where work stopped.
+- Escalation: update state and memory before ending the run.
+
+## Satisfaction
+
+The factory must not stop silently. When work appears complete, produce a
+`SATISFACTION_REPORT.md` recording goals achieved, remaining risks, future
+enhancements, known limitations, and recommended human review. Satisfaction
+requires completed milestones, resolved critical blockers, passing required
+checks, current reports, documented architecture, and an exhausted or
+intentionally deferred backlog.

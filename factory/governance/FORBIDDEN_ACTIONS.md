@@ -14,6 +14,7 @@ The factory must never:
 - transfer local project data externally without explicit approval
 - claim validation that did not occur
 - expand task scope silently
+- stop silently without recording status and a resume point
 
 ## Current Bootstrap Prohibitions
 
@@ -28,4 +29,3 @@ During documentation bootstrap, do not generate:
 ## Conflict Rule
 
 When an owner request appears to conflict with safety policy, pause and surface the conflict before acting.
-

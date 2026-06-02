@@ -1,18 +1,18 @@
 # Current Task
 
-- Task ID: `DEMO-001`
+- Task ID: `DEMO-002`
 - Status: `planned`
 - Mode: `dry_run`
 
 ## Objective
 
-Verify that Crazy Factory can load configuration, read demo application
-context, inspect task files, and produce a report without modifying
-application code or performing git operations.
+Define one tiny future demo build task with explicit acceptance criteria and
+validation expectations. Keep application writes disabled until the owner
+reviews the planned task.
 
 ## Acceptance Criteria
 
-- [ ] A dry-run tick reads this workbench.
-- [ ] The tick writes a human-readable activity report.
-- [ ] No application code is generated.
-- [ ] No automatic commit or push is attempted.
+- [ ] One tiny future demo build task is documented.
+- [ ] Scope exclusions are explicit.
+- [ ] Validation expectations are explicit.
+- [ ] Application writes remain disabled.

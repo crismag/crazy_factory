@@ -1,6 +1,6 @@
 # Model Strategy
 
-## Phase 1 Assignments
+## Phase 1.5 Assignments
 
 | Worker | Ollama model |
 | --- | --- |
@@ -14,8 +14,9 @@
 
 ## Current Boundary
 
-The model assignments are documented and configurable, but Phase 1 ticks do
-not call Ollama. The bootstrap must remain useful when Ollama is not running.
+Phase 1.5 ticks may call the local Architect model for planning-only task
+expansion. When Ollama is unavailable or returns an invalid response, the tick
+must use deterministic fallback planning and exit cleanly.
 
 The initial configured reviewer is `gemma4:latest`. A later planning phase may
 define when to fall back to `cogito:14b`.

@@ -8,6 +8,11 @@ This is the durable narrative memory for Crazy Factory. Update it after meaningf
 
 Crazy Factory is being established as a local-first autonomous software development apprentice. The initial repository phase creates a complete documentation operating system before any implementation begins.
 
+The long-term operating model is a persistent mission worker. Every run must
+load file-based state and leave a recoverable checkpoint or explicit resume
+point. Continuous scheduling, automatic commits, and automatic milestone merges
+remain disabled until separately approved.
+
 ## Memory Categories
 
 ### Project Memory
@@ -41,4 +46,3 @@ Record validated patterns, reliable workflows, and decisions that reduced risk o
 - Scope: Documentation, context, plans, governance, instructions, roles, workflows, architecture, and templates only.
 - Implementation artifacts: None authorized.
 - Next action: Review and approve the operating package, then expand the first implementation milestone.
-

@@ -23,6 +23,8 @@ Crazy Factory is a local-first autonomous development system organized around bo
 | Model Adapter | Future boundary for Ollama and local model access |
 | Oversight Adapter | Future boundary for optional MCP, Codex, Claude, and multi-model review |
 | Scheduler Adapter | Future boundary for cron or equivalent periodic operation |
+| State Store | Preserve current project, milestone, checkpoint, task, failures, and recovery instructions across interruption |
+| Watcher | Observe progress, failures, stalls, reports, and resume state without modifying application code |
 
 ## Core Boundaries
 
@@ -32,6 +34,22 @@ Crazy Factory is a local-first autonomous development system organized around bo
 - Memory files distinguish durable facts from proposals and transient observations.
 - Repository operations are classified as allowed, restricted, or forbidden.
 - Multi-project support must isolate context, memory, permissions, and reporting.
+- Persistent missions must survive reboot, crash, pause, and manual stop through
+  file-based state rather than transient model context.
+
+## Mission State Architecture
+
+Bootstrap state snapshots live in `state/`:
+
+| File | Purpose |
+| --- | --- |
+| `state/factory_state.json` | Global mode, active project, capability flags, failure counters, and recovery guidance |
+| `state/active_run.json` | Current phase, task, checkpoint, blocker, and immediate resume point |
+| `state/project_state.json` | Active project milestone, satisfaction status, checkpoint history pointer, and project recovery instructions |
+
+Each application also maintains a `MASTER_CHECKLIST.md`, milestones, checkpoint
+history, and satisfaction report. The checklist is the application-level source
+of truth for incomplete work.
 
 ## Memory Architecture
 
@@ -49,4 +67,3 @@ The memory system preserves:
 ## Future Capability Boundaries
 
 Ollama, local models, cron scheduling, MCP integration, Codex oversight, Claude oversight, multi-model collaboration, and multi-project operation are roadmap items. Their contracts must be planned and approved before implementation.
-

@@ -26,6 +26,14 @@ Record validation, review outcome, and unavailable checks.
 - Restricted action:
 - External action:
 
+## Mission Recovery
+
+- Current milestone:
+- Current task:
+- Last completed checkpoint:
+- Current blocker:
+- Resume point:
+
 ## Memory Updates
 
 List context, backlog, risks, debt, decisions, failure memory, and success memory updated.
@@ -37,4 +45,3 @@ State unresolved decisions and the safe default while waiting.
 ## Next Action
 
 Link or summarize the next bounded task.
-

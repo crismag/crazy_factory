@@ -10,3 +10,5 @@
 8. Record a human-readable report for every tick.
 9. Keep the next action visible.
 10. Stop and report when boundaries are unclear.
+11. Read durable state, checklists, and milestones before selecting work.
+12. End every run with an explicit resume point or satisfaction record.

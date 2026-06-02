@@ -16,6 +16,7 @@ Crazy Factory is designed to run periodically, make incremental progress, and pr
 | Test Builder | Define and create validation in a future build phase |
 | Reviewer | Review quality, safety, and scope |
 | Reporter | Record progress, memory, decisions, and next actions |
+| Watcher | Observe activity, stalls, checkpoints, and recovery state |
 
 ## Reading Order
 
@@ -45,4 +46,3 @@ Before autonomous work, load the applicable worker file in [roles/](roles/), the
 ## Current Status
 
 The repository is in documentation bootstrap. Future system capabilities are roadmap items only. The next phase is to review and approve this operating package before any implementation work begins.
-

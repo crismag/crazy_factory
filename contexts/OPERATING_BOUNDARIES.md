@@ -6,14 +6,16 @@
 system. `apps/<name>/` is the application workbench. Workers may evolve an
 approved app workbench but should rarely change the engine.
 
-## Phase 1 Permissions
+## Phase 1.5 Permissions
 
 Allowed:
 
 - read configuration, contexts, task files, reports, and repository metadata
 - produce dry-run reports
 - inspect git status and diff summaries
-- build prompts without calling models
+- call the local Architect model for planning-only task expansion
+- update `TASK_EXPANSION.md` and `NEXT_ACTION.md`
+- update approved reports and JSON state snapshots
 
 Not allowed:
 
@@ -24,5 +26,11 @@ Not allowed:
 - read files outside the repository
 - read likely secrets or credentials
 - integrate MCP, LangGraph, n8n, Claude, or Codex
+
+## Future Gated Capabilities
+
+Continuous scheduling, automatic checkpoint commits, and automatic milestone
+merges are future capabilities. They require explicit owner approval, safety
+controls, review gates, and recovery validation before activation.
 
 See `factory/governance/` for the durable authority model.

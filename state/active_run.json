@@ -1,0 +1,12 @@
+{
+  "run_status": "idle",
+  "run_id": null,
+  "started_at": null,
+  "active_project": "demo_app",
+  "current_phase": "WAIT",
+  "current_task": "DEMO-002",
+  "current_checkpoint": null,
+  "last_completed_checkpoint": "DEMO-MISSION-STATE-001",
+  "current_blocker": null,
+  "resume_from": "Review TASK_EXPANSION.md and NEXT_ACTION.md. Keep application writes disabled until owner approval."
+}

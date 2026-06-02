@@ -29,6 +29,13 @@ Record approval, findings, scope concerns, and unresolved risk.
 - Restricted action requested:
 - External action performed:
 
+## Checkpoint
+
+- Checkpoint ID:
+- Current milestone:
+- Last completed checkpoint:
+- Resume point:
+
 ## Memory Updates
 
 List context, backlog, decision, risk, and next-action records updated.
@@ -36,4 +43,3 @@ List context, backlog, decision, risk, and next-action records updated.
 ## Open Questions
 
 List questions requiring owner or future-worker attention.
-
