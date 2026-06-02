@@ -38,6 +38,10 @@ from contract_stage import (  # noqa: E402
     contract_status_label,
     run_contract_stage,
 )
+from proposal_applier import (  # noqa: E402
+    application_status_label,
+    run_application_stage,
+)
 from git_guard import status  # noqa: E402
 from mission_state import (  # noqa: E402
     load_state,
@@ -180,6 +184,20 @@ def main() -> int:
         contract_json_path=contract_json_path,
     )
 
+    application_result, patch_plan_json, patch_plan_md, application_report = (
+        run_application_stage(
+            project_name=project_name,
+            root=root,
+            project=project,
+            factory_config=factory_config,
+            models_config=models_config,
+            max_lines=max_lines,
+            max_files=max_files,
+            contract_json_path=contract_json_path,
+            proposal_json_path=proposal_json_path,
+        )
+    )
+
     update_success_state(
         factory_state,
         active_run,
@@ -188,6 +206,7 @@ def main() -> int:
         planner_result,
         contract_result=contract_result,
         coder_result=coder_result,
+        application_result=application_result,
     )
     persist_state(
         root=root,
@@ -237,6 +256,18 @@ def main() -> int:
         coder_warnings=list(coder_result.verdict.warnings),
         coder_blocked_paths=list(coder_result.verdict.blocked_paths),
         coder_files=coder_files,
+        application_status=application_status_label(application_result),
+        application_mode=application_result.mode,
+        application_applied=application_result.applied,
+        application_reasons=list(application_result.verdict.reasons),
+        application_blocked_paths=list(
+            application_result.verdict.blocked_paths
+        ),
+        application_files=(
+            [patch_plan_json, patch_plan_md, application_report]
+            if application_result.activated
+            else []
+        ),
         repo_root=root,
     )
 
@@ -245,7 +276,11 @@ def main() -> int:
         if contract_authorized
         else ("false (owner approval required)")
     )
-    print("Crazy Factory Phase 4 planning + coder-proposal dry run complete")
+    application_status = application_status_label(application_result)
+    print(
+        "Crazy Factory Phase 5 planning + proposal + application dry run "
+        "complete"
+    )
     print(f"Active project: {project_name}")
     print(f"Context files read: {len(contexts)}")
     print(f"Task files read: {len(tasks)}")
@@ -256,10 +291,13 @@ def main() -> int:
     print(f"Contract authorized: {authorized_text}")
     print(f"Coder activated: {str(coder_result.activated).lower()}")
     print(f"Coder proposal verdict: {coder_status}")
+    print(f"Application mode: {application_result.mode}")
+    print(f"Application status: {application_status}")
+    print(f"Application applied: {str(application_result.applied).lower()}")
     print("Last role completed: reporter")
     print(f"Report written: {report_path.relative_to(root)}")
     print(
-        "Safety: planning + proposal only; no app code, commit, or push "
+        "Safety: planning + proposal + preview only; no commit/push/merge "
         "attempted"
     )
     return 0

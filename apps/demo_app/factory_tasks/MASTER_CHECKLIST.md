@@ -35,4 +35,13 @@ task completion state.
       limit, non-empty.
 - [x] Reject malformed/unavailable proposals; never fake a valid one.
 - [x] Record proposal state and report; never write or apply code.
-- [ ] Owner reviews proposal quality before any Phase 5 application engine.
+- [x] Owner reviews proposal quality before any Phase 5 application engine.
+
+## `DEMO-PHASE5` Proposal Application Preview Engine
+
+- [x] Gate application on contract+proposal+explicit owner approval.
+- [x] Generate a validated patch plan (`patch_plan.json` + `PATCH_PLAN.md`).
+- [x] Validate paths/secrets/limits; reject unsafe plans.
+- [x] Default to `preview_only`; apply only when explicitly enabled.
+- [x] Write `APPLICATION_REPORT.md`; record application state.
+- [ ] Owner enables apply mode for a reviewed plan (manual, deliberate).
