@@ -25,4 +25,14 @@ task completion state.
 - [x] Reject malformed, unbounded, or self-authorizing contracts.
 - [x] Record `authorized: false`; reserve authorization for the owner.
 - [ ] Owner reviews a valid contract and authorizes it (manual).
-- [ ] Add a Coder role gated on an authorized contract (future phase).
+- [x] Add a Coder role gated on an authorized contract (Phase 4A).
+
+## `DEMO-PHASE4` Authorized Coder Proposal Engine
+
+- [x] Activate the Coder only for an authorized, valid contract.
+- [x] Generate a structured proposal (`coder_proposal.json` + Markdown).
+- [x] Validate proposals: allowed targets, no secrets/destructive ops, file
+      limit, non-empty.
+- [x] Reject malformed/unavailable proposals; never fake a valid one.
+- [x] Record proposal state and report; never write or apply code.
+- [ ] Owner reviews proposal quality before any Phase 5 application engine.

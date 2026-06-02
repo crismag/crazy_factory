@@ -54,6 +54,100 @@ def _filename_timestamp(now: datetime) -> str:
     return now.strftime("%Y%m%dT%H%M%SZ")
 
 
+def _render_contract_section(
+    *,
+    status: str | None,
+    source: str | None,
+    detail: str | None,
+    reasons: list[str] | None,
+    files: list[str] | None,
+    authorized: bool,
+) -> str:
+    """Render the optional Task Contract section of a session report.
+
+    Args:
+        status: Contract verdict label, or ``None`` to omit the section.
+        source: Planning source of the contract.
+        detail: Human-readable explanation of the source.
+        reasons: Rejection reasons, rendered only for a rejected contract.
+        files: Contract files written or preserved this tick.
+        authorized: Whether the contract is owner-authorized (preserved).
+
+    Returns:
+        Markdown section text, or an empty string when ``status`` is ``None``.
+    """
+    if status is None:
+        return ""
+    authorized_line = (
+        "- Authorized: `true` (owner-authorized; preserved)\n"
+        if authorized
+        else "- Authorized: `false` (owner approval required)\n"
+    )
+    files_label = (
+        "- Contract files preserved:\n"
+        if authorized
+        else "- Contract files written:\n"
+    )
+    rejection = (
+        "- Rejection reasons:\n"
+        + "".join(f"  - {reason}\n" for reason in (reasons or []))
+        if status == "rejected"
+        else ""
+    )
+    return (
+        "\n## Task Contract\n\n"
+        f"- Source: `{source}`\n"
+        f"- Detail: {detail}\n"
+        f"- Validation status: `{status}`\n"
+        + authorized_line
+        + rejection
+        + files_label
+        + "".join(f"  - `{path}`\n" for path in (files or []))
+    )
+
+
+def _render_coder_section(
+    *,
+    status: str | None,
+    proposal_id: str | None,
+    task_id: str | None,
+    activated: bool,
+    warnings: list[str] | None,
+    blocked_paths: list[str] | None,
+    files: list[str] | None,
+) -> str:
+    """Render the optional Coder Proposal section of a session report.
+
+    Args:
+        status: Proposal verdict label, or ``None`` to omit the section.
+        proposal_id: Proposal identifier, if any.
+        task_id: Task identifier the proposal serves, if any.
+        activated: Whether an authorized contract activated the Coder.
+        warnings: Non-fatal proposal warnings.
+        blocked_paths: Paths blocked by the target boundary.
+        files: Proposal files written this tick.
+
+    Returns:
+        Markdown section text, or an empty string when ``status`` is ``None``.
+    """
+    if status is None:
+        return ""
+    return (
+        "\n## Coder Proposal\n\n"
+        f"- Proposal ID: `{proposal_id}`\n"
+        f"- Task ID: `{task_id}`\n"
+        f"- Verdict: `{status}`\n"
+        f"- Activated (authorized contract): `{str(activated).lower()}`\n"
+        "- Applied: `false` (proposal only; no files written)\n"
+        + "- Warnings:\n"
+        + "".join(f"  - {w}\n" for w in (warnings or []))
+        + "- Blocked paths:\n"
+        + "".join(f"  - `{p}`\n" for p in (blocked_paths or []))
+        + "- Proposal files:\n"
+        + "".join(f"  - `{path}`\n" for path in (files or []))
+    )
+
+
 def append_dry_run_report(
     *,
     project_name: str,
@@ -77,6 +171,13 @@ def append_dry_run_report(
     contract_reasons: list[str] | None = None,
     contract_files: list[str] | None = None,
     contract_authorized: bool = False,
+    coder_status: str | None = None,
+    coder_proposal_id: str | None = None,
+    coder_task_id: str | None = None,
+    coder_activated: bool = False,
+    coder_warnings: list[str] | None = None,
+    coder_blocked_paths: list[str] | None = None,
+    coder_files: list[str] | None = None,
     repo_root: str | Path | None = None,
 ) -> Path:
     """Write a dry-run report and append top-level activity summaries.
@@ -105,6 +206,14 @@ def append_dry_run_report(
         contract_files: Contract files written during the tick.
         contract_authorized: Whether the recorded contract is owner-authorized
             (a preserved contract); the factory never sets this itself.
+        coder_status: Coder proposal verdict label, or ``None`` when the coder
+            stage did not run this tick.
+        coder_proposal_id: Proposal identifier, if a proposal was produced.
+        coder_task_id: Task identifier the proposal serves, if any.
+        coder_activated: Whether an authorized contract activated the Coder.
+        coder_warnings: Non-fatal proposal warnings, if any.
+        coder_blocked_paths: Proposal paths blocked by the target boundary.
+        coder_files: Proposal files written during the tick.
         repo_root: Optional explicit repository root, primarily for tests.
 
     Returns:
@@ -118,35 +227,23 @@ def append_dry_run_report(
     stamp = _timestamp(now)
     report_name = f"session-{_filename_timestamp(now)}.md"
     app_report_path = str(Path(project_report_root) / report_name)
-    contract_section = ""
-    if contract_status is not None:
-        authorized_line = (
-            "- Authorized: `true` (owner-authorized; preserved)\n"
-            if contract_authorized
-            else "- Authorized: `false` (owner approval required)\n"
-        )
-        files_label = (
-            "- Contract files preserved:\n"
-            if contract_authorized
-            else "- Contract files written:\n"
-        )
-        contract_section = (
-            "\n## Task Contract\n\n"
-            f"- Source: `{contract_source}`\n"
-            f"- Detail: {contract_detail}\n"
-            f"- Validation status: `{contract_status}`\n"
-            + authorized_line
-            + (
-                "- Rejection reasons:\n"
-                + "".join(
-                    f"  - {reason}\n" for reason in (contract_reasons or [])
-                )
-                if contract_status == "rejected"
-                else ""
-            )
-            + files_label
-            + "".join(f"  - `{path}`\n" for path in (contract_files or []))
-        )
+    contract_section = _render_contract_section(
+        status=contract_status,
+        source=contract_source,
+        detail=contract_detail,
+        reasons=contract_reasons,
+        files=contract_files,
+        authorized=contract_authorized,
+    )
+    coder_section = _render_coder_section(
+        status=coder_status,
+        proposal_id=coder_proposal_id,
+        task_id=coder_task_id,
+        activated=coder_activated,
+        warnings=coder_warnings,
+        blocked_paths=coder_blocked_paths,
+        files=coder_files,
+    )
     body = (
         f"# Factory Session Report\n\n"
         f"- Timestamp: `{stamp}`\n"
@@ -179,6 +276,7 @@ def append_dry_run_report(
         + "- Planning files updated:\n"
         + "".join(f"  - `{path}`\n" for path in planning_files[1:])
         + contract_section
+        + coder_section
         + "\n## Reporter Outcome\n\n"
         + f"- Last role completed: `{last_role_completed}`\n"
         + "\n## Repository Status\n\n```text\n"

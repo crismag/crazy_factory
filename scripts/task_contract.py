@@ -30,6 +30,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
+from json_parsing import coerce_str, coerce_str_list, strip_code_fence
+
 # Substrings that signal a task is reaching beyond bounded planning authority.
 # Matched case-insensitively against every instruction-bearing field (see
 # _forbidden_keyword_hits): title, objective, validation plan, scope, and
@@ -124,75 +126,6 @@ class ValidationVerdict:
     reasons: list[str] = field(default_factory=list)
 
 
-def _coerce_str(value: Any) -> str:
-    """Coerce a JSON scalar to a trimmed string.
-
-    Only genuine scalars (str, int, float, bool) become text. Objects and
-    arrays are discarded to an empty string rather than ``repr``-ed, so a
-    nested structure in a text field surfaces as missing content and is
-    rejected by the validator instead of passing as garbage.
-
-    Args:
-        value: Arbitrary parsed JSON value.
-
-    Returns:
-        Stripped string, or an empty string for ``None`` or non-scalar values.
-    """
-    # ``bool`` is intentionally covered here via its ``int`` subclass.
-    if isinstance(value, (str, int, float)):
-        return str(value).strip()
-    return ""
-
-
-def _coerce_str_list(value: Any) -> list[str]:
-    """Coerce a JSON value into a list of non-empty scalar strings.
-
-    A single string is wrapped as a one-item list so loosely structured model
-    output still parses. Empty entries and non-scalar elements (nested objects
-    or arrays) are dropped, so validation can rely on list length to mean "has
-    real, usable content".
-
-    Args:
-        value: Arbitrary parsed JSON value.
-
-    Returns:
-        List of trimmed, non-empty strings.
-    """
-    if isinstance(value, str):
-        text = value.strip()
-        return [text] if text else []
-    if isinstance(value, (list, tuple)):
-        items = [_coerce_str(item) for item in value]
-        return [item for item in items if item]
-    # A lone scalar (number/bool) becomes a single descriptive entry; objects
-    # and null coerce to an empty string and yield an empty list.
-    text = _coerce_str(value)
-    return [text] if text else []
-
-
-def _strip_code_fence(raw: str) -> str:
-    """Remove a surrounding Markdown code fence if present.
-
-    Local models frequently wrap JSON in ```` ```json ```` fences. Stripping a
-    single outer fence keeps the parser tolerant without interpreting content.
-
-    Args:
-        raw: Raw model output.
-
-    Returns:
-        Text with one outer code fence removed when detected.
-    """
-    text = raw.strip()
-    if not text.startswith("```"):
-        return text
-    lines = text.splitlines()
-    # Drop the opening fence line (e.g. "```" or "```json").
-    lines = lines[1:]
-    if lines and lines[-1].strip().startswith("```"):
-        lines = lines[:-1]
-    return "\n".join(lines).strip()
-
-
 def _planned_task_from_mapping(data: dict[str, Any]) -> PlannedTask:
     """Build a :class:`PlannedTask` from a parsed contract mapping.
 
@@ -208,20 +141,20 @@ def _planned_task_from_mapping(data: dict[str, Any]) -> PlannedTask:
         Planned task populated from the mapping.
     """
     authorized_raw = data.get("authorized", False)
-    authorized = authorized_raw is True or _coerce_str(
+    authorized = authorized_raw is True or coerce_str(
         authorized_raw
     ).lower() in {"true", "yes", "1"}
     return PlannedTask(
-        task_id=_coerce_str(data.get("task_id")),
-        title=_coerce_str(data.get("title")),
-        objective=_coerce_str(data.get("objective")),
-        validation_plan=_coerce_str(data.get("validation_plan")),
-        scope=_coerce_str_list(data.get("scope")),
-        exclusions=_coerce_str_list(data.get("exclusions")),
-        inputs=_coerce_str_list(data.get("inputs")),
-        acceptance_criteria=_coerce_str_list(data.get("acceptance_criteria")),
-        risks=_coerce_str_list(data.get("risks")),
-        approval_status=_coerce_str(data.get("approval_status")) or "pending",
+        task_id=coerce_str(data.get("task_id")),
+        title=coerce_str(data.get("title")),
+        objective=coerce_str(data.get("objective")),
+        validation_plan=coerce_str(data.get("validation_plan")),
+        scope=coerce_str_list(data.get("scope")),
+        exclusions=coerce_str_list(data.get("exclusions")),
+        inputs=coerce_str_list(data.get("inputs")),
+        acceptance_criteria=coerce_str_list(data.get("acceptance_criteria")),
+        risks=coerce_str_list(data.get("risks")),
+        approval_status=coerce_str(data.get("approval_status")) or "pending",
         authorized=authorized,
     )
 
@@ -240,7 +173,7 @@ def parse_planned_task(raw: str) -> PlannedTask:
     Raises:
         ContractParseError: If the text is not a JSON object.
     """
-    text = _strip_code_fence(raw)
+    text = strip_code_fence(raw)
     if not text:
         raise ContractParseError("Planner returned empty contract content")
     try:
@@ -311,7 +244,7 @@ def _content_reasons(task: PlannedTask) -> list[str]:
     reasons: list[str] = []
 
     for name in REQUIRED_TEXT_FIELDS:
-        if not _coerce_str(getattr(task, name)):
+        if not coerce_str(getattr(task, name)):
             reasons.append(f"Missing or empty required field: {name}")
     for name in REQUIRED_LIST_FIELDS:
         if not getattr(task, name):
