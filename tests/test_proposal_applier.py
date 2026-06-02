@@ -462,7 +462,8 @@ class StageTests(unittest.TestCase):
             self.assertTrue(written.is_file())
             self.assertIn("STATUS", written.read_text(encoding="utf-8"))
 
-    def test_apply_patch_plan_writes_and_deletes(self) -> None:
+    def test_apply_writes_and_skips_delete_by_default(self) -> None:
+        """Deletes are skipped unless allow_delete is set; writes apply."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "apps/demo/app").mkdir(parents=True)
@@ -477,10 +478,62 @@ class StageTests(unittest.TestCase):
                     PatchFile("apps/demo/app/old.py", "delete", ""),
                 ],
             )
-            touched = apply_patch_plan(plan, root=root, project=project)
+            touched, error = apply_patch_plan(plan, root=root, project=project)
+            self.assertIsNone(error)
             self.assertIn("apps/demo/app/new.py", touched)
             self.assertTrue((root / "apps/demo/app/new.py").is_file())
+            # Delete was skipped because allow_delete defaults to False.
+            self.assertTrue((root / "apps/demo/app/old.py").exists())
+
+    def test_apply_deletes_only_when_enabled(self) -> None:
+        """A delete runs only when allow_delete is explicitly enabled."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "apps/demo/app").mkdir(parents=True)
+            (root / "apps/demo/app/old.py").write_text("old\n")
+            project = {"root": "apps/demo", "task_root": "apps/demo/x"}
+            plan = PatchPlan(
+                "PP",
+                "T",
+                "CP-001",
+                [PatchFile("apps/demo/app/old.py", "delete", "")],
+            )
+            touched, error = apply_patch_plan(
+                plan, root=root, project=project, allow_delete=True
+            )
+            self.assertIsNone(error)
             self.assertFalse((root / "apps/demo/app/old.py").exists())
+
+    def test_validate_rejects_delete_by_default(self) -> None:
+        """A plan with a delete is invalid unless allow_delete is set."""
+        from proposal_applier import validate_patch_plan
+
+        plan = PatchPlan(
+            "PP",
+            "T",
+            "CP-001",
+            [PatchFile("apps/demo/app/x.py", "delete", "")],
+        )
+        rejected = validate_patch_plan(
+            plan,
+            project_name="demo",
+            proposal_record={"proposal_id": "CP-001"},
+            approved=True,
+            max_files=5,
+            max_lines=300,
+        )
+        self.assertFalse(rejected.valid)
+        self.assertTrue(any("delete" in r.lower() for r in rejected.reasons))
+        allowed = validate_patch_plan(
+            plan,
+            project_name="demo",
+            proposal_record={"proposal_id": "CP-001"},
+            approved=True,
+            max_files=5,
+            max_lines=300,
+            allow_delete=True,
+        )
+        self.assertTrue(allowed.valid, allowed.reasons)
 
     def test_application_paths_inside_project(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
