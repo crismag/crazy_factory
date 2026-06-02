@@ -63,6 +63,22 @@
   - failure paths exit cleanly; no commit/merge/push
 - Non-goals (deferred): auto-commit (Phase 7), validation runner (Phase 6).
 
+## `DEMO-PHASE6`: Test Builder and Validation Runner
+
+- Status: `active`
+- Purpose: prove that work is checked before any checkpoint — a Test Builder
+  proposes a structured test plan, and a Validation Runner executes only
+  allowlisted, shell-free commands.
+- Completion criteria:
+  - Test Builder produces a structured `test_plan.json` + `TEST_PLAN.md`
+  - every `required_check` is an allowlisted command; non-allowlisted plans
+    are rejected
+  - Validation Runner executes only allowlisted commands, only with
+    `validation.allow_run` enabled; otherwise checks are recorded `skipped`
+  - blocked/failed checks become a recoverable failure (block future
+    checkpoint promotion); results recorded in state and report
+  - no auto-commit yet
+
 ## `DEMO-M3`: Future Application Checkpoint Trial
 
 - Status: `deferred`

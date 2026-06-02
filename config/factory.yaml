@@ -16,6 +16,10 @@ proposal_application:
   allow_apply: false
   require_owner_approval: true
 
+validation:
+  allow_run: false
+  timeout_seconds: 60
+
 ollama:
   base_url: "http://localhost:11434"
   timeout_seconds: 120

@@ -42,6 +42,14 @@ from proposal_applier import (  # noqa: E402
     application_status_label,
     run_application_stage,
 )
+from test_builder import (  # noqa: E402
+    run_test_builder_stage,
+    test_plan_status_label,
+)
+from validation_runner import (  # noqa: E402
+    run_validation_stage,
+    validation_status_label,
+)
 from git_guard import status  # noqa: E402
 from mission_state import (  # noqa: E402
     load_state,
@@ -198,6 +206,28 @@ def main() -> int:
         )
     )
 
+    test_plan_result, test_plan_json, test_plan_md = run_test_builder_stage(
+        project_name=project_name,
+        root=root,
+        project=project,
+        factory_config=factory_config,
+        models_config=models_config,
+        max_lines=max_lines,
+        contract_json_path=contract_json_path,
+        proposal_json_path=proposal_json_path,
+    )
+    validation_config = factory_config.get("validation", {})
+    test_plan = test_plan_result.plan
+    validation_result, validation_json, validation_md = run_validation_stage(
+        test_plan_id=test_plan.test_plan_id if test_plan else "",
+        required_checks=test_plan.required_checks if test_plan else [],
+        plan_valid=test_plan is not None and test_plan_result.verdict.valid,
+        root=root,
+        project=project,
+        allow_run=bool(validation_config.get("allow_run", False)),
+        timeout_seconds=int(validation_config.get("timeout_seconds", 60)),
+    )
+
     update_success_state(
         factory_state,
         active_run,
@@ -207,6 +237,8 @@ def main() -> int:
         contract_result=contract_result,
         coder_result=coder_result,
         application_result=application_result,
+        test_plan_result=test_plan_result,
+        validation_result=validation_result,
     )
     persist_state(
         root=root,
@@ -268,6 +300,18 @@ def main() -> int:
             if application_result.activated
             else []
         ),
+        test_plan_status=test_plan_status_label(test_plan_result),
+        test_plan_id=test_plan.test_plan_id if test_plan else None,
+        validation_status=validation_status_label(validation_result),
+        validation_executed=validation_result.executed,
+        validation_checks=[
+            f"`{c.status}` {c.command}" for c in validation_result.checks
+        ],
+        validation_files=(
+            [validation_json, validation_md]
+            if (test_plan is not None and test_plan_result.verdict.valid)
+            else []
+        ),
         repo_root=root,
     )
 
@@ -278,8 +322,8 @@ def main() -> int:
     )
     application_status = application_status_label(application_result)
     print(
-        "Crazy Factory Phase 5 planning + proposal + application dry run "
-        "complete"
+        "Crazy Factory Phase 6 planning + proposal + application + "
+        "validation dry run complete"
     )
     print(f"Active project: {project_name}")
     print(f"Context files read: {len(contexts)}")
@@ -294,6 +338,11 @@ def main() -> int:
     print(f"Application mode: {application_result.mode}")
     print(f"Application status: {application_status}")
     print(f"Application applied: {str(application_result.applied).lower()}")
+    print(
+        f"Test plan: {test_plan_status_label(test_plan_result)} | "
+        f"Validation: {validation_status_label(validation_result)} "
+        f"(executed: {str(validation_result.executed).lower()})"
+    )
     print("Last role completed: reporter")
     print(f"Report written: {report_path.relative_to(root)}")
     print(
