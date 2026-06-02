@@ -19,6 +19,9 @@ import sys
 
 sys.dont_write_bytecode = True
 
+import json  # noqa: E402
+import os  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import Any  # noqa: E402
 
@@ -29,12 +32,103 @@ from recovery_manager import run_recovery  # noqa: E402
 from repo_tools import (  # noqa: E402
     RepoSafetyError,
     find_repo_root,
+    resolve_repo_path,
     safe_read_text,
     safe_write_text,
 )
 from satisfaction_checker import run_satisfaction  # noqa: E402
 from stall_detector import detect_stall  # noqa: E402
 from tick_config import load_active_project, load_configuration  # noqa: E402
+
+LOCK_NAME = "mission.lock"
+_TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _lock_relpath(state_dir: str) -> str:
+    """Return the repository-relative mission lock path."""
+    return str(Path(state_dir) / LOCK_NAME)
+
+
+def _lock_is_stale(
+    data: dict[str, Any], now: datetime, stale_seconds: int
+) -> bool:
+    """Report whether an existing lock is stale and may be taken over.
+
+    Args:
+        data: Parsed lock contents.
+        now: Current timezone-aware time.
+        stale_seconds: Age beyond which a lock is considered abandoned.
+
+    Returns:
+        ``True`` when the lock is missing a timestamp or is older than the
+        stale threshold.
+    """
+    stamp = data.get("acquired_at")
+    if not isinstance(stamp, str):
+        return True
+    try:
+        acquired = datetime.strptime(stamp, _TIMESTAMP_FORMAT).replace(
+            tzinfo=timezone.utc
+        )
+    except ValueError:
+        return True
+    return (now - acquired).total_seconds() > stale_seconds
+
+
+def acquire_lock(
+    root: Path,
+    state_dir: str,
+    *,
+    pid: int,
+    now: datetime,
+    stale_seconds: int,
+) -> bool:
+    """Acquire the mission lock, taking over only a stale lock.
+
+    Args:
+        root: Absolute repository root.
+        state_dir: Repository-relative state directory.
+        pid: Current process id, recorded in the lock.
+        now: Current timezone-aware time.
+        stale_seconds: Age beyond which an existing lock may be taken over.
+
+    Returns:
+        ``True`` when the lock was acquired; ``False`` when another run holds a
+        fresh lock.
+    """
+    relpath = _lock_relpath(state_dir)
+    target = resolve_repo_path(relpath, root)
+    if target.is_file():
+        try:
+            existing = json.loads(safe_read_text(relpath, root))
+        except (ValueError, RepoSafetyError):
+            existing = {}
+        if not isinstance(existing, dict) or not _lock_is_stale(
+            existing, now, stale_seconds
+        ):
+            return False
+    safe_write_text(
+        relpath,
+        json.dumps(
+            {"pid": pid, "acquired_at": now.strftime(_TIMESTAMP_FORMAT)}
+        )
+        + "\n",
+        repo_root=root,
+        allowed_roots=[state_dir],
+    )
+    return True
+
+
+def release_lock(root: Path, state_dir: str) -> None:
+    """Remove the mission lock if present.
+
+    Args:
+        root: Absolute repository root.
+        state_dir: Repository-relative state directory.
+    """
+    target = resolve_repo_path(_lock_relpath(state_dir), root)
+    if target.is_file():
+        target.unlink()
 
 
 def decide_action(
@@ -117,12 +211,80 @@ def main() -> int:
     project_name, project = load_active_project(factory, projects_config)
     factory_state, _active_run, project_state = load_state(root, state_dir)
 
-    action = decide_action(
-        root=root,
-        factory_state=factory_state,
-        project_state=project_state,
-        state_dir=state_dir,
+    stale_seconds = int(
+        factory_config.get("mission", {}).get("lock_stale_seconds", 3600)
     )
+    if not acquire_lock(
+        root,
+        state_dir,
+        pid=os.getpid(),
+        now=datetime.now(timezone.utc),
+        stale_seconds=stale_seconds,
+    ):
+        # Another mission run holds a fresh lock; do not overlap.
+        _write_status(root, "locked", factory_state, project_state, state_dir)
+        print("Crazy Factory mission iteration: action=locked")
+        print("Another mission run is in progress; skipping this beat.")
+        return 0
+
+    try:
+        action = decide_action(
+            root=root,
+            factory_state=factory_state,
+            project_state=project_state,
+            state_dir=state_dir,
+        )
+        _write_status(root, action, factory_state, project_state, state_dir)
+
+        if action == "run":
+            factory_tick.main()
+            _f, _a, refreshed = load_state(root, state_dir)
+            run_satisfaction(
+                root=root,
+                project=project,
+                checklist_text=_read_checklist(root, project),
+                project_state=refreshed,
+                state_dir=state_dir,
+            )
+        elif action == "stalled":
+            stall = detect_stall(
+                factory_state=factory_state, project_state=project_state
+            )
+            run_recovery(
+                root=root,
+                project=project,
+                stall_signal=stall,
+                project_state=project_state,
+                state_dir=state_dir,
+            )
+    finally:
+        release_lock(root, state_dir)
+
+    print(f"Crazy Factory mission iteration: action={action}")
+    print(f"Active project: {project_name}")
+    print(
+        f"Active flags: {', '.join(active_flags(root, state_dir)) or 'none'}"
+    )
+    print("Mission status written: reports/MISSION_STATUS.md")
+    return 0
+
+
+def _write_status(
+    root: Path,
+    action: str,
+    factory_state: dict[str, Any],
+    project_state: dict[str, Any],
+    state_dir: str,
+) -> None:
+    """Write the mission-status report for the current iteration.
+
+    Args:
+        root: Absolute repository root.
+        action: The decided action for this iteration.
+        factory_state: Global state snapshot.
+        project_state: Active project state snapshot.
+        state_dir: Repository-relative state directory.
+    """
     safe_write_text(
         "reports/MISSION_STATUS.md",
         render_mission_status_md(
@@ -134,37 +296,6 @@ def main() -> int:
         repo_root=root,
         allowed_roots=["reports"],
     )
-
-    if action == "run":
-        factory_tick.main()
-        _f, _a, refreshed = load_state(root, state_dir)
-        checklist = _read_checklist(root, project)
-        run_satisfaction(
-            root=root,
-            project=project,
-            checklist_text=checklist,
-            project_state=refreshed,
-            state_dir=state_dir,
-        )
-    elif action == "stalled":
-        stall = detect_stall(
-            factory_state=factory_state, project_state=project_state
-        )
-        run_recovery(
-            root=root,
-            project=project,
-            stall_signal=stall,
-            project_state=project_state,
-            state_dir=state_dir,
-        )
-
-    print(f"Crazy Factory mission iteration: action={action}")
-    print(f"Active project: {project_name}")
-    print(
-        f"Active flags: {', '.join(active_flags(root, state_dir)) or 'none'}"
-    )
-    print("Mission status written: reports/MISSION_STATUS.md")
-    return 0
 
 
 def _read_checklist(root: Path, project: dict[str, Any]) -> str:

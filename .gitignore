@@ -1,2 +1,6 @@
 __pycache__/
 *.py[cod]
+
+# Runtime control flags and the mission lock are transient, not committed.
+state/*.flag
+state/mission.lock
