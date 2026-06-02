@@ -11,6 +11,11 @@ factory:
   require_next_action_every_run: true
   state_dir: state
 
+proposal_application:
+  mode: preview_only
+  allow_apply: false
+  require_owner_approval: true
+
 ollama:
   base_url: "http://localhost:11434"
   timeout_seconds: 120

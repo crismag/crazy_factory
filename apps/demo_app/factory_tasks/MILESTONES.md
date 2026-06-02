@@ -47,6 +47,22 @@
 - Non-goals (deferred to Phase 5): file writing, patch application, test
   execution.
 
+## `DEMO-PHASE5`: Proposal Application Preview Engine
+
+- Status: `active`
+- Purpose: turn an owner-approved, valid coder proposal into a concrete patch
+  plan (exact file contents); apply it only when explicitly enabled.
+- Completion criteria:
+  - activates only under the full gate (contract authorized+valid, proposal
+    valid, and explicit owner approval matching the proposal id)
+  - generates a validated patch plan + `PATCH_PLAN.md` + `APPLICATION_REPORT.md`
+  - rejects unsafe paths (protected dirs, root README, out-of-bounds,
+    traversal), secrets, missing content, over file/line limits
+  - default `preview_only` / `allow_apply: false` writes nothing; apply mode
+    works only when explicitly enabled and the plan validates
+  - failure paths exit cleanly; no commit/merge/push
+- Non-goals (deferred): auto-commit (Phase 7), validation runner (Phase 6).
+
 ## `DEMO-M3`: Future Application Checkpoint Trial
 
 - Status: `deferred`

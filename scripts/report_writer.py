@@ -148,6 +148,49 @@ def _render_coder_section(
     )
 
 
+def _render_application_section(
+    *,
+    status: str | None,
+    mode: str | None,
+    applied: bool,
+    reasons: list[str] | None,
+    blocked_paths: list[str] | None,
+    files: list[str] | None,
+) -> str:
+    """Render the optional Proposal Application section of a session report.
+
+    Args:
+        status: Application verdict label, or ``None`` to omit the section.
+        mode: ``"preview_only"`` or ``"apply"``.
+        applied: Whether files were actually written.
+        reasons: Patch-plan rejection reasons, rendered when rejected.
+        blocked_paths: Paths blocked by the boundary.
+        files: Application artifact files written this tick.
+
+    Returns:
+        Markdown section text, or an empty string when ``status`` is ``None``.
+    """
+    if status is None:
+        return ""
+    rejection = (
+        "- Rejection reasons:\n"
+        + "".join(f"  - {r}\n" for r in (reasons or []))
+        if status == "rejected"
+        else ""
+    )
+    return (
+        "\n## Proposal Application\n\n"
+        f"- Mode: `{mode}`\n"
+        f"- Status: `{status}`\n"
+        f"- Applied: `{str(applied).lower()}`\n"
+        + rejection
+        + "- Blocked paths:\n"
+        + "".join(f"  - `{p}`\n" for p in (blocked_paths or []))
+        + "- Application files:\n"
+        + "".join(f"  - `{path}`\n" for path in (files or []))
+    )
+
+
 def append_dry_run_report(
     *,
     project_name: str,
@@ -178,6 +221,12 @@ def append_dry_run_report(
     coder_warnings: list[str] | None = None,
     coder_blocked_paths: list[str] | None = None,
     coder_files: list[str] | None = None,
+    application_status: str | None = None,
+    application_mode: str | None = None,
+    application_applied: bool = False,
+    application_reasons: list[str] | None = None,
+    application_blocked_paths: list[str] | None = None,
+    application_files: list[str] | None = None,
     repo_root: str | Path | None = None,
 ) -> Path:
     """Write a dry-run report and append top-level activity summaries.
@@ -214,6 +263,13 @@ def append_dry_run_report(
         coder_warnings: Non-fatal proposal warnings, if any.
         coder_blocked_paths: Proposal paths blocked by the target boundary.
         coder_files: Proposal files written during the tick.
+        application_status: Application verdict label, or ``None`` when the
+            application stage did not run this tick.
+        application_mode: ``"preview_only"`` or ``"apply"``.
+        application_applied: Whether files were actually written.
+        application_reasons: Patch-plan rejection reasons, if any.
+        application_blocked_paths: Patch paths blocked by the boundary.
+        application_files: Application artifact files written this tick.
         repo_root: Optional explicit repository root, primarily for tests.
 
     Returns:
@@ -243,6 +299,14 @@ def append_dry_run_report(
         warnings=coder_warnings,
         blocked_paths=coder_blocked_paths,
         files=coder_files,
+    )
+    application_section = _render_application_section(
+        status=application_status,
+        mode=application_mode,
+        applied=application_applied,
+        reasons=application_reasons,
+        blocked_paths=application_blocked_paths,
+        files=application_files,
     )
     body = (
         f"# Factory Session Report\n\n"
@@ -277,6 +341,7 @@ def append_dry_run_report(
         + "".join(f"  - `{path}`\n" for path in planning_files[1:])
         + contract_section
         + coder_section
+        + application_section
         + "\n## Reporter Outcome\n\n"
         + f"- Last role completed: `{last_role_completed}`\n"
         + "\n## Repository Status\n\n```text\n"

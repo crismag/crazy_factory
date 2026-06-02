@@ -36,6 +36,7 @@ from typing import Any
 from coder_proposal import ProposalResult, coder_status_label
 from contract_stage import ContractResult
 from planning_roles import RoleResult
+from proposal_applier import ApplicationResult, application_status_label
 from repo_tools import safe_load_json, safe_write_json
 
 
@@ -111,6 +112,7 @@ def update_success_state(
     *,
     contract_result: ContractResult | None = None,
     coder_result: ProposalResult | None = None,
+    application_result: ApplicationResult | None = None,
 ) -> str:
     """Update in-memory state after a planning (and optional coder) dry run.
 
@@ -129,6 +131,7 @@ def update_success_state(
         planner_result: Completed Planner result.
         contract_result: Validated structured contract outcome, if produced.
         coder_result: Coder proposal outcome, if the coder stage ran.
+        application_result: Proposal application outcome, if that stage ran.
 
     Returns:
         UTC completion timestamp written into state.
@@ -167,7 +170,73 @@ def update_success_state(
             coder_result,
             completed_at,
         )
+    if application_result is not None:
+        _apply_application_state(
+            factory_state,
+            active_run,
+            project_state,
+            application_result,
+            completed_at,
+        )
     return completed_at
+
+
+def _apply_application_state(
+    factory_state: dict[str, Any],
+    active_run: dict[str, Any],
+    project_state: dict[str, Any],
+    application_result: ApplicationResult,
+    completed_at: str,
+) -> None:
+    """Record the proposal application outcome into state snapshots.
+
+    A not-approved application is the normal healthy state and is not a
+    failure. An activated-but-rejected patch plan is a recoverable failure. A
+    valid preview or a successful apply points the resume marker at the
+    application artifacts.
+
+    Args:
+        factory_state: Global mutable state snapshot.
+        active_run: Mutable active-run state snapshot.
+        project_state: Mutable project state snapshot.
+        application_result: Proposal application outcome.
+        completed_at: UTC completion timestamp for the current tick.
+    """
+    status = application_status_label(application_result)
+    plan = application_result.plan
+    plan_id = plan.plan_id if plan else None
+    factory_state["last_application_status"] = status
+    project_state["last_application_status"] = status
+    project_state["last_patch_plan_id"] = plan_id
+    project_state["application_applied"] = application_result.applied
+    active_run["last_application_status"] = status
+
+    if not application_result.activated:
+        return
+
+    if application_result.verdict.valid:
+        active_run["current_blocker"] = None
+        project_state["current_blocker"] = None
+        verb = "applied" if application_result.applied else "previewed"
+        active_run["resume_from"] = (
+            f"Patch plan {verb}; review PATCH_PLAN.md and "
+            "APPLICATION_REPORT.md. resume_from=application."
+        )
+        return
+
+    factory_state["last_failed_run"] = completed_at
+    factory_state["failure_count"] = (
+        int(factory_state.get("failure_count", 0)) + 1
+    )
+    project_state["failure_count"] = (
+        int(project_state.get("failure_count", 0)) + 1
+    )
+    active_run["current_blocker"] = "application_rejected"
+    project_state["current_blocker"] = "application_rejected"
+    active_run["resume_from"] = (
+        "Patch plan rejected; see PATCH_PLAN.md reasons. No files were "
+        "applied. resume_from=application."
+    )
 
 
 def _apply_coder_state(
