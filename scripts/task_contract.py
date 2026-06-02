@@ -136,6 +136,7 @@ def _coerce_str(value: Any) -> str:
     Returns:
         Stripped string, or an empty string for ``None`` or non-scalar values.
     """
+    # ``bool`` is intentionally covered here via its ``int`` subclass.
     if isinstance(value, (str, int, float)):
         return str(value).strip()
     return ""
