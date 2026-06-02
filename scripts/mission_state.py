@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from checkpoint_commit import CheckpointResult, checkpoint_status_label
 from coder_proposal import ProposalResult, coder_status_label
 from contract_stage import ContractResult
 from planning_roles import RoleResult
@@ -117,6 +118,7 @@ def update_success_state(
     application_result: ApplicationResult | None = None,
     test_plan_result: TestPlanResult | None = None,
     validation_result: ValidationResult | None = None,
+    checkpoint_result: CheckpointResult | None = None,
 ) -> str:
     """Update in-memory state after a planning (and optional coder) dry run.
 
@@ -198,7 +200,43 @@ def update_success_state(
             validation_result,
             completed_at,
         )
+    if checkpoint_result is not None:
+        _apply_checkpoint_state(
+            factory_state, active_run, project_state, checkpoint_result
+        )
     return completed_at
+
+
+def _apply_checkpoint_state(
+    factory_state: dict[str, Any],
+    active_run: dict[str, Any],
+    project_state: dict[str, Any],
+    checkpoint_result: CheckpointResult,
+) -> None:
+    """Record the checkpoint outcome into state snapshots.
+
+    A committed checkpoint advances the last-completed-checkpoint marker. An
+    eligible-but-not-committed or not-eligible checkpoint is benign (the
+    earlier stages already governed failure state).
+
+    Args:
+        factory_state: Global mutable state snapshot.
+        active_run: Mutable active-run state snapshot.
+        project_state: Mutable project state snapshot.
+        checkpoint_result: Checkpoint outcome.
+    """
+    status = checkpoint_status_label(checkpoint_result)
+    factory_state["last_checkpoint_status"] = status
+    project_state["last_checkpoint_status"] = status
+    if checkpoint_result.committed and checkpoint_result.checkpoint_id:
+        project_state["last_completed_checkpoint"] = (
+            checkpoint_result.checkpoint_id
+        )
+        active_run["current_checkpoint"] = checkpoint_result.checkpoint_id
+        active_run["resume_from"] = (
+            "Checkpoint committed; select the next task. "
+            "resume_from=select_next_task."
+        )
 
 
 def _apply_test_plan_state(

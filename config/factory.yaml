@@ -20,6 +20,18 @@ validation:
   allow_run: false
   timeout_seconds: 60
 
+git:
+  allow_auto_commit: false
+  allow_auto_push: false
+  allow_auto_merge: false
+  commit_prefix: "factory:"
+  allowed_auto_commit_paths:
+    - apps/<active_project>/app
+    - apps/<active_project>/docs
+    - apps/<active_project>/tests
+    - apps/<active_project>/factory_tasks
+    - apps/<active_project>/factory_reports
+
 ollama:
   base_url: "http://localhost:11434"
   timeout_seconds: 120
