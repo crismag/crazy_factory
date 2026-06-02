@@ -37,6 +37,7 @@ from task_contract import (
     contract_to_dict,
     is_contract_actionable,
     parse_planned_task,
+    planned_task_from_record,
     render_planned_task_md,
     validate_planned_task,
 )
@@ -242,8 +243,12 @@ def run_contract_stage(
 
     existing = load_existing_contract(contract_json_path, root)
     if existing is not None and is_contract_actionable(existing):
+        # Preserve the owner-authorized JSON untouched, but refresh the
+        # owner-facing Markdown so it stops claiming approval is still
+        # required and instead reflects the authorized status.
+        preserved_task = planned_task_from_record(existing)
         result = ContractResult(
-            task=None,
+            task=preserved_task,
             verdict=ValidationVerdict(True, []),
             source="preserved",
             detail=(
@@ -251,6 +256,18 @@ def run_contract_stage(
                 "was generated this run."
             ),
             preserved=True,
+        )
+        safe_write_text(
+            planned_task_path,
+            render_planned_task_md(
+                preserved_task,
+                result.verdict,
+                source=result.source,
+                detail=result.detail,
+                authorized=True,
+            ),
+            repo_root=root,
+            allowed_roots=[task_root],
         )
         return result, contract_json_path, planned_task_path
 

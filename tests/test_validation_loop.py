@@ -678,29 +678,70 @@ class ContractHardeningTests(unittest.TestCase):
         task = parse_planned_task(json.dumps(data))
         self.assertEqual(task.acceptance_criteria, ["real criterion"])
 
-    def test_actionable_requires_authorized_and_valid(self) -> None:
-        """Fix #2: actionable needs authorized=true AND status valid."""
-        valid_authorized = {
+    def test_actionable_requires_authorized_and_revalidated(self) -> None:
+        """#2/P1: actionable needs authorized=true AND current content valid.
+
+        The cached ``validation.status`` is never trusted; the record's
+        current fields are revalidated on every check.
+        """
+        authorized = {
+            **_valid_contract_dict(),
             "authorized": True,
             "validation": {"status": "valid"},
         }
-        self.assertTrue(is_contract_actionable(valid_authorized))
-        # Authorized but rejected must never be actionable.
+        self.assertTrue(is_contract_actionable(authorized))
+
+        # Valid content but unauthorized is not actionable.
+        self.assertFalse(
+            is_contract_actionable({**authorized, "authorized": False})
+        )
+        # P1: authorized but body tampered after the fact (scope emptied),
+        # while a stale "valid" status remains -> not actionable.
+        self.assertFalse(is_contract_actionable({**authorized, "scope": []}))
+        # P1: authorized but a forbidden op slipped into acceptance_criteria.
         self.assertFalse(
             is_contract_actionable(
-                {"authorized": True, "validation": {"status": "rejected"}}
+                {**authorized, "acceptance_criteria": ["git push to origin"]}
             )
         )
-        # Valid but unauthorized is not actionable.
+        # A stale "valid" status cannot rescue missing required content.
         self.assertFalse(
             is_contract_actionable(
-                {"authorized": False, "validation": {"status": "valid"}}
+                {"authorized": True, "validation": {"status": "valid"}}
             )
         )
-        self.assertFalse(is_contract_actionable({"authorized": True}))
+        # Non-mapping input is never actionable.
+        self.assertFalse(is_contract_actionable(["not", "a", "dict"]))
+        self.assertFalse(is_contract_actionable(None))
+
+    def test_forbidden_op_in_acceptance_criteria_is_rejected(self) -> None:
+        """Forbidden ops cannot bypass the scan via acceptance_criteria."""
+        data = _valid_contract_dict()
+        data["acceptance_criteria"] = ["git push to origin"]
+        verdict = validate_planned_task(parse_planned_task(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertTrue(any("forbidden" in r.lower() for r in verdict.reasons))
+
+    def test_forbidden_op_in_validation_plan_is_rejected(self) -> None:
+        """Forbidden ops cannot bypass the scan via validation_plan."""
+        data = _valid_contract_dict()
+        data["validation_plan"] = "merge into main and force push"
+        verdict = validate_planned_task(parse_planned_task(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertTrue(any("forbidden" in r.lower() for r in verdict.reasons))
+
+    def test_exclusions_may_mention_forbidden_ops(self) -> None:
+        """Exclusions remain the safe harbor for negative statements."""
+        data = _valid_contract_dict()
+        data["exclusions"] = [
+            "Do not push to origin",
+            "Do not merge into main",
+        ]
+        verdict = validate_planned_task(parse_planned_task(json.dumps(data)))
+        self.assertTrue(verdict.valid)
 
     def test_preserves_authorized_contract_without_regenerating(self) -> None:
-        """Fix #1: an authorized valid contract is kept, not overwritten."""
+        """#1/P2: an authorized valid contract is kept; Markdown refreshed."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             task_root = root / "apps/demo/factory_tasks"
@@ -711,20 +752,26 @@ class ContractHardeningTests(unittest.TestCase):
                 "context_root": "apps/demo/factory_context",
             }
             authorized = {
-                "task_id": "DEMO-002",
+                **_valid_contract_dict(),
                 "authorized": True,
                 "validation": {"status": "valid", "reasons": []},
             }
             contract_file = task_root / "planned_task.json"
             original = json.dumps(authorized, indent=2)
             contract_file.write_text(original, encoding="utf-8")
+            # A stale Markdown view still claiming approval is required.
+            md_file = task_root / "PLANNED_TASK.md"
+            md_file.write_text(
+                "# stale\n- Authorized: `false` (owner approval required)\n",
+                encoding="utf-8",
+            )
 
             # chat must never be called when a contract is preserved.
             with patch(
                 "contract_stage.OllamaClient.chat",
                 side_effect=AssertionError("must not regenerate"),
             ):
-                result, json_path, _ = run_contract_stage(
+                result, _, _ = run_contract_stage(
                     project_name="demo",
                     root=root,
                     project=project,
@@ -737,10 +784,14 @@ class ContractHardeningTests(unittest.TestCase):
                 )
             self.assertTrue(result.preserved)
             self.assertEqual(result.source, "preserved")
-            # File content is untouched (authorization survives).
+            # JSON is untouched (owner authorization survives verbatim).
             self.assertEqual(
                 contract_file.read_text(encoding="utf-8"), original
             )
+            # P2: Markdown is refreshed to reflect the authorized status.
+            md = md_file.read_text(encoding="utf-8").replace("`", "").lower()
+            self.assertIn("authorized: true", md)
+            self.assertNotIn("owner approval required", md)
 
     def test_load_existing_contract_handles_missing_and_corrupt(self) -> None:
         """Fix #1: missing or corrupt contracts load as absent."""
@@ -812,6 +863,59 @@ class ContractHardeningTests(unittest.TestCase):
         self.assertEqual(project_state["failure_count"], 0)
         self.assertEqual(factory_state["failure_count"], 0)
         self.assertIsNone(project_state["current_blocker"])
+
+    def test_report_includes_authorized_preserved_contract(self) -> None:
+        """P2/report: preserved contract shows authorized + preserved labels."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "reports").mkdir()
+            (root / "apps/demo/factory_reports").mkdir(parents=True)
+            (root / "reports/ACTIVITY_BLOG.md").write_text(
+                "# Activity Blog\n", encoding="utf-8"
+            )
+            (root / "reports/DAILY_REPORT.md").write_text(
+                "# Daily Report\n", encoding="utf-8"
+            )
+            report_path = append_dry_run_report(
+                project_name="demo",
+                project_report_root="apps/demo/factory_reports",
+                mode="dry_run",
+                context_files=["context.md"],
+                task_files=["task.md"],
+                git_status="clean",
+                factory_state={"last_failed_run": None},
+                active_run={"resume_from": "Holding for Coder."},
+                project_state={
+                    "current_task": "DEMO-TEST",
+                    "current_milestone": "DEMO-M",
+                    "last_completed_checkpoint": None,
+                    "failure_count": 0,
+                    "current_blocker": None,
+                },
+                architect_source="ollama",
+                architect_detail="m",
+                planner_source="ollama",
+                planner_detail="m",
+                last_role_completed="reporter",
+                planning_files=["TASK_EXPANSION.md", "NEXT_ACTION.md"],
+                contract_status="authorized",
+                contract_source="preserved",
+                contract_detail="kept",
+                contract_reasons=[],
+                contract_files=["planned_task.json", "PLANNED_TASK.md"],
+                contract_authorized=True,
+                repo_root=root,
+            )
+            report = (
+                report_path.read_text(encoding="utf-8")
+                .replace("`", "")
+                .lower()
+            )
+            self.assertIn(
+                "authorized: true (owner-authorized; preserved)", report
+            )
+            self.assertIn("contract files preserved", report)
+            self.assertNotIn("contract files written", report)
 
 
 if __name__ == "__main__":
