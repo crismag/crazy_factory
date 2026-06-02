@@ -63,3 +63,12 @@ task completion state.
 - [x] Commit message derived from the contract; checkpoint log + report.
 - [x] Only safe git subcommands, shell-free; no push/merge/reset/rebase.
 - [ ] Owner enables `git.allow_auto_commit` after reviewing checkpoints.
+
+## `DEMO-PHASE8` Continuous Operation, Stall Recovery, Satisfaction
+
+- [x] Stop/pause/blocked/satisfied flags halt or pause the mission loop.
+- [x] Mission loop runs one guarded iteration per beat; writes status.
+- [x] Stall detection triggers recovery + block instead of blind retries.
+- [x] Satisfaction declared only when complete, unblocked, validated.
+- [x] Cron stays example-only; install remains manual.
+- [ ] Owner installs cron after reviewing continuous behavior.

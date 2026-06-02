@@ -94,6 +94,23 @@
     push, merge, reset, rebase, clean, or history rewrite
   - checkpoint log + report written; state advances the checkpoint marker
 
+## `DEMO-PHASE8`: Continuous Operation, Stall Recovery, Satisfaction
+
+- Status: `active`
+- Purpose: make the factory a guarded continuous worker that always knows
+  whether to continue, pause, recover, or declare satisfaction.
+- Completion criteria:
+  - stop/pause/blocked/satisfied flag files (and JSON booleans) halt or pause
+    the loop
+  - the mission loop runs one guarded iteration per cron beat (no internal
+    loop) and writes `reports/MISSION_STATUS.md`
+  - stall detection (failure threshold, persistent blocker, repeated fallback)
+    triggers recovery: `STALL_REPORT.md` + `RECOVERY_PLAN.md` and a
+    `blocked.flag`, instead of blind retries
+  - satisfaction is declared only when the checklist is complete, no blockers,
+    validation passed; writes `SATISFACTION_REPORT.md` and sets `satisfied.flag`
+  - cron remains example-only
+
 ## `DEMO-M3`: Future Application Checkpoint Trial
 
 - Status: `deferred`
