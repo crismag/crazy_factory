@@ -191,6 +191,42 @@ def _render_application_section(
     )
 
 
+def _render_validation_section(
+    *,
+    test_plan_status: str | None,
+    test_plan_id: str | None,
+    validation_status: str | None,
+    validation_executed: bool,
+    validation_checks: list[str] | None,
+    validation_files: list[str] | None,
+) -> str:
+    """Render the optional Validation section of a session report.
+
+    Args:
+        test_plan_status: Test-plan verdict, or ``None`` to omit the section.
+        test_plan_id: Test-plan identifier, if any.
+        validation_status: Validation verdict label.
+        validation_executed: Whether any check ran.
+        validation_checks: ``"status command"`` lines.
+        validation_files: Validation artifact files written.
+
+    Returns:
+        Markdown section text, or empty when ``test_plan_status`` is ``None``.
+    """
+    if test_plan_status is None:
+        return ""
+    return (
+        "\n## Validation\n\n"
+        f"- Test plan: `{test_plan_id}` (`{test_plan_status}`)\n"
+        f"- Validation status: `{validation_status}`\n"
+        f"- Executed: `{str(validation_executed).lower()}`\n"
+        + "- Checks:\n"
+        + "".join(f"  - {c}\n" for c in (validation_checks or []))
+        + "- Validation files:\n"
+        + "".join(f"  - `{path}`\n" for path in (validation_files or []))
+    )
+
+
 def append_dry_run_report(
     *,
     project_name: str,
@@ -227,6 +263,12 @@ def append_dry_run_report(
     application_reasons: list[str] | None = None,
     application_blocked_paths: list[str] | None = None,
     application_files: list[str] | None = None,
+    test_plan_status: str | None = None,
+    test_plan_id: str | None = None,
+    validation_status: str | None = None,
+    validation_executed: bool = False,
+    validation_checks: list[str] | None = None,
+    validation_files: list[str] | None = None,
     repo_root: str | Path | None = None,
 ) -> Path:
     """Write a dry-run report and append top-level activity summaries.
@@ -270,6 +312,14 @@ def append_dry_run_report(
         application_reasons: Patch-plan rejection reasons, if any.
         application_blocked_paths: Patch paths blocked by the boundary.
         application_files: Application artifact files written this tick.
+        test_plan_status: Test-plan verdict label, or ``None`` when the test
+            builder did not run this tick.
+        test_plan_id: Test-plan identifier, if any.
+        validation_status: Validation verdict label, or ``None`` when
+            validation did not run.
+        validation_executed: Whether any check was actually executed.
+        validation_checks: ``"status command"`` lines for each check.
+        validation_files: Validation artifact files written this tick.
         repo_root: Optional explicit repository root, primarily for tests.
 
     Returns:
@@ -308,6 +358,14 @@ def append_dry_run_report(
         blocked_paths=application_blocked_paths,
         files=application_files,
     )
+    validation_section = _render_validation_section(
+        test_plan_status=test_plan_status,
+        test_plan_id=test_plan_id,
+        validation_status=validation_status,
+        validation_executed=validation_executed,
+        validation_checks=validation_checks,
+        validation_files=validation_files,
+    )
     body = (
         f"# Factory Session Report\n\n"
         f"- Timestamp: `{stamp}`\n"
@@ -342,6 +400,7 @@ def append_dry_run_report(
         + contract_section
         + coder_section
         + application_section
+        + validation_section
         + "\n## Reporter Outcome\n\n"
         + f"- Last role completed: `{last_role_completed}`\n"
         + "\n## Repository Status\n\n```text\n"

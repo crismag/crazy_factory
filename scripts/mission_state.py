@@ -38,6 +38,8 @@ from contract_stage import ContractResult
 from planning_roles import RoleResult
 from proposal_applier import ApplicationResult, application_status_label
 from repo_tools import safe_load_json, safe_write_json
+from test_builder import TestPlanResult, test_plan_status_label
+from validation_runner import ValidationResult, validation_status_label
 
 
 def load_state(
@@ -113,6 +115,8 @@ def update_success_state(
     contract_result: ContractResult | None = None,
     coder_result: ProposalResult | None = None,
     application_result: ApplicationResult | None = None,
+    test_plan_result: TestPlanResult | None = None,
+    validation_result: ValidationResult | None = None,
 ) -> str:
     """Update in-memory state after a planning (and optional coder) dry run.
 
@@ -178,7 +182,115 @@ def update_success_state(
             application_result,
             completed_at,
         )
+    if test_plan_result is not None:
+        _apply_test_plan_state(
+            factory_state,
+            active_run,
+            project_state,
+            test_plan_result,
+            completed_at,
+        )
+    if validation_result is not None:
+        _apply_validation_state(
+            factory_state,
+            active_run,
+            project_state,
+            validation_result,
+            completed_at,
+        )
     return completed_at
+
+
+def _apply_test_plan_state(
+    factory_state: dict[str, Any],
+    active_run: dict[str, Any],
+    project_state: dict[str, Any],
+    test_plan_result: TestPlanResult,
+    completed_at: str,
+) -> None:
+    """Record the test-plan outcome into state snapshots.
+
+    A skipped test builder is healthy. An activated-but-rejected plan is a
+    recoverable failure.
+
+    Args:
+        factory_state: Global mutable state snapshot.
+        active_run: Mutable active-run state snapshot.
+        project_state: Mutable project state snapshot.
+        test_plan_result: Test-plan outcome.
+        completed_at: UTC completion timestamp for the current tick.
+    """
+    status = test_plan_status_label(test_plan_result)
+    plan = test_plan_result.plan
+    factory_state["last_test_plan_status"] = status
+    project_state["last_test_plan_status"] = status
+    project_state["last_test_plan_id"] = plan.test_plan_id if plan else None
+
+    if not test_plan_result.activated or test_plan_result.verdict.valid:
+        return
+
+    factory_state["last_failed_run"] = completed_at
+    factory_state["failure_count"] = (
+        int(factory_state.get("failure_count", 0)) + 1
+    )
+    project_state["failure_count"] = (
+        int(project_state.get("failure_count", 0)) + 1
+    )
+    active_run["current_blocker"] = "test_plan_rejected"
+    project_state["current_blocker"] = "test_plan_rejected"
+
+
+def _apply_validation_state(
+    factory_state: dict[str, Any],
+    active_run: dict[str, Any],
+    project_state: dict[str, Any],
+    validation_result: ValidationResult,
+    completed_at: str,
+) -> None:
+    """Record the validation outcome into state snapshots.
+
+    A passed or skipped validation is healthy. A failed or blocked validation
+    is a recoverable failure that must block any future checkpoint.
+
+    Args:
+        factory_state: Global mutable state snapshot.
+        active_run: Mutable active-run state snapshot.
+        project_state: Mutable project state snapshot.
+        validation_result: Validation outcome.
+        completed_at: UTC completion timestamp for the current tick.
+    """
+    status = validation_status_label(validation_result)
+    checks_run = [
+        check.command
+        for check in validation_result.checks
+        if check.status in {"passed", "failed", "error"}
+    ]
+    factory_state["last_validation_status"] = status
+    project_state["last_validation_status"] = status
+    project_state["checks_run"] = checks_run
+    active_run["last_validation_status"] = status
+
+    if status in {"failed", "blocked"}:
+        factory_state["last_failed_run"] = completed_at
+        factory_state["failure_count"] = (
+            int(factory_state.get("failure_count", 0)) + 1
+        )
+        project_state["failure_count"] = (
+            int(project_state.get("failure_count", 0)) + 1
+        )
+        active_run["current_blocker"] = "validation_failed"
+        project_state["current_blocker"] = "validation_failed"
+        active_run["resume_from"] = (
+            "Validation failed or blocked; see VALIDATION_REPORT.md. "
+            "resume_from=validation."
+        )
+    elif status == "passed":
+        active_run["current_blocker"] = None
+        project_state["current_blocker"] = None
+        active_run["resume_from"] = (
+            "Validation passed; ready for owner review. "
+            "resume_from=validation."
+        )
 
 
 def _apply_application_state(

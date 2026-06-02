@@ -45,3 +45,12 @@ task completion state.
 - [x] Default to `preview_only`; apply only when explicitly enabled.
 - [x] Write `APPLICATION_REPORT.md`; record application state.
 - [ ] Owner enables apply mode for a reviewed plan (manual, deliberate).
+
+## `DEMO-PHASE6` Test Builder and Validation Runner
+
+- [x] Test Builder generates a structured test plan (`test_plan.json` + md).
+- [x] Reject plans whose checks are not allowlisted.
+- [x] Validation Runner executes only allowlisted, shell-free commands.
+- [x] Execution gated by `validation.allow_run` (default off → skipped).
+- [x] Blocked/failed checks block checkpoint promotion; recorded in state.
+- [ ] Owner enables `validation.allow_run` to execute real checks.
