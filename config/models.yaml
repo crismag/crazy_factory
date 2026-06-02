@@ -1,0 +1,8 @@
+models:
+  architect: "cogito:14b"
+  planner: "cogito:14b"
+  coder: "qwen2.5-coder:14b"
+  test_builder: "qwen2.5-coder:14b"
+  reviewer: "gemma4:latest"
+  fast_helper: "deepseek-coder:latest"
+  embeddings: "nomic-embed-text:latest"

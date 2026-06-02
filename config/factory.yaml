@@ -1,0 +1,20 @@
+factory:
+  mode: dry_run
+  active_project: demo_app
+  allow_application_writes: false
+  allow_factory_writes: false
+  allow_commit: false
+  allow_push: false
+  max_files_per_run: 5
+  max_lines_per_file: 300
+  require_report_every_run: true
+  require_next_action_every_run: true
+
+ollama:
+  base_url: "http://localhost:11434"
+  timeout_seconds: 120
+  stream: false
+
+logging:
+  log_dir: logs
+  report_dir: reports

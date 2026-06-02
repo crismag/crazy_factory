@@ -1,0 +1,5 @@
+# Crazy Factory cron example
+# Review before use.
+# This is intentionally not installed automatically.
+#
+# */30 * * * * cd /path/to/crazy_factory && ./bin/factory-tick >> logs/cron.log 2>&1

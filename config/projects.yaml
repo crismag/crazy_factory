@@ -1,0 +1,22 @@
+active_project: demo_app
+
+projects:
+  demo_app:
+    root: apps/demo_app
+    source_root: apps/demo_app/app
+    docs_root: apps/demo_app/docs
+    tests_root: apps/demo_app/tests
+    context_root: apps/demo_app/factory_context
+    task_root: apps/demo_app/factory_tasks
+    report_root: apps/demo_app/factory_reports
+    prompt_root: apps/demo_app/factory_prompts
+    script_root: apps/demo_app/factory_scripts
+    allowed_write_paths:
+      - apps/demo_app/app
+      - apps/demo_app/docs
+      - apps/demo_app/tests
+      - apps/demo_app/factory_context
+      - apps/demo_app/factory_tasks
+      - apps/demo_app/factory_reports
+      - apps/demo_app/factory_prompts
+      - apps/demo_app/factory_scripts
