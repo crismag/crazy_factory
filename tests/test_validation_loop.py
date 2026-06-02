@@ -17,25 +17,31 @@ from unittest.mock import patch
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from factory_tick import (  # noqa: E402
+from contract_stage import (  # noqa: E402
     ContractResult,
-    RoleResult,
     contract_paths,
     contract_status_label,
+    load_existing_contract,
+    request_task_contract,
+    run_contract_stage,
+)
+from mission_state import (  # noqa: E402
+    requested_control_action,
+    update_success_state,
+)
+from planning_roles import (  # noqa: E402
+    RoleResult,
     fallback_architect_result,
     fallback_planner_result,
-    load_active_project,
-    load_configuration,
-    load_existing_contract,
     planning_paths,
     render_next_action,
     render_task_expansion,
-    requested_control_action,
     request_architect_result,
     request_planner_result,
-    request_task_contract,
-    run_contract_stage,
-    update_success_state,
+)
+from tick_config import (  # noqa: E402
+    load_active_project,
+    load_configuration,
     validate_dry_run_settings,
 )
 from ollama_client import OllamaConnectionError  # noqa: E402
@@ -163,7 +169,7 @@ class ValidationLoopSmokeTests(unittest.TestCase):
             "current_milestone": "DEMO-M2",
         }
         with patch(
-            "factory_tick.OllamaClient.chat",
+            "planning_roles.OllamaClient.chat",
             side_effect=OllamaConnectionError("offline"),
         ):
             result = request_architect_result(
@@ -192,7 +198,7 @@ class ValidationLoopSmokeTests(unittest.TestCase):
             "architect", "Review architecture.", "fallback", "offline"
         )
         with patch(
-            "factory_tick.OllamaClient.chat",
+            "planning_roles.OllamaClient.chat",
             side_effect=OllamaConnectionError("offline"),
         ):
             result = request_planner_result(
@@ -478,7 +484,7 @@ class TaskContractTests(unittest.TestCase):
         architect_result = RoleResult("architect", "x", "fallback", "off")
         planner_result = RoleResult("planner", "y", "fallback", "off")
         with patch(
-            "factory_tick.OllamaClient.chat",
+            "contract_stage.OllamaClient.chat",
             side_effect=OllamaConnectionError("offline"),
         ):
             result = request_task_contract(
@@ -504,7 +510,7 @@ class TaskContractTests(unittest.TestCase):
         architect_result = RoleResult("architect", "x", "ollama", "m")
         planner_result = RoleResult("planner", "y", "ollama", "m")
         with patch(
-            "factory_tick.OllamaClient.chat",
+            "contract_stage.OllamaClient.chat",
             return_value={"message": {"content": "definitely not json"}},
         ):
             result = request_task_contract(
@@ -531,7 +537,7 @@ class TaskContractTests(unittest.TestCase):
         planner_result = RoleResult("planner", "y", "ollama", "m")
         content = json.dumps(_valid_contract_dict())
         with patch(
-            "factory_tick.OllamaClient.chat",
+            "contract_stage.OllamaClient.chat",
             return_value={"message": {"content": content}},
         ):
             result = request_task_contract(
@@ -715,7 +721,7 @@ class ContractHardeningTests(unittest.TestCase):
 
             # chat must never be called when a contract is preserved.
             with patch(
-                "factory_tick.OllamaClient.chat",
+                "contract_stage.OllamaClient.chat",
                 side_effect=AssertionError("must not regenerate"),
             ):
                 result, json_path, _ = run_contract_stage(

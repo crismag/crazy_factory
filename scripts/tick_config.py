@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Load and validate Crazy Factory configuration for a tick.
+
+This module isolates configuration concerns: reading ``config/factory.yaml``
+and ``config/projects.yaml``, refusing settings that exceed dry-run authority,
+and resolving the configured active project. It performs no model calls and no
+writes.
+
+Example:
+    Load configuration and resolve the active project::
+
+        factory_config, projects_config = load_configuration(root)
+        name, project = load_active_project(
+            factory_config["factory"], projects_config
+        )
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from repo_tools import load_simple_yaml
+
+
+def load_configuration(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Load factory and project configuration files.
+
+    Args:
+        root: Absolute repository root.
+
+    Returns:
+        Tuple containing factory configuration and projects configuration.
+    """
+    return (
+        load_simple_yaml("config/factory.yaml", root),
+        load_simple_yaml("config/projects.yaml", root),
+    )
+
+
+def validate_dry_run_settings(factory: dict[str, Any]) -> None:
+    """Reject settings that exceed Phase 2 authority.
+
+    Args:
+        factory: Parsed ``factory`` configuration mapping.
+
+    Raises:
+        RuntimeError: If dry-run mode is disabled or a broad write capability
+            is enabled.
+    """
+    mode = str(factory["mode"])
+    if mode != "dry_run":
+        raise RuntimeError(f"Validation tick refuses non-dry-run mode: {mode}")
+    if factory.get("allow_commit") or factory.get("allow_push"):
+        raise RuntimeError(
+            "Validation tick refuses enabled commit or push settings"
+        )
+    if factory.get("allow_application_writes") or factory.get(
+        "allow_factory_writes"
+    ):
+        raise RuntimeError(
+            "Validation tick refuses broad application or factory writes"
+        )
+
+
+def load_active_project(
+    factory: dict[str, Any], projects_config: dict[str, Any]
+) -> tuple[str, dict[str, Any]]:
+    """Resolve the configured active project.
+
+    Args:
+        factory: Parsed ``factory`` configuration mapping.
+        projects_config: Parsed ``config/projects.yaml`` mapping.
+
+    Returns:
+        Active project name and its configuration mapping.
+
+    Raises:
+        RuntimeError: If the configured project is missing or malformed.
+    """
+    project_name = str(
+        factory.get("active_project") or projects_config["active_project"]
+    )
+    projects = projects_config["projects"]
+    if not isinstance(projects, dict) or project_name not in projects:
+        raise RuntimeError(f"Unknown active project: {project_name}")
+    project = projects[project_name]
+    if not isinstance(project, dict):
+        raise RuntimeError(f"Invalid project configuration: {project_name}")
+    return project_name, project
