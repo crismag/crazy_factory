@@ -414,7 +414,10 @@ def _commit_checkpoint(
     message = build_commit_message(
         prefix=prefix, task_id=task_id, summary=summary
     )
-    commit = _git(["commit", "-m", message], root)
+    # Commit with an explicit pathspec so ONLY the engine-staged allowed paths
+    # are committed, even if the index already had other files staged. This
+    # guarantees a checkpoint can never carry forbidden or engine files along.
+    commit = _git(["commit", "-m", message, "--", *staged], root)
     if commit.returncode != 0:
         return CheckpointResult(
             eligible=True,
