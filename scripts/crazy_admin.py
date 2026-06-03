@@ -21,6 +21,7 @@ state, and the registry. It never applies code, commits, pushes, or merges.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +30,13 @@ from typing import Any
 sys.dont_write_bytecode = True
 
 import factory_tick  # noqa: E402
+from mission_state import initial_state  # noqa: E402
+from project_paths import (  # noqa: E402
+    DEFAULT_FACTORY_CONFIG,
+    assert_project_local,
+    load_project_factory_config,
+    project_config_exists,
+)
 from archive_utils import ArchiveError  # noqa: E402
 from context_manager import (  # noqa: E402
     ContextError,
@@ -65,22 +73,13 @@ from project_registry import (  # noqa: E402
 )
 from repo_tools import (  # noqa: E402
     find_repo_root,
-    load_simple_yaml,
+    resolve_repo_path,
     safe_load_json,
+    safe_read_text,
     safe_write_json,
     safe_write_text,
 )
 from seed_context import SeedError, validate_project_id  # noqa: E402
-
-_STATE_SUBDIRS: tuple[str, ...] = (
-    "factory_context",
-    "factory_tasks",
-    "factory_reports",
-    "proposals",
-    "contracts",
-    "runs",
-    "reflections",
-)
 
 
 class AdminError(RuntimeError):
@@ -125,17 +124,6 @@ def _scaffold_write(
         return
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(content, encoding="utf-8")
-
-
-def _ensure_state_dirs(state_path: str, root: Path) -> None:
-    """Create the per-project factory state directories (repo-internal)."""
-    for sub in _STATE_SUBDIRS:
-        safe_write_text(
-            f"{state_path}/{sub}/.gitkeep",
-            "",
-            repo_root=root,
-            allowed_roots=["factory_state"],
-        )
 
 
 def _crazy_project_yaml(project_id: str, repo_mode: str, app_path: str) -> str:
@@ -249,13 +237,30 @@ def startproject(
         force=force,
     )
 
-    state_path = state_path_for(project_id)
-    _ensure_state_dirs(state_path, root)
+    # Project-local runtime — config, run-state, and factory memory all live
+    # inside the workbench so the engine root stays clean and each project owns
+    # its files. The active factory config is copied from the root default
+    # template; the resolver derives every other path from app_path.
+    _scaffold_write(
+        base,
+        "config/factory.yaml",
+        safe_read_text(DEFAULT_FACTORY_CONFIG, root),
+        force=force,
+    )
+    for fname, body in initial_state(project_id).items():
+        _scaffold_write(
+            base,
+            f"state/{fname}",
+            json.dumps(body, indent=2) + "\n",
+            force=force,
+        )
+    _scaffold_write(base, "factory_state/.gitkeep", "", force=force)
+
     register_project(
         registry,
         project_id=project_id,
         app_path=app_path,
-        state_path=state_path,
+        state_path=state_path_for(project_id),
         repo_mode=repo_mode,
         seed_file="docs/seed.md",
         now=_now(),
@@ -264,7 +269,7 @@ def startproject(
     return {
         "project_id": project_id,
         "app_path": app_path,
-        "state_path": state_path,
+        "state_path": f"{app_path}/state",
         "repo_mode": repo_mode,
     }
 
@@ -299,7 +304,6 @@ def attachproject(
     )
     registry = load_registry(root)
     state_path = state_path_for(project_id)
-    _ensure_state_dirs(state_path, root)
     register_project(
         registry,
         project_id=project_id,
@@ -338,25 +342,184 @@ def activate(project_id: str, *, root: Path) -> None:
     registry = load_registry(root)
     set_active(registry, project_id)
     save_registry(registry, root)
-    _sync_state_active(project_id, root)
+    project = resolve_project(registry, project_id)
+    # External app runtime lives outside the repo (a deferred increment); its
+    # project-local state cannot be written through the repo-confined helpers.
+    if not app_is_external(project["app_path"], root):
+        _sync_state_active(project_id, project, root)
 
 
-def _sync_state_active(project_id: str, root: Path) -> None:
-    """Keep ``state/*.json`` consistent with the active project."""
+def _sync_state_active(
+    project_id: str, project: dict[str, Any], root: Path
+) -> None:
+    """Keep the project-local ``<app>/state/*.json`` pointed at the project.
+
+    Materializes the bootstrap state first when missing (e.g. an attached
+    project), so the project always owns its run-state.
+    """
+    state_dir = str(project["state_dir"])
+    bootstrap = initial_state(project_id)
     for name, key in (
         ("factory_state.json", "active_project"),
         ("active_run.json", "active_project"),
         ("project_state.json", "project"),
     ):
-        rel = f"state/{name}"
-        state = safe_load_json(rel, root)
+        rel = f"{state_dir}/{name}"
+        if resolve_repo_path(rel, root).is_file():
+            state = safe_load_json(rel, root)
+        else:
+            state = bootstrap[name]
         state[key] = project_id
-        safe_write_json(rel, state, repo_root=root, allowed_roots=["state"])
+        safe_write_json(rel, state, repo_root=root, allowed_roots=[state_dir])
 
 
-def _factory_config(root: Path) -> dict[str, Any]:
-    """Load the whole ``config/factory.yaml`` mapping (all top sections)."""
-    return load_simple_yaml("config/factory.yaml", root)
+def _copy_legacy_tree(
+    src_rel: str,
+    dest_rel: str,
+    app_path: str,
+    root: Path,
+    *,
+    only_suffixes: tuple[str, ...] | None = None,
+) -> dict[str, list[str]]:
+    """Non-destructively copy a legacy runtime tree into the project folder.
+
+    Files already present at the destination are left untouched (the project
+    copy wins). Every write is funnelled through :func:`assert_project_local`
+    so a mis-resolved destination fails loudly instead of landing in root.
+
+    Args:
+        src_rel: Repository-relative legacy source directory.
+        dest_rel: Repository-relative destination under ``app_path``.
+        app_path: The project's workbench path (the only writable root here).
+        root: Absolute repository root.
+        only_suffixes: When set, copy only files with these suffixes.
+
+    Returns:
+        Mapping with ``copied`` and ``skipped`` repository-relative paths.
+    """
+    copied: list[str] = []
+    skipped: list[str] = []
+    try:
+        src_abs = resolve_repo_path(src_rel, root)
+    except Exception:  # noqa: BLE001 - missing/odd legacy path → nothing to do
+        return {"copied": copied, "skipped": skipped}
+    if not src_abs.is_dir():
+        return {"copied": copied, "skipped": skipped}
+    for item in sorted(src_abs.rglob("*")):
+        if not item.is_file():
+            continue
+        if only_suffixes and item.suffix not in only_suffixes:
+            continue
+        rel = item.relative_to(src_abs).as_posix()
+        dest = f"{dest_rel}/{rel}"
+        assert_project_local(dest, app_path, root)
+        if resolve_repo_path(dest, root).exists():
+            skipped.append(dest)
+            continue
+        safe_write_text(
+            dest,
+            safe_read_text(item, root),
+            repo_root=root,
+            allowed_roots=[app_path],
+        )
+        copied.append(dest)
+    return {"copied": copied, "skipped": skipped}
+
+
+def migrate_project_runtime(project_id: str, *, root: Path) -> dict[str, Any]:
+    """Copy a project's pre-relocation root runtime into its workbench.
+
+    Non-destructive: brings legacy root ``state/``, ``factory_state/projects/
+    <id>/``, and ``reports/`` data into ``<app>/state``, ``<app>/factory_state``,
+    and ``<app>/factory_reports``, and materializes a project-local
+    ``config/factory.yaml`` when missing. Existing project files are never
+    overwritten. The old root folders are left in place for the owner to remove.
+
+    Args:
+        project_id: Project to migrate.
+        root: Absolute repository root.
+
+    Returns:
+        A summary with the copied/skipped paths per area and whether a config
+        was materialized.
+
+    Raises:
+        AdminError: If the project is external (its runtime lives outside repo).
+    """
+    registry = load_registry(root)
+    project = resolve_project(registry, project_id)
+    if app_is_external(project["app_path"], root):
+        raise AdminError(
+            f"Project '{project_id}' is external; its runtime lives outside "
+            "the repository and is not migrated by this command."
+        )
+    app_path = str(project["app_path"])
+    legacy_state = str(project.get("legacy_state_path") or "")
+    summary: dict[str, Any] = {"project_id": project_id, "areas": {}}
+
+    # Legacy root run-state (shared state/*.json) → project-local state/.
+    summary["areas"]["state"] = _copy_legacy_tree(
+        "state",
+        str(project["state_dir"]),
+        app_path,
+        root,
+        only_suffixes=(".json",),
+    )
+    # Legacy per-project factory memory (factory_state/projects/<id>) →
+    # project-local factory_state/.
+    if legacy_state:
+        summary["areas"]["factory_state"] = _copy_legacy_tree(
+            legacy_state,
+            str(project["factory_state_dir"]),
+            app_path,
+            root,
+        )
+    # Legacy root reports/ → project-local factory_reports/.
+    summary["areas"]["reports"] = _copy_legacy_tree(
+        "reports",
+        str(project["report_root"]),
+        app_path,
+        root,
+    )
+
+    # Ensure the project owns its active factory config.
+    summary["config_materialized"] = False
+    if not project_config_exists(app_path, root):
+        cfg_dest = str(project["factory_config_path"])
+        assert_project_local(cfg_dest, app_path, root)
+        safe_write_text(
+            cfg_dest,
+            safe_read_text(DEFAULT_FACTORY_CONFIG, root),
+            repo_root=root,
+            allowed_roots=[app_path],
+        )
+        summary["config_materialized"] = True
+    return summary
+
+
+def _print_migration(summary: dict[str, Any]) -> None:
+    """Print the migrate-project-runtime result for the owner."""
+    pid = summary["project_id"]
+    print(f"Migrated runtime for '{pid}' into its workbench.")
+    total_copied = 0
+    for area, result in summary["areas"].items():
+        copied = result["copied"]
+        skipped = result["skipped"]
+        total_copied += len(copied)
+        print(
+            f"  {area}: {len(copied)} copied, "
+            f"{len(skipped)} skipped (already present)"
+        )
+    if summary["config_materialized"]:
+        print("  config: materialized project-local config/factory.yaml")
+    if total_copied == 0 and not summary["config_materialized"]:
+        print("  Nothing to migrate — runtime is already project-local.")
+    else:
+        print(
+            "\nLegacy root folders were left untouched. Once you've confirmed "
+            "the project runs, you may remove the old root state/, reports/, "
+            "and factory_state/projects/ data."
+        )
 
 
 def _resolve_project_arg(root: Path, project_id: str | None) -> dict[str, Any]:
@@ -394,7 +557,7 @@ def status(root: Path) -> dict[str, Any]:
     info: dict[str, Any] = {
         "active_project": pid,
         "app_path": project["app_path"],
-        "state_path": project["state_path"],
+        "state_path": project["state_dir"],
         "repo_mode": project["repo_mode"],
         "workbench_exists": workbench_exists(project["app_path"], root),
     }
@@ -405,7 +568,13 @@ def status(root: Path) -> dict[str, Any]:
         catalog = load_catalog(root, project)
         info["context_imports"] = len(catalog.get("imports") or {})
         info["context_supported_files"] = supported_file_count(catalog)
-        info.update(gather_status(project, root, _factory_config(root)))
+        info.update(
+            gather_status(
+                project,
+                root,
+                load_project_factory_config(project["app_path"], root),
+            )
+        )
     return info
 
 
@@ -467,6 +636,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--write-config", action="store_true")
     av = sub.add_parser("activate")
     av.add_argument("project_id")
+    mg = sub.add_parser("migrate-project-runtime")
+    mg.add_argument("project_id")
     ac = sub.add_parser("add-context")
     ac.add_argument("project_id")
     ac.add_argument("source")
@@ -541,6 +712,9 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
         activate(args.project_id, root=root)
         print(f"Active project is now: {args.project_id}")
         return 0
+    if args.command == "migrate-project-runtime":
+        _print_migration(migrate_project_runtime(args.project_id, root=root))
+        return 0
     if args.command == "add-context":
         registry = load_registry(root)
         project = resolve_project(registry, args.project_id)
@@ -580,7 +754,13 @@ def _dispatch_owner(args: argparse.Namespace, root: Path) -> int | None:
     cmd = args.command
     if cmd == "next":
         project = _resolve_project_arg(root, args.project_id)
-        print(describe_next(project, root, _factory_config(root)))
+        print(
+            describe_next(
+                project,
+                root,
+                load_project_factory_config(project["app_path"], root),
+            )
+        )
         return 0
     if cmd == "authorize-task":
         project = _resolve_project_arg(root, args.project_id)

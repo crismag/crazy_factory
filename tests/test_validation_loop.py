@@ -296,14 +296,7 @@ class ValidationLoopSmokeTests(unittest.TestCase):
         """Write reports only inside temporary approved report directories."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "reports").mkdir()
             (root / "apps/demo/factory_reports").mkdir(parents=True)
-            (root / "reports/ACTIVITY_BLOG.md").write_text(
-                "# Activity Blog\n", encoding="utf-8"
-            )
-            (root / "reports/DAILY_REPORT.md").write_text(
-                "# Daily Report\n", encoding="utf-8"
-            )
             report_path = append_dry_run_report(
                 project_name="demo",
                 project_report_root="apps/demo/factory_reports",
@@ -330,9 +323,9 @@ class ValidationLoopSmokeTests(unittest.TestCase):
             )
             self.assertTrue(report_path.is_file())
             report = report_path.read_text(encoding="utf-8")
-            activity = (root / "reports/ACTIVITY_BLOG.md").read_text(
-                encoding="utf-8"
-            )
+            activity = (
+                root / "apps/demo/factory_reports/ACTIVITY_BLOG.md"
+            ).read_text(encoding="utf-8")
             self.assertIn("Architect Dry Run", report)
             self.assertIn("fallback", activity)
 
@@ -648,14 +641,7 @@ class TaskContractTests(unittest.TestCase):
         """Write a Task Contract section into the session report."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "reports").mkdir()
             (root / "apps/demo/factory_reports").mkdir(parents=True)
-            (root / "reports/ACTIVITY_BLOG.md").write_text(
-                "# Activity Blog\n", encoding="utf-8"
-            )
-            (root / "reports/DAILY_REPORT.md").write_text(
-                "# Daily Report\n", encoding="utf-8"
-            )
             report_path = append_dry_run_report(
                 project_name="demo",
                 project_report_root="apps/demo/factory_reports",
@@ -905,14 +891,7 @@ class ContractHardeningTests(unittest.TestCase):
         """P2/report: preserved contract shows authorized + preserved labels."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "reports").mkdir()
             (root / "apps/demo/factory_reports").mkdir(parents=True)
-            (root / "reports/ACTIVITY_BLOG.md").write_text(
-                "# Activity Blog\n", encoding="utf-8"
-            )
-            (root / "reports/DAILY_REPORT.md").write_text(
-                "# Daily Report\n", encoding="utf-8"
-            )
             report_path = append_dry_run_report(
                 project_name="demo",
                 project_report_root="apps/demo/factory_reports",

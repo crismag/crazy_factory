@@ -27,7 +27,11 @@ from project_control import (
     read_control,
     save_control,
 )
-from repo_tools import resolve_repo_path, safe_load_json, safe_write_json
+from repo_tools import (
+    resolve_repo_path,
+    safe_load_json,
+    safe_write_json,
+)
 
 PLANNED_TASK_FILE = "planned_task.json"
 CODER_PROPOSAL_FILE = "coder_proposal.json"
@@ -245,7 +249,12 @@ def gather_status(
     task = _read_json_or_none(project, PLANNED_TASK_FILE, root)
     proposal = _read_json_or_none(project, CODER_PROPOSAL_FILE, root)
     approval = _read_json_or_none(project, APPROVED_PROPOSAL_FILE, root)
-    project_state = safe_load_json("state/project_state.json", root)
+    state_file = f"{project['state_dir']}/project_state.json"
+    project_state = (
+        safe_load_json(state_file, root)
+        if resolve_repo_path(state_file, root).is_file()
+        else {}
+    )
 
     status, reasons = _contract_validation(task) if task else ("absent", [])
     caps = {
@@ -255,7 +264,7 @@ def gather_status(
     return {
         "project_id": project["name"],
         "app_path": project["app_path"],
-        "state_path": project["state_path"],
+        "state_path": project["state_dir"],
         "contract_exists": task is not None,
         "contract_status": status,
         "contract_authorized": bool(task and task.get("authorized") is True),

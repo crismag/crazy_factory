@@ -87,6 +87,10 @@ from repo_tools import (  # noqa: E402
     read_markdown_directory,
     safe_write_text,
 )
+from project_paths import (  # noqa: E402
+    assert_project_local,
+    load_project_factory_config,
+)
 from project_registry import (  # noqa: E402
     RegistryError,
     active_project_id,
@@ -95,10 +99,7 @@ from project_registry import (  # noqa: E402
     resolve_project,
     workbench_exists,
 )
-from tick_config import (  # noqa: E402
-    load_configuration,
-    validate_dry_run_settings,
-)
+from tick_config import validate_dry_run_settings  # noqa: E402
 
 
 def _no_active_project_notice() -> int:
@@ -119,10 +120,7 @@ def main() -> int:
         Process exit code ``0`` after completion, pause, or stop.
     """
     root = find_repo_root()
-    factory_config, projects_config = load_configuration(root)
     models_config = load_simple_yaml("config/models.yaml", root)
-    factory = factory_config["factory"]
-    validate_dry_run_settings(factory)
     registry = load_registry(root)
     project_name = active_project_id(registry)
     if not project_name:
@@ -148,15 +146,27 @@ def main() -> int:
             "embedded app (under apps/) to build now."
         )
         return 0
-    # Overlay the project's owner-control capabilities (apply/validation/commit)
-    # onto the global config. Project-local switches are authoritative when set;
-    # otherwise the global default (OFF) applies. This only ever changes the
-    # bridged capability switches — never mode or write boundaries.
+    # Fail loudly if any runtime path is not inside the project folder — the
+    # engine root is never a destination for project runtime data.
+    for runtime in (
+        project["state_dir"],
+        project["report_root"],
+        project["task_root"],
+        project["context_root"],
+        project["factory_state_dir"],
+    ):
+        assert_project_local(str(runtime), project["app_path"], root)
+    # The project's own config is authoritative; the engine root holds only the
+    # default template. Validate it, then overlay the owner-control capabilities
+    # (apply/validation/commit) — project-local switches win when set, else the
+    # project config default (OFF). All runtime paths come from the resolver.
+    factory_config = load_project_factory_config(project["app_path"], root)
+    validate_dry_run_settings(factory_config["factory"])
     factory_config = apply_project_controls(
         factory_config, read_control(project["app_path"], root)
     )
     factory = factory_config["factory"]
-    state_dir = str(factory["state_dir"])
+    state_dir = str(project["state_dir"])
     factory_state, active_run, project_state = load_state(root, state_dir)
     validate_state_project(project_name, factory_state, project_state)
 
@@ -175,6 +185,7 @@ def main() -> int:
         detail = f"Owner {control_action} flag is active."
         append_control_event(
             project_name=project_name,
+            project_report_root=str(project["report_root"]),
             outcome=control_action,
             detail=detail,
             repo_root=root,

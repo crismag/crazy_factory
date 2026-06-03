@@ -44,9 +44,9 @@ from project_registry import (  # noqa: E402
     resolve_project,
     workbench_exists,
 )
+from project_paths import load_project_factory_config  # noqa: E402
 from satisfaction_checker import run_satisfaction  # noqa: E402
 from stall_detector import detect_stall  # noqa: E402
-from tick_config import load_configuration  # noqa: E402
 
 LOCK_NAME = "mission.lock"
 _TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -213,9 +213,6 @@ def main() -> int:
         Process exit code ``0``.
     """
     root = find_repo_root()
-    factory_config, _projects_config = load_configuration(root)
-    factory = factory_config["factory"]
-    state_dir = str(factory["state_dir"])
     registry = load_registry(root)
     project_name = active_project_id(registry)
     if not project_name:
@@ -241,6 +238,10 @@ def main() -> int:
             "Building external apps is not enabled in this increment."
         )
         return 0
+    # The project owns its config, run-state, lock, and flags — all under its
+    # own folder, resolved from app_path.
+    factory_config = load_project_factory_config(project["app_path"], root)
+    state_dir = str(project["state_dir"])
     factory_state, _active_run, project_state = load_state(root, state_dir)
 
     stale_seconds = int(

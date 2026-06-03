@@ -43,6 +43,64 @@ from test_builder import TestPlanResult, test_plan_status_label
 from validation_runner import ValidationResult, validation_status_label
 
 
+def initial_state(project_id: str) -> dict[str, dict[str, Any]]:
+    """Return the three bootstrap state snapshots for a new project.
+
+    Used by ``startproject`` and ``promote`` to seed a project's own
+    ``<app>/state/`` so its first tick passes ``validate_state_project``.
+
+    Args:
+        project_id: The project the state belongs to.
+
+    Returns:
+        Mapping of state filename to its initial JSON object.
+    """
+    return {
+        "factory_state.json": {
+            "mode": "dry_run",
+            "status": "bootstrap",
+            "active_project": project_id,
+            "pause_requested": False,
+            "stop_requested": False,
+            "continuous_operation_enabled": False,
+            "automatic_commit_enabled": False,
+            "automatic_merge_enabled": False,
+            "scheduled_operation_enabled": False,
+            "last_successful_run": None,
+            "last_failed_run": None,
+            "failure_count": 0,
+            "recovery_instructions": "Review the planned task and authorize it.",
+        },
+        "project_state.json": {
+            "project": project_id,
+            "status": "planning",
+            "satisfaction_status": "not_satisfied",
+            "current_milestone": f"{project_id}-M1",
+            "last_completed_milestone": None,
+            "current_task": f"{project_id}-001",
+            "current_checkpoint": None,
+            "last_completed_checkpoint": None,
+            "current_blocker": None,
+            "failure_count": 0,
+            "recovery_instructions": "Run a tick to produce a planned task.",
+        },
+        "active_run.json": {
+            "run_status": "idle",
+            "run_id": None,
+            "started_at": None,
+            "active_project": project_id,
+            "current_phase": "WAIT",
+            "current_task": f"{project_id}-001",
+            "current_checkpoint": None,
+            "last_completed_checkpoint": None,
+            "current_blocker": None,
+            "last_role_completed": None,
+            "task_id": f"{project_id}-001",
+            "resume_from": "Run a tick to begin planning.",
+        },
+    }
+
+
 def load_state(
     root: Path, state_dir: str
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
