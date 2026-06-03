@@ -308,6 +308,7 @@ class StageTests(unittest.TestCase):
         )
         return {
             "root": "apps/demo",
+            "app_path": "apps/demo",
             "task_root": "apps/demo/factory_tasks",
             "context_root": "apps/demo/factory_context",
         }

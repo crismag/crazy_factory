@@ -717,6 +717,9 @@ def _print_status(info: dict[str, Any]) -> None:
     print(f"  delete:      {str(caps.get('allow_delete', False)).lower()}")
     print(f"  validation:  {str(caps.get('allow_validation', False)).lower()}")
     print(
+        f"  remediation: {str(caps.get('allow_remediation', False)).lower()}"
+    )
+    print(
         f"  auto_commit: {str(caps.get('allow_auto_commit', False)).lower()}"
     )
     print(f"\nCurrent blocker:\n  {info.get('current_blocker')}")
@@ -826,6 +829,8 @@ def main(argv: list[str] | None = None) -> int:
         "disable-apply",
         "enable-validation",
         "disable-validation",
+        "enable-remediation",
+        "disable-remediation",
         "enable-commit",
         "disable-commit",
     ):
@@ -925,6 +930,8 @@ _CAPABILITY_COMMANDS: dict[str, tuple[str, bool]] = {
     "disable-apply": ("allow_apply", False),
     "enable-validation": ("allow_validation", True),
     "disable-validation": ("allow_validation", False),
+    "enable-remediation": ("allow_remediation", True),
+    "disable-remediation": ("allow_remediation", False),
     "enable-commit": ("allow_auto_commit", True),
     "disable-commit": ("allow_auto_commit", False),
 }

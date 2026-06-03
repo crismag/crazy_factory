@@ -394,10 +394,18 @@ def run_validation_stage(
         result = ValidationResult(test_plan_id="", checks=[], status="skipped")
         return result, json_path, md_path
 
+    # Checks must run inside the application workbench, not the factory repo
+    # root — otherwise an app's `pytest tests` runs the FACTORY's own test
+    # suite and `pytest tests/<app_test>` is "file not found". For an external
+    # app, app_path is absolute; for an embedded app it is repo-relative.
+    app_path = str(project["app_path"])
+    exec_dir = (
+        Path(app_path) if Path(app_path).is_absolute() else root / app_path
+    )
     result = run_validation(
         test_plan_id=test_plan_id,
         required_checks=required_checks,
-        root=root,
+        root=exec_dir,
         allow_run=allow_run,
         timeout_seconds=timeout_seconds,
     )

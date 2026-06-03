@@ -51,8 +51,13 @@ from checkpoint_commit import (  # noqa: E402
     run_checkpoint_stage,
 )
 from proposal_applier import (  # noqa: E402
+    application_paths,
     application_status_label,
     run_application_stage,
+)
+from remediation import (  # noqa: E402
+    fix_approval_record,
+    plan_remediation,
 )
 from test_builder import (  # noqa: E402
     run_test_builder_stage,
@@ -85,6 +90,8 @@ from repo_tools import (  # noqa: E402
     find_repo_root,
     load_simple_yaml,
     read_markdown_directory,
+    safe_read_text,
+    safe_write_json,
     safe_write_text,
 )
 from project_paths import (  # noqa: E402
@@ -272,6 +279,26 @@ def main() -> int:
         )
     )
 
+    # Remediation: if the prior advance left a validation_failed blocker and
+    # the owner enabled remediation, re-engage the coder with the failing
+    # report as context and auto-approve the fix (within budget). Every
+    # deterministic floor still applies; this only removes per-iteration typing.
+    try:
+        prior_validation_report = safe_read_text(
+            f"{task_root}/VALIDATION_REPORT.md", root, max_lines
+        )
+    except (FileNotFoundError, OSError, ValueError):
+        prior_validation_report = ""
+    remediation_plan = plan_remediation(
+        factory_config, project_state, prior_validation_report
+    )
+    if remediation_plan.active:
+        print(
+            f"Remediation attempt {remediation_plan.attempt}/"
+            f"{remediation_plan.max_attempts}: re-engaging the coder to fix "
+            "the failed validation."
+        )
+
     max_files = int(factory["max_files_per_run"])
     coder_result, proposal_json_path, proposal_md_path = run_coder_stage(
         app_path=str(project["app_path"]),
@@ -282,7 +309,28 @@ def main() -> int:
         max_lines=max_lines,
         max_files=max_files,
         contract_json_path=contract_json_path,
+        remediation_context=remediation_plan.context,
     )
+
+    # Owner-enabled remediation pre-approves the fix proposal for THIS task so
+    # the same advance can apply + re-validate it. Gated by remediation_plan
+    # (allow_remediation + budget) and only for a freshly valid proposal.
+    if (
+        remediation_plan.active
+        and coder_result.proposal is not None
+        and coder_result.verdict.valid
+    ):
+        approved_path = application_paths(root, project)[0]
+        safe_write_json(
+            approved_path,
+            fix_approval_record(coder_result.proposal.proposal_id),
+            repo_root=root,
+            allowed_roots=[task_root],
+        )
+        print(
+            "Remediation: auto-approved fix proposal "
+            f"{coder_result.proposal.proposal_id} (owner-enabled)."
+        )
 
     application_result, patch_plan_json, patch_plan_md, application_report = (
         run_application_stage(
@@ -347,6 +395,7 @@ def main() -> int:
         test_plan_result=test_plan_result,
         validation_result=validation_result,
         checkpoint_result=checkpoint_result,
+        remediation=remediation_plan,
     )
     persist_state(
         root=root,
