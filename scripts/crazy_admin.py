@@ -29,6 +29,14 @@ from typing import Any
 sys.dont_write_bytecode = True
 
 import factory_tick  # noqa: E402
+from archive_utils import ArchiveError  # noqa: E402
+from context_manager import (  # noqa: E402
+    ContextError,
+    add_context,
+    dump_catalog,
+    load_catalog,
+    supported_file_count,
+)
 from project_registry import (  # noqa: E402
     RegistryError,
     active_project_id,
@@ -214,6 +222,17 @@ def startproject(
     _scaffold_write(base, "factory_tasks/.gitkeep", "", force=force)
     _scaffold_write(base, "factory_reports/.gitkeep", "", force=force)
 
+    # Phase 9A imported-context store: add-context lands files here and the
+    # catalog tracks them. Start with an empty catalog so status reads cleanly.
+    _scaffold_write(base, "context/imports/.gitkeep", "", force=force)
+    _scaffold_write(base, "context/extracted/.gitkeep", "", force=force)
+    _scaffold_write(
+        base,
+        "context/catalog.yaml",
+        dump_catalog({"imports": {}, "files": {}}),
+        force=force,
+    )
+
     state_path = state_path_for(project_id)
     _ensure_state_dirs(state_path, root)
     register_project(
@@ -334,18 +353,28 @@ def status(root: Path) -> dict[str, Any]:
         return {"active_project": "", "message": "No active project."}
     project = resolve_project(registry, pid)
     project_state = safe_load_json("state/project_state.json", root)
+    active_run = safe_load_json("state/active_run.json", root)
+    supported = 0
+    imports = 0
+    if not app_is_external(project["app_path"], root) and workbench_exists(
+        project["app_path"], root
+    ):
+        catalog = load_catalog(root, project)
+        supported = supported_file_count(catalog)
+        imports = len(catalog.get("imports") or {})
     return {
         "active_project": pid,
         "app_path": project["app_path"],
         "state_path": project["state_path"],
         "repo_mode": project["repo_mode"],
         "workbench_exists": workbench_exists(project["app_path"], root),
+        "context_imports": imports,
+        "context_supported_files": supported,
+        "last_tick": active_run.get("current_phase"),
         "last_contract": project_state.get("last_contract_status"),
         "last_validation": project_state.get("last_validation_status"),
         "current_blocker": project_state.get("current_blocker"),
-        "resume_from": safe_load_json("state/active_run.json", root).get(
-            "resume_from"
-        ),
+        "resume_from": active_run.get("resume_from"),
     }
 
 
@@ -360,6 +389,11 @@ def _print_status(info: dict[str, Any]) -> None:
     print(f"State path:     {info['state_path']}")
     print(f"Repo mode:      {info['repo_mode']}")
     print(f"Workbench OK:   {str(info['workbench_exists']).lower()}")
+    print(
+        f"Context files:  {info.get('context_supported_files')} supported "
+        f"({info.get('context_imports')} import(s))"
+    )
+    print(f"Last tick:      {info.get('last_tick')}")
     print(f"Last contract:  {info.get('last_contract')}")
     print(f"Last validation:{info.get('last_validation')}")
     print(f"Current blocker:{info.get('current_blocker')}")
@@ -388,6 +422,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--write-config", action="store_true")
     av = sub.add_parser("activate")
     av.add_argument("project_id")
+    ac = sub.add_parser("add-context")
+    ac.add_argument("project_id")
+    ac.add_argument("source")
     sub.add_parser("status")
     sub.add_parser("tick")
 
@@ -395,7 +432,13 @@ def main(argv: list[str] | None = None) -> int:
     root = find_repo_root()
     try:
         return _dispatch(args, root)
-    except (AdminError, RegistryError, SeedError) as exc:
+    except (
+        AdminError,
+        RegistryError,
+        SeedError,
+        ContextError,
+        ArchiveError,
+    ) as exc:
         print(f"crazy-admin error: {exc}", file=sys.stderr)
         return 2
 
@@ -435,6 +478,20 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
     if args.command == "activate":
         activate(args.project_id, root=root)
         print(f"Active project is now: {args.project_id}")
+        return 0
+    if args.command == "add-context":
+        registry = load_registry(root)
+        project = resolve_project(registry, args.project_id)
+        result = add_context(
+            project=project, source=args.source, root=root, now=_now()
+        )
+        print(
+            f"Imported {result['import_id']} ({result['source_type']}): "
+            f"{len(result['stored'])} file(s) stored, "
+            f"{result['supported']} available to the AI."
+        )
+        if result["skipped"]:
+            print(f"Skipped (secret-like): {', '.join(result['skipped'])}")
         return 0
     if args.command == "status":
         _print_status(status(root))

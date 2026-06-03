@@ -49,6 +49,32 @@ class RoleResult:
     detail: str
 
 
+def _compose_user_content(
+    prompt: str, context_bundle: str, trailer: str
+) -> str:
+    """Assemble a planning user message with optional imported context.
+
+    Args:
+        prompt: Assembled role prompt package text.
+        context_bundle: Imported project context (may be empty).
+        trailer: Task/architect context appended after the imported context.
+
+    Returns:
+        The combined user-message content.
+    """
+    parts = [prompt]
+    if context_bundle.strip():
+        parts.append(
+            "## Project Imported Context\n\n"
+            "The following files were supplied as project knowledge. Use them "
+            "to ground planning.\n\n"
+            f"{context_bundle.rstrip()}"
+        )
+    if trailer.strip():
+        parts.append(trailer)
+    return "\n\n".join(parts)
+
+
 def fallback_architect_result(
     project_name: str, project_state: dict[str, Any], reason: str
 ) -> RoleResult:
@@ -90,6 +116,7 @@ def request_architect_result(
     models_config: dict[str, Any],
     max_lines: int,
     tasks: dict[str, str],
+    context_bundle: str = "",
 ) -> RoleResult:
     """Ask Ollama for a planning-only Architect expansion when available.
 
@@ -101,6 +128,8 @@ def request_architect_result(
         models_config: Parsed ``config/models.yaml`` mapping.
         max_lines: Maximum context lines loaded from each file.
         tasks: Repository-relative task filenames and their content.
+        context_bundle: Imported project context (Phase 9A), injected into the
+            prompt so planning reflects supplied project knowledge.
 
     Returns:
         Ollama-backed result or deterministic fallback result.
@@ -130,7 +159,9 @@ def request_architect_result(
         {"role": "system", "content": instruction},
         {
             "role": "user",
-            "content": f"{prompt_package.prompt}\n\n{task_context}",
+            "content": _compose_user_content(
+                prompt_package.prompt, context_bundle, task_context
+            ),
         },
     ]
     try:
@@ -178,6 +209,7 @@ def request_planner_result(
     max_lines: int,
     tasks: dict[str, str],
     architect_result: RoleResult,
+    context_bundle: str = "",
 ) -> RoleResult:
     """Ask Ollama for a planning-only next action when available.
 
@@ -190,6 +222,8 @@ def request_planner_result(
         max_lines: Maximum context lines loaded from each file.
         tasks: Repository-relative task filenames and their content.
         architect_result: Architect expansion handed to the Planner.
+        context_bundle: Imported project context (Phase 9A), injected into the
+            prompt so the next action reflects supplied project knowledge.
 
     Returns:
         Ollama-backed result or deterministic fallback result.
@@ -217,14 +251,16 @@ def request_planner_result(
         f"## Task Source: {path}\n\n{text.rstrip()}"
         for path, text in tasks.items()
     )
+    trailer = (
+        f"## Architect Expansion\n\n{architect_result.content}\n\n"
+        f"{task_context}"
+    )
     messages = [
         {"role": "system", "content": instruction},
         {
             "role": "user",
-            "content": (
-                f"{prompt_package.prompt}\n\n"
-                f"## Architect Expansion\n\n{architect_result.content}\n\n"
-                f"{task_context}"
+            "content": _compose_user_content(
+                prompt_package.prompt, context_bundle, trailer
             ),
         },
     ]
