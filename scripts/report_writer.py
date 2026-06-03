@@ -18,7 +18,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from repo_tools import find_repo_root, safe_read_text, safe_write_text
+from project_registry import (
+    active_project_id,
+    load_registry,
+    resolve_project,
+)
+from repo_tools import (
+    find_repo_root,
+    resolve_repo_path,
+    safe_read_text,
+    safe_write_text,
+)
 
 
 def utc_now() -> datetime:
@@ -488,18 +498,20 @@ def append_dry_run_report(
         repo_root=root,
         allowed_roots=[project_report_root],
     )
+    # The activity blog and daily report are project-owned: they live in the
+    # project's report root, never in a root-level reports/ folder.
     safe_write_text(
-        "reports/ACTIVITY_BLOG.md",
+        str(Path(project_report_root) / "ACTIVITY_BLOG.md"),
         entry,
         repo_root=root,
-        allowed_roots=["reports"],
+        allowed_roots=[project_report_root],
         append=True,
     )
     safe_write_text(
-        "reports/DAILY_REPORT.md",
+        str(Path(project_report_root) / "DAILY_REPORT.md"),
         daily_entry,
         repo_root=root,
-        allowed_roots=["reports"],
+        allowed_roots=[project_report_root],
         append=True,
     )
     return root / app_report_path
@@ -508,6 +520,7 @@ def append_dry_run_report(
 def append_control_event(
     *,
     project_name: str,
+    project_report_root: str,
     outcome: str,
     detail: str,
     repo_root: str | Path | None = None,
@@ -516,6 +529,7 @@ def append_control_event(
 
     Args:
         project_name: Active application workbench name.
+        project_report_root: The project's own report directory.
         outcome: Short control result, such as ``"paused"`` or ``"stopped"``.
         detail: Human-readable reason for ending the tick early.
         repo_root: Optional explicit repository root, primarily for tests.
@@ -534,22 +548,34 @@ def append_control_event(
         "change attempted.\n"
     )
     safe_write_text(
-        "reports/ACTIVITY_BLOG.md",
+        str(Path(project_report_root) / "ACTIVITY_BLOG.md"),
         entry,
         repo_root=root,
-        allowed_roots=["reports"],
+        allowed_roots=[project_report_root],
         append=True,
     )
 
 
 def main() -> int:
-    """Print the accumulated factory activity blog.
+    """Print the active project's accumulated factory activity blog.
 
     Returns:
         Process exit code ``0`` after the report is printed.
     """
     root = find_repo_root()
-    print(safe_read_text("reports/ACTIVITY_BLOG.md", root).rstrip())
+    registry = load_registry(root)
+    project_id = active_project_id(registry)
+    if not project_id:
+        print(
+            "No active project. Select one with `crazy-admin activate <id>`."
+        )
+        return 0
+    report_root = resolve_project(registry, project_id)["report_root"]
+    blog = f"{report_root}/ACTIVITY_BLOG.md"
+    if not resolve_repo_path(blog, root).is_file():
+        print(f"No activity blog yet at {blog}.")
+        return 0
+    print(safe_read_text(blog, root).rstrip())
     return 0
 
 

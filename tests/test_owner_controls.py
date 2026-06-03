@@ -49,7 +49,7 @@ def _project(root: Path) -> dict[str, object]:
         "name": "app",
         "app_path": app,
         "repo_mode": "embedded",
-        "state_path": "factory_state/projects/app",
+        "state_dir": f"{app}/state",
         "task_root": f"{app}/factory_tasks",
     }
 

@@ -464,8 +464,10 @@ class PromoteTests(unittest.TestCase):
             root = Path(temp_dir)
             _promote_fixture(root)
             promote("demo", root)
-            fs = json.loads((root / "state/factory_state.json").read_text())
-            ps = json.loads((root / "state/project_state.json").read_text())
+            # Promote writes the project's own state, not root state/.
+            sdir = root / "apps/demo/state"
+            fs = json.loads((sdir / "factory_state.json").read_text())
+            ps = json.loads((sdir / "project_state.json").read_text())
             self.assertEqual(fs["active_project"], "demo")
             self.assertEqual(ps["project"], "demo")
             self.assertEqual(ps["current_task"], "T1")

@@ -356,6 +356,13 @@ class CliTests(unittest.TestCase):
         (root / "config/projects.yaml").write_text(
             'active_project: ""\nprojects:\n', encoding="utf-8"
         )
+        (root / "config/factory.yaml").write_text(
+            'factory:\n  mode: "dry_run"\n  state_dir: "state"\n'
+            "proposal_application:\n  allow_apply: false\n"
+            "validation:\n  allow_run: false\n"
+            "git:\n  allow_auto_commit: false\n",
+            encoding="utf-8",
+        )
         for name in ("factory_state", "active_run", "project_state"):
             (root / f"state/{name}.json").write_text("{}", encoding="utf-8")
 

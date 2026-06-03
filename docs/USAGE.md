@@ -47,11 +47,12 @@ pushed. You move it forward by flipping switches (Section 5).
 
 | Concept | What it is |
 |---------|-----------|
-| **Project registry** | `config/projects.yaml` maps each `project_id` to where its app lives (`app_path`), its factory memory (`state_path`), `repo_mode`, and `seed_file`. The factory never picks a project — you `activate` one. |
+| **Project registry** | `config/projects.yaml` maps each `project_id` to where its app lives (`app_path`), `repo_mode`, and `seed_file`. Every runtime path is derived from `app_path` (the `state_path` entry is retained only so legacy data can be migrated). The factory never picks a project — you `activate` one. |
 | **Embedded vs external** | *Embedded* apps live under `apps/<id>` (build now). *External* apps live anywhere on disk — registerable and inspectable, but building/ingesting into them is a later increment. |
-| **Workbench** | The app directory. Holds your code plus the factory's per-tick working files (see layout below). |
+| **Engine vs workbench** | The Crazy Factory root is the *engine* (code, templates, global defaults, docs). A project's *runtime* — its `config/factory.yaml`, run state, factory memory, reports, tasks, and context — lives entirely inside its workbench (`app_path`). Nothing project-specific is written to the root. |
+| **Workbench** | The app directory. Holds your code plus the factory's per-tick working files and project-local runtime (see layout below). |
 | **Context store** | `<app_path>/context/` — imported project knowledge (Phase 9A). Separate from `factory_context/` (the goal + grown context). |
-| **Capability switches** | Flags in `config/factory.yaml`. All default OFF. They are the only way actions escalate from "proposed" to "applied". |
+| **Capability switches** | Flags in the project-local `<app_path>/config/factory.yaml` (copied from the root template at `startproject`). All default OFF. They are the only way actions escalate from "proposed" to "applied". |
 
 ### Workbench layout
 
@@ -63,6 +64,10 @@ apps/todo_app/
   app/                      # YOUR CODE — the coder's only write target
   docs/                     # docs the coder may write
   tests/                    # tests the coder may write
+  config/factory.yaml       # project-local active config (copied from root template)
+  state/                    # run state: factory_state.json, project_state.json,
+                            #   active_run.json, flags, mission.lock
+  factory_state/            # factory memory (seed-grown context, checkpoints)
   context/                  # Phase 9A imported knowledge
     imports/<import_id>/     #   preserved originals
     extracted/<import_id>/   #   safe archive extraction output
@@ -72,6 +77,13 @@ apps/todo_app/
                             #   coder_proposal.json, patch_plan.json, approved_proposal.json
   factory_reports/          # per-tick reports + CHECKPOINT_HISTORY.md
 ```
+
+> **Project-local runtime.** Everything the factory writes for a project lives
+> under its workbench — config, state, memory, reports. The engine root holds
+> only the default `config/factory.yaml` *template* and the registry. A
+> project-specific write that would land in the root fails loudly. Projects
+> created before this layout can be brought forward with
+> `crazy-admin migrate-project-runtime <id>`.
 
 ---
 
@@ -85,7 +97,8 @@ All commands are `bin/crazy-admin <command>` (a thin wrapper over
 | `startproject <id> [path]` | Scaffold a new app workbench and register it. `path` defaults to `./<id>`; omit it or use `apps/<id>` for embedded. `--force` overwrites scaffold files. |
 | `attachproject <id> <path>` | Register an existing codebase without scaffolding or modifying it. `--write-config` drops a `crazy_project.yaml` marker. |
 | `add-context <id> <source>` | Ingest a file, directory, or archive (`zip`/`tar`/`tar.gz`/`tgz`/`gz`) into the project's context store. |
-| `activate <id>` | Make `<id>` the active project (updates the registry + `state/*.json`). |
+| `activate <id>` | Make `<id>` the active project (updates the registry + the project-local `apps/<id>/state/*.json`). |
+| `migrate-project-runtime <id>` | Bring a pre-relocation project forward: non-destructively copy legacy root `state/`, `factory_state/projects/<id>/`, and `reports/` into the workbench, and materialize `config/factory.yaml` if missing. Leaves the old root folders in place. |
 | `status` | Show the active project: contract validation/authorization, proposal/approval, effective capabilities, current blocker. |
 | `next [id]` | Tell you exactly what to do next for a project (defaults to the active one). |
 | `tick` | Run one factory tick on the active project. |
@@ -140,7 +153,7 @@ crazy-admin tick
   ├─ VALIDATE          validation_runner        # runs checks ONLY if validation.allow_run
   ├─ CHECKPOINT        checkpoint_commit        # git commit ONLY if git.allow_auto_commit
   │
-  └─ write report → factory_reports/, update state/
+  └─ write report → apps/<id>/factory_reports/, update apps/<id>/state/
 ```
 
 The hard invariant chain:
@@ -215,12 +228,12 @@ they are not implemented as automated actions.
 `scripts/mission_loop.py` wraps a tick with guards so it can be scheduled
 (e.g. cron) without runaway behavior:
 
-- **Lock** — `state/mission.lock` prevents overlapping runs (stale after
-  `mission.lock_stale_seconds`, default 3600s).
+- **Lock** — `apps/<id>/state/mission.lock` prevents overlapping runs (stale
+  after `mission.lock_stale_seconds`, default 3600s).
 - **Control flags** — drop a file to steer the loop:
-  `state/stop.flag`, `state/pause.flag`, `state/blocked.flag`,
-  `state/satisfied.flag` (JSON `stop_requested` / `pause_requested` in
-  `state/factory_state.json` are also honored).
+  `apps/<id>/state/stop.flag`, `pause.flag`, `blocked.flag`,
+  `satisfied.flag` (JSON `stop_requested` / `pause_requested` in
+  `apps/<id>/state/factory_state.json` are also honored).
 - **Stall + satisfaction** — the loop detects no-progress stalls and a
   satisfied checklist and stops on its own.
 
@@ -234,15 +247,18 @@ does one guarded beat and exits.
 | Location | Contents |
 |----------|----------|
 | `apps/<id>/factory_tasks/` | planned task, proposals, patch plan, approval, planning records |
-| `apps/<id>/factory_reports/` | per-tick reports, `CHECKPOINT_HISTORY.md` |
+| `apps/<id>/factory_reports/` | per-tick reports, activity/daily blog, `CHECKPOINT_HISTORY.md` |
 | `apps/<id>/context/catalog.yaml` | imported-context catalog |
-| `state/` | `factory_state.json`, `project_state.json`, `active_run.json`, flags, lock |
-| `factory_state/projects/<id>/` | seed-grown context (gitignored) |
-| `reports/`, `logs/` | global activity/daily reports and logs |
+| `apps/<id>/config/factory.yaml` | project-local active config (capability switches) |
+| `apps/<id>/state/` | `factory_state.json`, `project_state.json`, `active_run.json`, flags, lock |
+| `apps/<id>/factory_state/` | factory memory (seed-grown context, checkpoints) |
+| `config/factory.yaml` (root) | default config *template* only — copied into each project |
+| `checkpoints/`, `logs/` | engine-level commit ledger and logs |
 
-`apps/` and `factory_state/projects/` are gitignored — workbenches are runtime,
-created by `startproject`/`promote`. Use `bin/crazy-admin status` or
-`bin/factory-status` to inspect progress at any time.
+`apps/` is gitignored — workbenches are runtime, created by
+`startproject`/`promote`, and each owns its full runtime tree. Use
+`bin/crazy-admin status` or `bin/factory-status` to inspect progress at any
+time.
 
 ---
 

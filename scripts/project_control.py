@@ -187,7 +187,7 @@ def load_or_init_control(
         project_id=str(project.get("name") or ""),
         mode=str(project.get("repo_mode") or "embedded"),
         app_path=str(project.get("app_path") or app_path),
-        state_path=str(project.get("state_path") or ""),
+        state_path=str(project.get("state_dir") or ""),
     )
     return normalize_control(read_control(app_path, root), base=base)
 

@@ -56,6 +56,18 @@ def _bootstrap_repo(root: Path) -> None:
     (root / "config/projects.yaml").write_text(
         'active_project: ""\nprojects:\n', encoding="utf-8"
     )
+    # Root config/factory.yaml is the default template copied into each project.
+    (root / "config/factory.yaml").write_text(
+        "factory:\n"
+        '  mode: "dry_run"\n'
+        '  state_dir: "state"\n'
+        "  max_lines_per_file: 200\n"
+        "  max_files_per_run: 5\n"
+        "proposal_application:\n  allow_apply: false\n  allow_delete: false\n"
+        "validation:\n  allow_run: false\n"
+        "git:\n  allow_auto_commit: false\n",
+        encoding="utf-8",
+    )
     for name in ("factory_state", "active_run", "project_state"):
         (root / f"state/{name}.json").write_text("{}", encoding="utf-8")
 
@@ -169,14 +181,19 @@ class ActivateTests(unittest.TestCase):
             ca.startproject("widget", "apps/widget", root=root)
             ca.activate("widget", root=root)
             self.assertEqual(active_project_id(load_registry(root)), "widget")
+            # Run-state is project-local under the workbench, not root state/.
             fs = json.loads(
-                (root / "state/factory_state.json").read_text("utf-8")
+                (root / "apps/widget/state/factory_state.json").read_text()
             )
             ps = json.loads(
-                (root / "state/project_state.json").read_text("utf-8")
+                (root / "apps/widget/state/project_state.json").read_text()
             )
             self.assertEqual(fs["active_project"], "widget")
             self.assertEqual(ps["project"], "widget")
+            # Root state/ is untouched (engine root stays clean).
+            self.assertEqual(
+                json.loads((root / "state/factory_state.json").read_text()), {}
+            )
 
 
 class ResolveAndRoundtripTests(unittest.TestCase):

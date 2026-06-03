@@ -47,6 +47,8 @@ from context_ledger import (  # noqa: E402
 )
 from json_parsing import coerce_str, strip_code_fence  # noqa: E402
 from ollama_client import OllamaClient, OllamaConnectionError  # noqa: E402
+from mission_state import initial_state  # noqa: E402
+from project_paths import DEFAULT_FACTORY_CONFIG  # noqa: E402
 from project_registry import (  # noqa: E402
     load_registry,
     register_project,
@@ -59,6 +61,7 @@ from repo_tools import (  # noqa: E402
     load_simple_yaml,
     resolve_repo_path,
     safe_load_json,
+    safe_read_text,
     safe_write_json,
     safe_write_text,
 )
@@ -437,6 +440,19 @@ def _ensure_workbench(project_id: str, root: Path, seed_text: str) -> None:
             repo_root=root,
             allowed_roots=["apps"],
         )
+    # Project-local runtime: config copied from the root default template, plus
+    # the run-state and factory-memory folders. Engine root stays clean.
+    cfg = f"{base}/config/factory.yaml"
+    if not resolve_repo_path(cfg, root).is_file():
+        safe_write_text(
+            cfg,
+            safe_read_text(DEFAULT_FACTORY_CONFIG, root),
+            repo_root=root,
+            allowed_roots=["apps"],
+        )
+    keep = f"{base}/factory_state/.gitkeep"
+    if not resolve_repo_path(keep, root).exists():
+        safe_write_text(keep, "", repo_root=root, allowed_roots=["apps"])
 
 
 def _write_pipeline_contract(
@@ -461,77 +477,45 @@ def _write_pipeline_contract(
     return path
 
 
-def _point_state_at_project(
-    project_id: str, task_id: str, root: Path, state_dir: str = "state"
-) -> None:
-    """Repoint the durable state at the newly active project.
+def _point_state_at_project(project_id: str, task_id: str, root: Path) -> None:
+    """Write the project's own ``<app>/state/`` pointed at the promoted task.
 
-    Without this, the next tick fails ``validate_state_project`` because the
-    state still names the previous project.
+    The promoted project owns its run-state; nothing is written to a root-level
+    ``state/`` folder.
 
     Args:
         project_id: Validated project identifier.
         task_id: Task id of the promoted contract.
         root: Absolute repository root.
-        state_dir: Repository-relative state directory.
     """
-    factory_state = safe_load_json(f"{state_dir}/factory_state.json", root)
-    factory_state["active_project"] = project_id
-    safe_write_json(
-        f"{state_dir}/factory_state.json",
-        factory_state,
-        repo_root=root,
-        allowed_roots=[state_dir],
-    )
-
-    project_state = safe_load_json(f"{state_dir}/project_state.json", root)
-    project_state.update(
+    state_dir = f"apps/{project_id}/state"
+    bootstrap = initial_state(project_id)
+    bootstrap["project_state.json"].update(
         {
-            "project": project_id,
-            "status": "planning",
-            "satisfaction_status": "not_satisfied",
-            "current_milestone": f"{project_id}-M1",
             "current_task": task_id,
             "task_id": task_id,
-            "current_checkpoint": None,
-            "last_completed_checkpoint": None,
-            "current_blocker": None,
-            "failure_count": 0,
             "recovery_instructions": (
-                "Review the promoted planned_task.json and set "
-                "authorized: true before building."
+                "Review the promoted planned_task.json and authorize it."
             ),
         }
     )
-    safe_write_json(
-        f"{state_dir}/project_state.json",
-        project_state,
-        repo_root=root,
-        allowed_roots=[state_dir],
-    )
-
-    active_run = safe_load_json(f"{state_dir}/active_run.json", root)
-    active_run.update(
+    bootstrap["active_run.json"].update(
         {
-            "active_project": project_id,
-            "run_status": "idle",
-            "current_phase": "WAIT",
             "current_task": task_id,
             "task_id": task_id,
-            "current_checkpoint": None,
-            "current_blocker": None,
             "resume_from": (
                 f"Authorize apps/{project_id}/factory_tasks/"
-                "planned_task.json (set authorized: true) to begin building."
+                "planned_task.json to begin building."
             ),
         }
     )
-    safe_write_json(
-        f"{state_dir}/active_run.json",
-        active_run,
-        repo_root=root,
-        allowed_roots=[state_dir],
-    )
+    for fname, body in bootstrap.items():
+        safe_write_json(
+            f"{state_dir}/{fname}",
+            body,
+            repo_root=root,
+            allowed_roots=[state_dir],
+        )
 
 
 def promote(project_id: str, root: Path) -> dict[str, Any]:

@@ -25,6 +25,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from project_paths import resolve_paths
 from repo_tools import load_simple_yaml, safe_write_text
 
 REGISTRY_RELPATH = "config/projects.yaml"
@@ -191,27 +192,32 @@ def resolve_project(
     if not isinstance(entry, dict):
         raise RegistryError(f"Project is not registered: {project_id}")
     app_path = str(entry["app_path"]).rstrip("/")
-    state_path = str(entry["state_path"]).rstrip("/")
+    # Legacy registry state_path (e.g. factory_state/projects/<id>); retained
+    # only so migrate-project-runtime can find pre-relocation data.
+    legacy_state_path = str(entry.get("state_path") or "").rstrip("/")
+    paths = resolve_paths(app_path)
     return {
         "name": project_id,
         "app_path": app_path,
-        "state_path": state_path,
+        "legacy_state_path": legacy_state_path,
         "repo_mode": str(entry.get("repo_mode") or "embedded"),
         "seed_file": str(entry.get("seed_file") or "docs/seed.md"),
-        # The workbench root is app_path; the app's code/docs/tests and the
-        # per-run factory working files live within it (so the existing
-        # path-confinement checks hold). state_path holds the per-project
-        # factory_state (seed-grown context ledger, analytics).
+        # Every runtime path lives inside the workbench (app_path). Nothing here
+        # resolves to a root-level folder — that is the engine's space.
         "root": app_path,
-        "context_root": f"{app_path}/factory_context",
-        "task_root": f"{app_path}/factory_tasks",
-        "report_root": f"{app_path}/factory_reports",
+        "config_dir": paths.config_dir,
+        "factory_config_path": paths.factory_config_path,
+        "state_dir": paths.state_dir,
+        "factory_state_dir": paths.factory_state_dir,
+        "context_root": paths.factory_context_dir,
+        "task_root": paths.tasks_dir,
+        "report_root": paths.reports_dir,
         # Phase 9A imported-context store: raw imports, extracted archives, and
         # the catalog. Distinct from factory_context (goal + grown context).
-        "context_store_root": f"{app_path}/context",
-        "context_imports_root": f"{app_path}/context/imports",
-        "context_extracted_root": f"{app_path}/context/extracted",
-        "context_catalog_path": f"{app_path}/context/catalog.yaml",
+        "context_store_root": paths.context_dir,
+        "context_imports_root": f"{paths.context_dir}/imports",
+        "context_extracted_root": f"{paths.context_dir}/extracted",
+        "context_catalog_path": f"{paths.context_dir}/catalog.yaml",
     }
 
 
