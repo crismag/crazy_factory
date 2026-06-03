@@ -246,6 +246,14 @@ def apply_project_controls(
             effective[section][global_key] = bool(
                 raw_control["capabilities"][cap_key]
             )
+    # The application stage gates on BOTH allow_apply and mode == "apply".
+    # mode defaults to preview_only in the template, so without this the owner
+    # would have to hand-edit config to apply approved code even after running
+    # `enable-apply`. Tie the two together: enabling the allow_apply capability
+    # flips the effective mode to "apply"; disabling it restores preview_only.
+    if capability_set(raw_control, "allow_apply"):
+        pa = effective.setdefault("proposal_application", {})
+        pa["mode"] = "apply" if pa.get("allow_apply") else "preview_only"
     return effective
 
 
