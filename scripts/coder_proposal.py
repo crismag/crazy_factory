@@ -853,6 +853,7 @@ def request_coder_proposal(
     models_config: dict[str, Any],
     max_lines: int,
     max_files: int,
+    remediation_context: str = "",
 ) -> ProposalResult:
     """Ask the coder model for a proposal and validate it.
 
@@ -913,6 +914,9 @@ def request_coder_proposal(
         },
         indent=2,
     )
+    remediation_block = (
+        f"\n\n{remediation_context.strip()}\n" if remediation_context else ""
+    )
     messages = [
         {"role": "system", "content": instruction},
         {
@@ -920,6 +924,7 @@ def request_coder_proposal(
             "content": (
                 f"{prompt_package.prompt}\n\n"
                 f"## Authorized Contract\n\n{contract_summary}\n"
+                f"{remediation_block}"
             ),
         },
     ]
@@ -1030,6 +1035,7 @@ def run_coder_stage(
     max_lines: int,
     max_files: int,
     contract_json_path: str,
+    remediation_context: str = "",
 ) -> tuple[ProposalResult, str, str]:
     """Activate the Coder only for an authorized, valid contract.
 
@@ -1076,14 +1082,21 @@ def run_coder_stage(
     # targets a specific proposal id. Preserving keeps owner approval usable
     # until the contract changes. The current fields are re-validated rather
     # than trusting the cached verdict.
+    # During remediation the preserved proposal is exactly the one that failed
+    # validation, so it must be regenerated (with the failure as context)
+    # rather than preserved — otherwise we would re-apply the broken proposal.
     existing = load_existing_contract(proposal_json_path, root)
     contract_task_id = coerce_str(contract_record.get("task_id"))
-    preserved = _preserved_proposal_result(
-        existing,
-        app_path,
-        contract_task_id,
-        max_files,
-        project_runtime_prefixes(project),
+    preserved = (
+        None
+        if remediation_context
+        else _preserved_proposal_result(
+            existing,
+            app_path,
+            contract_task_id,
+            max_files,
+            project_runtime_prefixes(project),
+        )
     )
     if preserved is not None:
         # Re-persist so the on-disk record reflects the FRESH re-validation
@@ -1110,6 +1123,7 @@ def run_coder_stage(
         models_config=models_config,
         max_lines=max_lines,
         max_files=max_files,
+        remediation_context=remediation_context,
     )
     safe_write_json(
         proposal_json_path,

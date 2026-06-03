@@ -31,7 +31,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from remediation import RemediationPlan
 
 from checkpoint_commit import CheckpointResult, checkpoint_status_label
 from coder_proposal import ProposalResult, coder_status_label
@@ -177,6 +180,7 @@ def update_success_state(
     test_plan_result: TestPlanResult | None = None,
     validation_result: ValidationResult | None = None,
     checkpoint_result: CheckpointResult | None = None,
+    remediation: "RemediationPlan | None" = None,
 ) -> str:
     """Update in-memory state after a planning (and optional coder) dry run.
 
@@ -257,6 +261,7 @@ def update_success_state(
             project_state,
             validation_result,
             completed_at,
+            remediation,
         )
     if checkpoint_result is not None:
         _apply_checkpoint_state(
@@ -342,11 +347,18 @@ def _apply_validation_state(
     project_state: dict[str, Any],
     validation_result: ValidationResult,
     completed_at: str,
+    remediation: "RemediationPlan | None" = None,
 ) -> None:
     """Record the validation outcome into state snapshots.
 
     A passed or skipped validation is healthy. A failed or blocked validation
     is a recoverable failure that must block any future checkpoint.
+
+    When this advance was an owner-enabled remediation attempt, the persisted
+    ``remediation_attempt`` counter advances: a pass resets it (and clears the
+    blocker), a failure with budget remaining keeps ``validation_failed`` so the
+    next advance retries, and a failure on the last attempt sets the terminal
+    ``remediation_exhausted`` blocker for owner review.
 
     Args:
         factory_state: Global mutable state snapshot.
@@ -354,6 +366,7 @@ def _apply_validation_state(
         project_state: Mutable project state snapshot.
         validation_result: Validation outcome.
         completed_at: UTC completion timestamp for the current advance.
+        remediation: The remediation plan for this advance, if any.
     """
     status = validation_status_label(validation_result)
     checks_run = [
@@ -374,13 +387,32 @@ def _apply_validation_state(
         project_state["failure_count"] = (
             int(project_state.get("failure_count", 0)) + 1
         )
-        active_run["current_blocker"] = "validation_failed"
-        project_state["current_blocker"] = "validation_failed"
-        active_run["resume_from"] = (
-            "Validation failed or blocked; see VALIDATION_REPORT.md. "
-            "resume_from=validation."
-        )
+        if remediation is not None and remediation.active:
+            project_state["remediation_attempt"] = remediation.attempt
+            if remediation.is_last_attempt:
+                blocker = "remediation_exhausted"
+                resume = (
+                    f"Remediation exhausted after {remediation.attempt} "
+                    "attempt(s); validation still failing. Owner review "
+                    "required; see VALIDATION_REPORT.md."
+                )
+            else:
+                blocker = "validation_failed"
+                resume = (
+                    f"Remediation attempt {remediation.attempt} did not pass; "
+                    "another attempt will run on the next advance."
+                )
+        else:
+            blocker = "validation_failed"
+            resume = (
+                "Validation failed or blocked; see VALIDATION_REPORT.md. "
+                "resume_from=validation."
+            )
+        active_run["current_blocker"] = blocker
+        project_state["current_blocker"] = blocker
+        active_run["resume_from"] = resume
     elif status == "passed":
+        project_state["remediation_attempt"] = 0
         active_run["current_blocker"] = None
         project_state["current_blocker"] = None
         active_run["resume_from"] = (
