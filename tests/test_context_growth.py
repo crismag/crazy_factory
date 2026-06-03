@@ -18,7 +18,12 @@ from unittest.mock import patch
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from context_growth import grow, request_growth  # noqa: E402
+from context_growth import (  # noqa: E402
+    PromoteError,
+    grow,
+    promote,
+    request_growth,
+)
 from context_ledger import LedgerError, load_ledger  # noqa: E402
 from ollama_client import OllamaConnectionError  # noqa: E402
 from seed_context import SeedError, init_project  # noqa: E402
@@ -318,6 +323,196 @@ class RequestGrowthTests(unittest.TestCase):
             )
         self.assertEqual(result.source, "fallback")
         self.assertNotEqual(result.artifact_type, "task_proposal")
+
+
+def _task_proposal_record(*, valid: bool, authorized: bool) -> dict:
+    """Return a grown task-proposal contract record."""
+    return {
+        "task_id": "T1",
+        "title": "Create the schema module",
+        "objective": "Add a db module.",
+        "scope": ["apps/demo/app/db.py"],
+        "exclusions": ["No UI"],
+        "inputs": [],
+        "acceptance_criteria": ["A db module exists"],
+        "validation_plan": "Run the unit tests.",
+        "risks": [],
+        "approval_status": "pending",
+        "authorized": authorized,
+        "source_layer": "context_growth",
+        "validation": {
+            "status": "valid" if valid else "rejected",
+            "source": "context_growth",
+            "reasons": [],
+        },
+    }
+
+
+def _promote_fixture(
+    root: Path,
+    *,
+    with_proposal: bool = True,
+    proposal_valid: bool = True,
+    authorized_in_record: bool = False,
+    preexisting_app: bool = False,
+) -> None:
+    """Lay down config, state, and a grown project for promote tests."""
+    (root / "config").mkdir()
+    (root / "config/factory.yaml").write_text(
+        "factory:\n  mode: dry_run\n  active_project: olddemo\n"
+        "  state_dir: state\n",
+        encoding="utf-8",
+    )
+    projects = (
+        "active_project: olddemo\n\nprojects:\n  olddemo:\n"
+        "    root: apps/olddemo\n    task_root: apps/olddemo/factory_tasks\n"
+    )
+    if preexisting_app:
+        projects += (
+            "  demo:\n    root: apps/demo\n"
+            "    task_root: apps/demo/factory_tasks\n"
+        )
+        (root / "apps/demo/app").mkdir(parents=True)
+        (root / "apps/demo/app/keep.py").write_text("x = 1\n")
+    (root / "config/projects.yaml").write_text(projects, encoding="utf-8")
+
+    (root / "state").mkdir()
+    (root / "state/factory_state.json").write_text(
+        json.dumps({"active_project": "olddemo", "mode": "dry_run"}),
+        encoding="utf-8",
+    )
+    (root / "state/project_state.json").write_text(
+        json.dumps(
+            {"project": "olddemo", "current_task": "OLD", "failure_count": 3}
+        ),
+        encoding="utf-8",
+    )
+    (root / "state/active_run.json").write_text(
+        json.dumps({"active_project": "olddemo", "current_task": "OLD"}),
+        encoding="utf-8",
+    )
+
+    base = root / "factory_state/projects/demo"
+    (base / "contexts").mkdir(parents=True)
+    (base / "seed.md").write_text(_SEED, encoding="utf-8")
+    artifacts = [
+        {
+            "id": "000",
+            "type": "seed",
+            "path": "factory_state/projects/demo/contexts/000_seed.md",
+            "summary": "seed",
+        }
+    ]
+    if with_proposal:
+        rel = "factory_state/projects/demo/contexts/001_task_proposal.json"
+        (root / rel).write_text(
+            json.dumps(
+                _task_proposal_record(
+                    valid=proposal_valid, authorized=authorized_in_record
+                )
+            ),
+            encoding="utf-8",
+        )
+        artifacts.append(
+            {
+                "id": "001",
+                "type": "task_proposal",
+                "path": rel,
+                "summary": "impl",
+            }
+        )
+    (base / "context_ledger.json").write_text(
+        json.dumps(
+            {"project_id": "demo", "current_cycle": 1, "artifacts": artifacts}
+        ),
+        encoding="utf-8",
+    )
+
+
+class PromoteTests(unittest.TestCase):
+    """Verify the owner-driven promote bridge to the build pipeline."""
+
+    def test_no_task_proposal_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _promote_fixture(root, with_proposal=False)
+            with self.assertRaises(PromoteError):
+                promote("demo", root)
+
+    def test_rejected_task_proposal_not_promoted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _promote_fixture(root, proposal_valid=False)
+            with self.assertRaises(PromoteError):
+                promote("demo", root)
+
+    def test_config_registers_and_switches_active_project(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _promote_fixture(root)
+            promote("demo", root)
+            projects = (root / "config/projects.yaml").read_text()
+            factory = (root / "config/factory.yaml").read_text()
+            self.assertIn("active_project: demo", projects)
+            self.assertIn("active_project: demo", factory)
+            self.assertIn("  demo:", projects)
+            self.assertIn("apps/demo/app", projects)
+
+    def test_state_repointed_to_new_project(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _promote_fixture(root)
+            promote("demo", root)
+            fs = json.loads((root / "state/factory_state.json").read_text())
+            ps = json.loads((root / "state/project_state.json").read_text())
+            self.assertEqual(fs["active_project"], "demo")
+            self.assertEqual(ps["project"], "demo")
+            self.assertEqual(ps["current_task"], "T1")
+            self.assertEqual(ps["failure_count"], 0)
+
+    def test_contract_forced_unauthorized(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            # Even a tampered record claiming authorized:true is forced false.
+            _promote_fixture(root, authorized_in_record=True)
+            promote("demo", root)
+            contract = json.loads(
+                (
+                    root / "apps/demo/factory_tasks/planned_task.json"
+                ).read_text()
+            )
+            self.assertIs(contract["authorized"], False)
+            self.assertEqual(contract["task_id"], "T1")
+            self.assertEqual(contract["promoted_from"], "context_growth")
+
+    def test_existing_app_not_duplicated_or_clobbered(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _promote_fixture(root, preexisting_app=True)
+            promote("demo", root)
+            projects = (root / "config/projects.yaml").read_text()
+            # The demo block is not added twice.
+            self.assertEqual(projects.count("\n  demo:"), 1)
+            # Existing app code is untouched.
+            self.assertEqual(
+                (root / "apps/demo/app/keep.py").read_text(), "x = 1\n"
+            )
+
+    def test_promote_does_not_build_or_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _promote_fixture(root)
+            promote("demo", root)
+            # No git repo and no coder/proposal/checkpoint artifacts created.
+            self.assertFalse((root / ".git").exists())
+            tasks = root / "apps/demo/factory_tasks"
+            self.assertFalse((tasks / "coder_proposal.json").exists())
+            self.assertFalse((tasks / "patch_plan.json").exists())
+            self.assertFalse(
+                (
+                    root / "apps/demo/factory_reports/CHECKPOINT_REPORT.md"
+                ).exists()
+            )
 
 
 if __name__ == "__main__":

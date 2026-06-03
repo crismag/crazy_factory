@@ -29,7 +29,42 @@ python3 scripts/context_growth.py start \
 
 # Grow one artifact per invocation (no internal loop).
 python3 scripts/context_growth.py grow --project-id sqlite_project_manager
+
+# Promote a grown task proposal into the build pipeline (owner-driven).
+python3 scripts/context_growth.py promote --project-id sqlite_project_manager
 ```
+
+## Two separate "projects"
+
+The context engine and the build pipeline use different notions of project,
+and they are NOT auto-wired:
+
+- A **context project** lives in `factory_state/projects/<id>/` and is selected
+  by `--project-id`. `grow` only touches it.
+- The **build pipeline's active project** is `active_project` in
+  `config/projects.yaml` (default `demo_app`); its workbench is
+  `apps/<active_project>/`. `factory_tick.py` only touches that.
+
+So growing context for `my_app` does not change what `factory_tick.py` builds.
+`promote` is the explicit, owner-driven bridge between the two.
+
+## promote
+
+`promote --project-id <id>` is the one command that connects the layers. It is
+owner-driven and never builds:
+
+- registers the app workbench `apps/<id>/` and adds it to
+  `config/projects.yaml`,
+- makes `<id>` the active project (in both config files) and repoints
+  `state/*.json` (so the next tick does not fail the project-mismatch check),
+- copies the **latest valid** grown `task_proposal` into
+  `apps/<id>/factory_tasks/planned_task.json`, forced to `authorized: false`,
+- materializes the seed as `apps/<id>/factory_context/PROJECT_GOAL.md`.
+
+It does NOT activate the coder, apply, validate, commit, push, or merge. After
+`promote`, the owner reviews the planned task and sets `authorized: true` to
+begin building through the normal pipeline. Promoting a project with no valid
+task proposal fails safely.
 
 ## Growth decision
 

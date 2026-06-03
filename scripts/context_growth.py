@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,6 +50,9 @@ from ollama_client import OllamaClient, OllamaConnectionError  # noqa: E402
 from repo_tools import (  # noqa: E402
     find_repo_root,
     load_simple_yaml,
+    resolve_repo_path,
+    safe_load_json,
+    safe_read_text,
     safe_write_json,
     safe_write_text,
 )
@@ -327,6 +331,293 @@ def grow(
     return result.artifact_type, path, ledger
 
 
+class PromoteError(RuntimeError):
+    """Raised when a project cannot be promoted to the build pipeline."""
+
+
+# Subdirectories of an application workbench (mirrors the demo_app layout).
+_WORKBENCH_SUBDIRS: tuple[str, ...] = (
+    "app",
+    "docs",
+    "tests",
+    "factory_context",
+    "factory_tasks",
+    "factory_reports",
+    "factory_prompts",
+    "factory_scripts",
+)
+
+
+def find_latest_valid_task_proposal(
+    ledger: dict[str, Any], root: Path
+) -> dict[str, Any] | None:
+    """Return the most recent grown task proposal that validated as valid.
+
+    Args:
+        ledger: The project ledger.
+        root: Absolute repository root.
+
+    Returns:
+        The latest valid task-proposal contract record, or ``None``.
+    """
+    for entry in reversed(ledger.get("artifacts", [])):
+        if entry.get("type") != "task_proposal":
+            continue
+        try:
+            record = safe_load_json(str(entry.get("path", "")), root)
+        except (ValueError, OSError):
+            continue
+        validation = record.get("validation")
+        if (
+            isinstance(validation, dict)
+            and validation.get("status") == "valid"
+        ):
+            return record
+    return None
+
+
+def _project_yaml_block(project_id: str) -> str:
+    """Build a ``config/projects.yaml`` block for a new app workbench.
+
+    Args:
+        project_id: Validated project identifier.
+
+    Returns:
+        The indented YAML block (no leading blank line).
+    """
+    base = f"apps/{project_id}"
+    roots = (
+        f"  {project_id}:\n"
+        f"    root: {base}\n"
+        f"    source_root: {base}/app\n"
+        f"    docs_root: {base}/docs\n"
+        f"    tests_root: {base}/tests\n"
+        f"    context_root: {base}/factory_context\n"
+        f"    task_root: {base}/factory_tasks\n"
+        f"    report_root: {base}/factory_reports\n"
+        f"    prompt_root: {base}/factory_prompts\n"
+        f"    script_root: {base}/factory_scripts\n"
+        "    allowed_write_paths:\n"
+    )
+    write_paths = "".join(
+        f"      - {base}/{sub}\n" for sub in _WORKBENCH_SUBDIRS
+    )
+    return roots + write_paths
+
+
+def _register_project(project_id: str, root: Path) -> bool:
+    """Register the project in config and make it the active project.
+
+    Adds a project block to ``config/projects.yaml`` when missing, and sets
+    ``active_project`` to the project in both config files.
+
+    Args:
+        project_id: Validated project identifier.
+        root: Absolute repository root.
+
+    Returns:
+        ``True`` if the project was already registered, else ``False``.
+    """
+    projects_cfg = load_simple_yaml("config/projects.yaml", root)
+    already = project_id in (projects_cfg.get("projects") or {})
+
+    text = safe_read_text("config/projects.yaml", root)
+    text = re.sub(
+        r"^active_project:.*$",
+        f"active_project: {project_id}",
+        text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if not already:
+        if not text.endswith("\n"):
+            text += "\n"
+        text += _project_yaml_block(project_id)
+    safe_write_text(
+        "config/projects.yaml",
+        text,
+        repo_root=root,
+        allowed_roots=["config"],
+    )
+
+    factory_text = safe_read_text("config/factory.yaml", root)
+    factory_text = re.sub(
+        r"^(\s*)active_project:.*$",
+        rf"\1active_project: {project_id}",
+        factory_text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    safe_write_text(
+        "config/factory.yaml",
+        factory_text,
+        repo_root=root,
+        allowed_roots=["config"],
+    )
+    return already
+
+
+def _ensure_workbench(project_id: str, root: Path, seed_text: str) -> None:
+    """Create the app workbench directories without clobbering existing code.
+
+    Args:
+        project_id: Validated project identifier.
+        root: Absolute repository root.
+        seed_text: The project seed, materialized as the project goal.
+    """
+    base = f"apps/{project_id}"
+    for sub in _WORKBENCH_SUBDIRS:
+        keep = f"{base}/{sub}/.gitkeep"
+        if not resolve_repo_path(keep, root).exists():
+            safe_write_text(keep, "", repo_root=root, allowed_roots=["apps"])
+    goal = f"{base}/factory_context/PROJECT_GOAL.md"
+    if not resolve_repo_path(goal, root).is_file():
+        safe_write_text(
+            goal,
+            "# Project Goal\n\n"
+            "Materialized from the seed-grown context.\n\n"
+            f"{seed_text.strip()}\n",
+            repo_root=root,
+            allowed_roots=["apps"],
+        )
+
+
+def _write_pipeline_contract(
+    project_id: str, record: dict[str, Any], root: Path
+) -> str:
+    """Write the promoted contract into the build pipeline, unauthorized.
+
+    Args:
+        project_id: Validated project identifier.
+        record: The grown task-proposal contract record.
+        root: Absolute repository root.
+
+    Returns:
+        Repository-relative path of the written planned-task contract.
+    """
+    contract = dict(record)
+    # The promote bridge never authorizes; the owner must do so to build.
+    contract["authorized"] = False
+    contract["promoted_from"] = "context_growth"
+    path = f"apps/{project_id}/factory_tasks/planned_task.json"
+    safe_write_json(path, contract, repo_root=root, allowed_roots=["apps"])
+    return path
+
+
+def _point_state_at_project(
+    project_id: str, task_id: str, root: Path, state_dir: str = "state"
+) -> None:
+    """Repoint the durable state at the newly active project.
+
+    Without this, the next tick fails ``validate_state_project`` because the
+    state still names the previous project.
+
+    Args:
+        project_id: Validated project identifier.
+        task_id: Task id of the promoted contract.
+        root: Absolute repository root.
+        state_dir: Repository-relative state directory.
+    """
+    factory_state = safe_load_json(f"{state_dir}/factory_state.json", root)
+    factory_state["active_project"] = project_id
+    safe_write_json(
+        f"{state_dir}/factory_state.json",
+        factory_state,
+        repo_root=root,
+        allowed_roots=[state_dir],
+    )
+
+    project_state = safe_load_json(f"{state_dir}/project_state.json", root)
+    project_state.update(
+        {
+            "project": project_id,
+            "status": "planning",
+            "satisfaction_status": "not_satisfied",
+            "current_milestone": f"{project_id}-M1",
+            "current_task": task_id,
+            "task_id": task_id,
+            "current_checkpoint": None,
+            "last_completed_checkpoint": None,
+            "current_blocker": None,
+            "failure_count": 0,
+            "recovery_instructions": (
+                "Review the promoted planned_task.json and set "
+                "authorized: true before building."
+            ),
+        }
+    )
+    safe_write_json(
+        f"{state_dir}/project_state.json",
+        project_state,
+        repo_root=root,
+        allowed_roots=[state_dir],
+    )
+
+    active_run = safe_load_json(f"{state_dir}/active_run.json", root)
+    active_run.update(
+        {
+            "active_project": project_id,
+            "run_status": "idle",
+            "current_phase": "WAIT",
+            "current_task": task_id,
+            "task_id": task_id,
+            "current_checkpoint": None,
+            "current_blocker": None,
+            "resume_from": (
+                f"Authorize apps/{project_id}/factory_tasks/"
+                "planned_task.json (set authorized: true) to begin building."
+            ),
+        }
+    )
+    safe_write_json(
+        f"{state_dir}/active_run.json",
+        active_run,
+        repo_root=root,
+        allowed_roots=[state_dir],
+    )
+
+
+def promote(project_id: str, root: Path) -> dict[str, Any]:
+    """Promote a grown project into the build pipeline (owner-driven).
+
+    Registers the app workbench, makes it the active project, repoints durable
+    state, and copies the latest valid grown task proposal into the build
+    pipeline as a planned-task contract with ``authorized: false``. It never
+    activates the coder, applies, commits, pushes, or merges.
+
+    Args:
+        project_id: Project identifier to promote.
+        root: Absolute repository root.
+
+    Returns:
+        A summary mapping for reporting.
+
+    Raises:
+        PromoteError: If there is no valid task proposal to promote.
+    """
+    validate_project_id(project_id)
+    ledger = load_ledger(project_id, root)
+    record = find_latest_valid_task_proposal(ledger, root)
+    if record is None:
+        raise PromoteError(
+            f"No valid task proposal to promote for project '{project_id}'. "
+            "Run `grow` until a valid task_proposal artifact exists."
+        )
+    task_id = coerce_str(record.get("task_id")) or f"{project_id}-001"
+    seed = load_seed(project_id, root)
+
+    already_registered = _register_project(project_id, root)
+    _ensure_workbench(project_id, root, seed)
+    contract_path = _write_pipeline_contract(project_id, record, root)
+    _point_state_at_project(project_id, task_id, root)
+    return {
+        "project_id": project_id,
+        "task_id": task_id,
+        "contract_path": contract_path,
+        "already_registered": already_registered,
+    }
+
+
 def _load_configs(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     """Load factory and model configuration."""
     return (
@@ -351,6 +642,11 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument("--project-id", required=True)
     grow_p = sub.add_parser("grow", help="Grow one context artifact.")
     grow_p.add_argument("--project-id", required=True)
+    promote_p = sub.add_parser(
+        "promote",
+        help="Promote a grown task proposal into the build pipeline.",
+    )
+    promote_p.add_argument("--project-id", required=True)
 
     args = parser.parse_args(argv)
     root = find_repo_root()
@@ -365,6 +661,19 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"Seeded project '{args.project_id}'.")
             print(f"Artifacts: {len(ledger['artifacts'])} (000_seed)")
+            return 0
+        if args.command == "promote":
+            summary = promote(args.project_id, root)
+            print(f"Promoted '{summary['project_id']}' to the build pipeline.")
+            print(f"Active project is now: {summary['project_id']}")
+            print(
+                f"Contract: {summary['contract_path']} "
+                f"(task {summary['task_id']}, authorized: false)"
+            )
+            print(
+                "Next: review the contract and set authorized: true to "
+                "build. No coder/apply/commit was triggered."
+            )
             return 0
         artifact_type, path, ledger = grow(
             project_id=args.project_id,
