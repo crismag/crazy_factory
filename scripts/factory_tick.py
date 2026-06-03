@@ -38,6 +38,10 @@ from context_loader import (  # noqa: E402
     load_context_bundle,
     summarize_drops,
 )
+from project_control import (  # noqa: E402
+    apply_project_controls,
+    read_control,
+)
 from contract_stage import (  # noqa: E402
     contract_status_label,
     run_contract_stage,
@@ -144,6 +148,14 @@ def main() -> int:
             "embedded app (under apps/) to build now."
         )
         return 0
+    # Overlay the project's owner-control capabilities (apply/validation/commit)
+    # onto the global config. Project-local switches are authoritative when set;
+    # otherwise the global default (OFF) applies. This only ever changes the
+    # bridged capability switches — never mode or write boundaries.
+    factory_config = apply_project_controls(
+        factory_config, read_control(project["app_path"], root)
+    )
+    factory = factory_config["factory"]
     state_dir = str(factory["state_dir"])
     factory_state, active_run, project_state = load_state(root, state_dir)
     validate_state_project(project_name, factory_state, project_state)

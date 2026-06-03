@@ -57,7 +57,8 @@ pushed. You move it forward by flipping switches (Section 5).
 
 ```text
 apps/todo_app/
-  crazy_project.yaml        # per-app marker
+  crazy_project.yaml        # owner-control file: metadata, owner decisions,
+                            #   per-project capability switches (driven by CLI)
   README.md
   app/                      # YOUR CODE — the coder's only write target
   docs/                     # docs the coder may write
@@ -85,8 +86,27 @@ All commands are `bin/crazy-admin <command>` (a thin wrapper over
 | `attachproject <id> <path>` | Register an existing codebase without scaffolding or modifying it. `--write-config` drops a `crazy_project.yaml` marker. |
 | `add-context <id> <source>` | Ingest a file, directory, or archive (`zip`/`tar`/`tar.gz`/`tgz`/`gz`) into the project's context store. |
 | `activate <id>` | Make `<id>` the active project (updates the registry + `state/*.json`). |
-| `status` | Show the active project, its paths, context file count, and last tick/contract. |
+| `status` | Show the active project: contract validation/authorization, proposal/approval, effective capabilities, current blocker. |
+| `next [id]` | Tell you exactly what to do next for a project (defaults to the active one). |
 | `tick` | Run one factory tick on the active project. |
+
+Owner-control commands (the normal way to drive the safety gates — no manual
+JSON editing). Each takes an optional `<id>`, defaulting to the active project:
+
+| Command | Purpose |
+|---------|---------|
+| `authorize-task [id]` | Authorize the current planned task. Refuses unless its contract currently validates. |
+| `revoke-task [id]` | Reverse task authorization. |
+| `approve-proposal [id]` | Approve the current coder proposal for application (records its `proposal_id`). |
+| `revoke-proposal [id]` | Clear proposal approval. |
+| `enable-apply` / `disable-apply [id]` | Toggle whether approved patch plans may be applied. |
+| `enable-validation` / `disable-validation [id]` | Toggle running the allow-listed validation checks. |
+| `enable-commit` / `disable-commit [id]` | Toggle checkpoint auto-commit (never push/merge). |
+
+These edit the project-local control file `apps/<id>/crazy_project.yaml` (and
+mirror the runtime artifacts the tick reads). They never relax a safety
+boundary — `authorize-task` refuses a rejected contract, `approve-proposal`
+refuses a missing/rejected proposal, and capabilities still default OFF.
 
 Other entry points:
 
@@ -136,42 +156,52 @@ re-validates as valid on this tick (a cached "valid" is never trusted).
 
 ## 5. Driving a build: the owner control points
 
-The factory escalates only when you act. Walk it up one notch at a time.
+The factory escalates only when you act. Drive it with `crazy-admin` commands —
+**you never hand-edit generated JSON in normal use.** When in doubt, run
+`crazy-admin next` and it tells you the single next command.
+
+```bash
+crazy-admin next                       # what should I do?
+crazy-admin authorize-task todo_app    # Step 1
+crazy-admin tick                       # Coder now proposes
+crazy-admin approve-proposal todo_app  # Step 2
+crazy-admin enable-apply todo_app      # Step 3 (then validation, then commit)
+crazy-admin tick                       # applies within app/, docs/, tests/
+```
 
 ### Step 1 — Authorize the planned task
-After a tick, review the plan and authorize it:
-
-```text
-apps/todo_app/factory_tasks/planned_task.json   →  set  "authorized": true
-```
-
-The factory never sets this itself. On the next tick the Coder activates and
-produces a proposal.
+`crazy-admin authorize-task <id>` reviews the contract and authorizes it. It
+**refuses** if the contract's validation is not `valid` (e.g. a rejected
+contract) — fix the plan or run another tick first. On the next tick the Coder
+activates and produces a proposal.
 
 ### Step 2 — Approve applying the proposal
-Review `coder_proposal.json`, then create a **separate** approval file the
-factory never overwrites:
+`crazy-admin approve-proposal <id>` records approval of the current proposal and
+writes the matching approval artifact. The recorded `proposal_id` must match the
+current proposal, so a stale approval can never authorize a freshly generated
+one. Undo with `revoke-proposal`.
 
-```text
-apps/todo_app/factory_tasks/approved_proposal.json
-  { "application_approved": true, "proposal_id": "<id from coder_proposal.json>" }
-```
+### Step 3 — Enable capabilities, one notch at a time
+Each capability is a per-project switch (in `apps/<id>/crazy_project.yaml`),
+default OFF. Toggle with a command — no global edits:
 
-The `proposal_id` must match the current proposal, so a stale approval can't
-authorize a freshly generated one.
+| Command | Effect when enabled |
+|---------|--------------------|
+| `enable-apply <id>` | Apply the approved patch plan to `app/`, `docs/`, `tests/`. |
+| `enable-validation <id>` | Run the allow-listed validation commands (shell-free). |
+| `enable-commit <id>` | Commit the checkpoint to git (staged paths only; never push/merge). |
 
-### Step 3 — Enable writes, then validation, then commit
-Flip these in `config/factory.yaml` as you gain confidence (each defaults OFF):
-
-| Switch | Effect when `true` |
-|--------|--------------------|
-| `proposal_application.allow_apply` | Apply the approved patch plan to `app/`, `docs/`, `tests/`. |
-| `proposal_application.allow_delete` | Allow deletes in a patch plan (otherwise deletes are rejected). |
-| `validation.allow_run` | Run the allow-listed validation commands (shell-free). |
-| `git.allow_auto_commit` | Commit the checkpoint to git (staged paths only; never push/merge). |
-
-Writes are always confined to `app/`, `docs/`, `tests/`. Protected paths (root
+A capability set in the control file is authoritative for that project;
+otherwise the `config/factory.yaml` global default (OFF) applies. Writes are
+always confined to `app/`, `docs/`, `tests/`. Protected paths (root
 `README.md`, `factory/`, `config/`, `.git/`, `state/`, secrets, …) are rejected.
+
+### Advanced / debug fallback
+The control plane is still file-backed, so for debugging you *can* hand-edit
+`apps/<id>/factory_tasks/planned_task.json` (`"authorized": true`) or
+`approved_proposal.json` (`{"application_approved": true, "proposal_id": "…"}`),
+or flip the global switches in `config/factory.yaml`. The `crazy-admin` commands
+are the supported path; manual editing is a fallback only.
 
 ### What stays OFF no matter what
 `git.allow_auto_push`, `git.allow_auto_merge`, force pushes, history rewrites,

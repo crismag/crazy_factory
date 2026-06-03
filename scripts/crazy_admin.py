@@ -37,6 +37,20 @@ from context_manager import (  # noqa: E402
     load_catalog,
     supported_file_count,
 )
+from owner_controls import (  # noqa: E402
+    approve_proposal,
+    authorize_task,
+    describe_next,
+    gather_status,
+    revoke_proposal,
+    revoke_task,
+    set_capability,
+)
+from project_control import (  # noqa: E402
+    ControlError,
+    default_control,
+    dump_control,
+)
 from project_registry import (  # noqa: E402
     RegistryError,
     active_project_id,
@@ -51,6 +65,7 @@ from project_registry import (  # noqa: E402
 )
 from repo_tools import (  # noqa: E402
     find_repo_root,
+    load_simple_yaml,
     safe_load_json,
     safe_write_json,
     safe_write_text,
@@ -123,14 +138,15 @@ def _ensure_state_dirs(state_path: str, root: Path) -> None:
         )
 
 
-def _crazy_project_yaml(project_id: str, repo_mode: str) -> str:
-    """Render the per-app ``crazy_project.yaml`` marker."""
-    return (
-        f"project_id: {project_id}\n"
-        f"repo_mode: {repo_mode}\n"
-        "seed_file: docs/seed.md\n"
-        "managed_by: crazy_factory\n"
+def _crazy_project_yaml(project_id: str, repo_mode: str, app_path: str) -> str:
+    """Render the per-app ``crazy_project.yaml`` owner-control file."""
+    control = default_control(
+        project_id=project_id,
+        mode=repo_mode,
+        app_path=app_path,
+        state_path=state_path_for(project_id),
     )
+    return dump_control(control)
 
 
 def _seed_template(project_id: str) -> str:
@@ -180,7 +196,7 @@ def startproject(
     _scaffold_write(
         base,
         "crazy_project.yaml",
-        _crazy_project_yaml(project_id, repo_mode),
+        _crazy_project_yaml(project_id, repo_mode, app_path),
         force=force,
     )
     _scaffold_write(
@@ -298,7 +314,7 @@ def attachproject(
         _scaffold_write(
             base,
             "crazy_project.yaml",
-            _crazy_project_yaml(project_id, repo_mode),
+            _crazy_project_yaml(project_id, repo_mode, existing_path),
             force=False,
         )
     return {
@@ -338,66 +354,95 @@ def _sync_state_active(project_id: str, root: Path) -> None:
         safe_write_json(rel, state, repo_root=root, allowed_roots=["state"])
 
 
+def _factory_config(root: Path) -> dict[str, Any]:
+    """Load the whole ``config/factory.yaml`` mapping (all top sections)."""
+    return load_simple_yaml("config/factory.yaml", root)
+
+
+def _resolve_project_arg(root: Path, project_id: str | None) -> dict[str, Any]:
+    """Resolve an explicit project id, or the active project when omitted.
+
+    Raises:
+        AdminError: If no project is given and none is active.
+        RegistryError: If the named project is not registered.
+    """
+    registry = load_registry(root)
+    pid = project_id or active_project_id(registry)
+    if not pid:
+        raise AdminError(
+            "No project specified and no active project. "
+            "Pass a <project_id> or run `crazy-admin activate <id>`."
+        )
+    return resolve_project(registry, pid)
+
+
 def status(root: Path) -> dict[str, Any]:
-    """Return a status summary for the active project.
+    """Return a detailed owner-facing status for the active project.
 
     Args:
         root: Absolute repository root.
 
     Returns:
-        A mapping describing the active project's resolved paths and state.
+        A mapping describing paths, context, contract/proposal state, effective
+        capabilities, and the current blocker.
     """
     registry = load_registry(root)
     pid = active_project_id(registry)
     if not pid:
         return {"active_project": "", "message": "No active project."}
     project = resolve_project(registry, pid)
-    project_state = safe_load_json("state/project_state.json", root)
-    active_run = safe_load_json("state/active_run.json", root)
-    supported = 0
-    imports = 0
-    if not app_is_external(project["app_path"], root) and workbench_exists(
-        project["app_path"], root
-    ):
-        catalog = load_catalog(root, project)
-        supported = supported_file_count(catalog)
-        imports = len(catalog.get("imports") or {})
-    return {
+    info: dict[str, Any] = {
         "active_project": pid,
         "app_path": project["app_path"],
         "state_path": project["state_path"],
         "repo_mode": project["repo_mode"],
         "workbench_exists": workbench_exists(project["app_path"], root),
-        "context_imports": imports,
-        "context_supported_files": supported,
-        "last_tick": active_run.get("current_phase"),
-        "last_contract": project_state.get("last_contract_status"),
-        "last_validation": project_state.get("last_validation_status"),
-        "current_blocker": project_state.get("current_blocker"),
-        "resume_from": active_run.get("resume_from"),
     }
+    if (
+        not app_is_external(project["app_path"], root)
+        and info["workbench_exists"]
+    ):
+        catalog = load_catalog(root, project)
+        info["context_imports"] = len(catalog.get("imports") or {})
+        info["context_supported_files"] = supported_file_count(catalog)
+        info.update(gather_status(project, root, _factory_config(root)))
+    return info
 
 
 def _print_status(info: dict[str, Any]) -> None:
-    """Print a status summary."""
+    """Print the detailed owner-facing status."""
     if not info.get("active_project"):
         print("Active project: (none)")
         print("Select one: crazy-admin startproject <id> | attachproject ...")
         return
     print(f"Active project: {info['active_project']}")
-    print(f"App path:       {info['app_path']}")
+    print(f"Project path:   {info['app_path']}")
     print(f"State path:     {info['state_path']}")
-    print(f"Repo mode:      {info['repo_mode']}")
-    print(f"Workbench OK:   {str(info['workbench_exists']).lower()}")
     print(
-        f"Context files:  {info.get('context_supported_files')} supported "
-        f"({info.get('context_imports')} import(s))"
+        f"Context:        {info.get('context_supported_files', 0)} supported "
+        f"file(s), {info.get('context_imports', 0)} import(s)"
     )
-    print(f"Last tick:      {info.get('last_tick')}")
-    print(f"Last contract:  {info.get('last_contract')}")
-    print(f"Last validation:{info.get('last_validation')}")
-    print(f"Current blocker:{info.get('current_blocker')}")
-    print(f"Next:           {info.get('resume_from')}")
+    print("\nContract:")
+    print(f"  exists:     {str(info.get('contract_exists', False)).lower()}")
+    print(f"  validation: {info.get('contract_status', 'absent')}")
+    print(
+        f"  authorized: {str(info.get('contract_authorized', False)).lower()}"
+    )
+    for reason in info.get("contract_reasons", []) or []:
+        print(f"    - {reason}")
+    print("\nProposal:")
+    print(f"  exists:   {str(info.get('proposal_exists', False)).lower()}")
+    print(f"  approved: {str(info.get('proposal_approved', False)).lower()}")
+    caps = info.get("capabilities", {})
+    print("\nCapabilities (effective):")
+    print(f"  apply:       {str(caps.get('allow_apply', False)).lower()}")
+    print(f"  delete:      {str(caps.get('allow_delete', False)).lower()}")
+    print(f"  validation:  {str(caps.get('allow_validation', False)).lower()}")
+    print(
+        f"  auto_commit: {str(caps.get('allow_auto_commit', False)).lower()}"
+    )
+    print(f"\nCurrent blocker:\n  {info.get('current_blocker')}")
+    print(f"\nNext:\n  bin/crazy-admin next {info['active_project']}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -427,6 +472,22 @@ def main(argv: list[str] | None = None) -> int:
     ac.add_argument("source")
     sub.add_parser("status")
     sub.add_parser("tick")
+    # Owner-control commands. project_id is optional → defaults to active.
+    for name in (
+        "next",
+        "authorize-task",
+        "revoke-task",
+        "approve-proposal",
+        "revoke-proposal",
+        "enable-apply",
+        "disable-apply",
+        "enable-validation",
+        "disable-validation",
+        "enable-commit",
+        "disable-commit",
+    ):
+        owner = sub.add_parser(name)
+        owner.add_argument("project_id", nargs="?", default=None)
 
     args = parser.parse_args(argv)
     root = find_repo_root()
@@ -438,6 +499,7 @@ def main(argv: list[str] | None = None) -> int:
         SeedError,
         ContextError,
         ArchiveError,
+        ControlError,
     ) as exc:
         print(f"crazy-admin error: {exc}", file=sys.stderr)
         return 2
@@ -496,8 +558,61 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
     if args.command == "status":
         _print_status(status(root))
         return 0
+    owner_result = _dispatch_owner(args, root)
+    if owner_result is not None:
+        return owner_result
     # tick
     return factory_tick.main()
+
+
+_CAPABILITY_COMMANDS: dict[str, tuple[str, bool]] = {
+    "enable-apply": ("allow_apply", True),
+    "disable-apply": ("allow_apply", False),
+    "enable-validation": ("allow_validation", True),
+    "disable-validation": ("allow_validation", False),
+    "enable-commit": ("allow_auto_commit", True),
+    "disable-commit": ("allow_auto_commit", False),
+}
+
+
+def _dispatch_owner(args: argparse.Namespace, root: Path) -> int | None:
+    """Dispatch an owner-control command; return ``None`` if not one."""
+    cmd = args.command
+    if cmd == "next":
+        project = _resolve_project_arg(root, args.project_id)
+        print(describe_next(project, root, _factory_config(root)))
+        return 0
+    if cmd == "authorize-task":
+        project = _resolve_project_arg(root, args.project_id)
+        authorize_task(project, root)
+        print("Task authorized.\n\nNext:\n  bin/crazy-admin tick")
+        return 0
+    if cmd == "revoke-task":
+        project = _resolve_project_arg(root, args.project_id)
+        revoke_task(project, root)
+        print("Task authorization revoked.")
+        return 0
+    if cmd == "approve-proposal":
+        project = _resolve_project_arg(root, args.project_id)
+        result = approve_proposal(project, root)
+        pid = project["name"]
+        print(
+            f"Proposal approved: {result['proposal_id']}\n\nNext:\n"
+            f"  bin/crazy-admin enable-apply {pid}\n  bin/crazy-admin tick"
+        )
+        return 0
+    if cmd == "revoke-proposal":
+        project = _resolve_project_arg(root, args.project_id)
+        revoke_proposal(project, root)
+        print("Proposal approval cleared.")
+        return 0
+    if cmd in _CAPABILITY_COMMANDS:
+        cap_key, value = _CAPABILITY_COMMANDS[cmd]
+        project = _resolve_project_arg(root, args.project_id)
+        set_capability(project, root, cap_key, value)
+        print(f"{cap_key} = {str(value).lower()} for {project['name']}.")
+        return 0
+    return None
 
 
 if __name__ == "__main__":
