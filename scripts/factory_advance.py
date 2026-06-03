@@ -461,7 +461,12 @@ def main() -> int:
         f"(committed: {str(checkpoint_result.committed).lower()})"
     )
     print("Last role completed: reporter")
-    print(f"Report written: {report_path.relative_to(root)}")
+    # report_path may live outside the repo (external app workbench).
+    try:
+        report_display = report_path.relative_to(root)
+    except ValueError:
+        report_display = report_path
+    print(f"Report written: {report_display}")
     print(
         "Safety: planning + proposal + preview only; no commit/push/merge "
         "attempted"

@@ -188,21 +188,24 @@ class ValidateTests(unittest.TestCase):
             self._validate(parse_patch_plan(json.dumps(data))).valid
         )
 
-    def test_rejects_path_outside_workbench(self) -> None:
-        data = _valid_plan_dict()
-        data["files"] = [
-            {"path": "src/x.py", "action": "create", "content": "a\n"}
-        ]
-        verdict = self._validate(parse_patch_plan(json.dumps(data)))
-        self.assertFalse(verdict.valid)
-        self.assertIn("src/x.py", verdict.blocked_paths)
+    def test_rejects_escape_outside_workbench(self) -> None:
+        for bad in ["/etc/passwd", "../x.py"]:
+            data = _valid_plan_dict()
+            data["files"] = [
+                {"path": bad, "action": "create", "content": "a\n"}
+            ]
+            verdict = self._validate(parse_patch_plan(json.dumps(data)))
+            self.assertFalse(verdict.valid, bad)
+            self.assertIn(bad, verdict.blocked_paths)
 
-    def test_rejects_protected_paths(self) -> None:
+    def test_rejects_factory_runtime_and_vcs_paths(self) -> None:
+        # Workbench-relative paths into factory runtime or .git are blocked;
+        # ordinary app paths (src/, README.md) resolve in-project and are fine.
         for bad in [
-            "factory/x.py",
-            "README.md",
+            ".git/config",
             "state/x.json",
-            "scripts/y.py",
+            "factory_tasks/x.json",
+            "config/factory.yaml",
         ]:
             data = _valid_plan_dict()
             data["files"] = [

@@ -26,10 +26,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 
-from coder_proposal import SECRET_MARKERS, allowed_target_prefixes
+from coder_proposal import (
+    SECRET_MARKERS,
+    _default_runtime_prefixes,
+    classify_path,
+    project_runtime_prefixes,
+    resolve_workbench_path,
+)
 from contract_stage import load_existing_contract
 from json_parsing import coerce_str, coerce_str_list, strip_code_fence
 from ollama_client import OllamaClient, OllamaConnectionError
@@ -237,34 +243,6 @@ def parse_patch_plan(raw: str) -> PatchPlan:
     )
 
 
-def _is_allowed_write_path(
-    path: str, allowed_prefixes: tuple[str, ...]
-) -> bool:
-    """Report whether one path is a safe, in-bounds write target.
-
-    Args:
-        path: Repository-relative path proposed by the model.
-        allowed_prefixes: Allowed target prefixes for the active project.
-
-    Returns:
-        ``True`` only when the path is in-bounds, not protected, and a file.
-    """
-    if not path or path.startswith("/"):
-        return False
-    normalized = PurePosixPath(path)
-    if ".." in normalized.parts:
-        return False
-    as_text = normalized.as_posix()
-    if as_text.endswith("/"):
-        return False
-    lowered = as_text.lower()
-    if lowered in FORBIDDEN_EXACT_PATHS:
-        return False
-    if any(lowered.startswith(p) for p in FORBIDDEN_APPLY_PREFIXES):
-        return False
-    return any(as_text.startswith(prefix) for prefix in allowed_prefixes)
-
-
 def validate_patch_plan(
     plan: PatchPlan | None,
     *,
@@ -274,6 +252,7 @@ def validate_patch_plan(
     max_files: int,
     max_lines: int,
     allow_delete: bool = False,
+    runtime_prefixes: tuple[str, ...] = (),
 ) -> ApplicationVerdict:
     """Validate a patch plan against the Phase 5 safety rules.
 
@@ -313,7 +292,7 @@ def validate_patch_plan(
             f"approved proposal {expected_id!r}"
         )
 
-    allowed = allowed_target_prefixes(app_path)
+    runtime = runtime_prefixes or _default_runtime_prefixes(app_path)
     declared = _declared_proposal_paths(proposal_record)
     blob_parts: list[str] = [plan.notes]
     for patch in plan.files:
@@ -325,7 +304,9 @@ def validate_patch_plan(
             reasons.append(
                 f"Delete operations are disabled in this phase: {patch.path}"
             )
-        if not _is_allowed_write_path(patch.path, allowed):
+        # Workbench-relative paths are resolved against the workbench; anything
+        # that still lands outside it (or in factory runtime) is blocked.
+        if classify_path(patch.path, app_path, runtime) == "blocked":
             blocked.append(patch.path)
         if patch.action in {"create", "modify"} and not patch.content.strip():
             reasons.append(
@@ -346,9 +327,8 @@ def validate_patch_plan(
 
     if blocked:
         reasons.append(
-            "Patch plan targets paths outside "
-            f"{app_path}/(app|docs|tests) or protected locations: "
-            + ", ".join(blocked)
+            "Patch plan targets paths outside the project workbench or its "
+            "factory-managed runtime: " + ", ".join(blocked)
         )
 
     secret_hits = sorted(
@@ -616,15 +596,18 @@ def request_patch_plan(
         timeout_seconds=int(ollama["timeout_seconds"]),
         stream=bool(ollama["stream"]),
     )
-    allowed = ", ".join(allowed_target_prefixes(app_path))
     instruction = (
         "Return ONLY a single JSON object describing exact file changes. Use "
         "keys: plan_id, task_id, proposal_id, files (array of objects with "
         "path, action [create|modify|delete], content), notes. Provide the "
-        "full file content for create/modify. Every path must be under one "
-        f"of: {allowed}. Touch at most {max_files} files and keep each file "
-        f"under {max_lines} lines. Never reference secrets/credentials and "
-        "never target protected paths."
+        "full file content for create/modify. Reuse the EXACT paths from the "
+        "approved proposal below; they are relative to the project root (e.g. "
+        "src/x.py, tests/test_x.py, README.md) — do NOT add an app/ prefix or "
+        "any other prefix, and keep imports consistent with those paths. Never "
+        "target the factory-managed folders (config/, state/, factory_state/, "
+        "factory_reports/, factory_tasks/, factory_context/, context/), .git/, "
+        f"or paths outside the project. Touch at most {max_files} files and "
+        f"keep each file under {max_lines} lines. Never reference secrets."
     )
     proposal_summary = json.dumps(
         {
@@ -684,6 +667,7 @@ def request_patch_plan(
         max_files=max_files,
         max_lines=max_lines,
         allow_delete=allow_delete,
+        runtime_prefixes=project_runtime_prefixes(project),
     )
     return ApplicationResult(
         plan, verdict, "ollama", f"Coder model `{model}`", mode, activated=True
@@ -718,31 +702,33 @@ def apply_patch_plan(
     Returns:
         A tuple of (files written or removed, error message or ``None``).
     """
-    allowed_roots = [
-        f"{project['root']}/app",
-        f"{project['root']}/docs",
-        f"{project['root']}/tests",
-    ]
-    resolved_roots = [resolve_repo_path(r, root) for r in allowed_roots]
+    # The whole project workbench is the write root; validation has already
+    # excluded factory-managed runtime folders inside it. Workbench-relative
+    # patch paths are resolved against the workbench before writing.
+    app_path = str(project["root"])
+    allowed_roots = [app_path]
+    runtime = project_runtime_prefixes(project) or _default_runtime_prefixes(
+        app_path
+    )
     touched: list[str] = []
     for patch in plan.files:
+        # Re-check the boundary defensively before touching the filesystem.
+        if classify_path(patch.path, app_path, runtime) == "blocked":
+            return touched, f"Apply blocked unsafe path: {patch.path}"
+        dest = resolve_workbench_path(patch.path, app_path)
         try:
             if patch.action == "delete":
                 if not allow_delete:
                     # Deletes are disabled in this phase; validation should
                     # already have rejected the plan, but skip defensively.
                     continue
-                target = resolve_repo_path(patch.path, root)
-                if not any(rd in target.parents for rd in resolved_roots):
-                    raise RepoSafetyError(
-                        f"Delete path is not in an approved root: {patch.path}"
-                    )
+                target = resolve_repo_path(dest, root)
                 if target.is_file():
                     target.unlink()
                 touched.append(patch.path)
                 continue
             safe_write_text(
-                patch.path,
+                dest,
                 patch.content,
                 repo_root=root,
                 allowed_roots=allowed_roots,

@@ -155,18 +155,24 @@ class ValidateTests(unittest.TestCase):
         self.assertFalse(verdict.valid)
         self.assertTrue(any("empty" in r.lower() for r in verdict.reasons))
 
-    def test_rejects_path_outside_workbench(self) -> None:
-        """Allowed targets: reject paths outside app/docs/tests."""
-        data = _valid_proposal_dict()
-        data["files_to_create"] = ["src/elsewhere.py"]
-        data["files_to_modify"] = []
-        verdict = self._validate(parse_coder_proposal(json.dumps(data)))
-        self.assertFalse(verdict.valid)
-        self.assertIn("src/elsewhere.py", verdict.blocked_paths)
+    def test_rejects_escape_outside_workbench(self) -> None:
+        """Absolute/traversal paths that leave the workbench are blocked."""
+        for bad in ["/etc/passwd", "../elsewhere.py"]:
+            data = _valid_proposal_dict()
+            data["files_to_create"] = [bad]
+            data["files_to_modify"] = []
+            verdict = self._validate(parse_coder_proposal(json.dumps(data)))
+            self.assertFalse(verdict.valid, bad)
+            self.assertIn(bad, verdict.blocked_paths)
 
-    def test_rejects_protected_directory(self) -> None:
-        """Rule 4: reject paths under protected top-level directories."""
-        for bad in ["factory/x.py", ".git/config", "state/x.json"]:
+    def test_rejects_factory_runtime_and_vcs(self) -> None:
+        """Workbench-relative paths into factory runtime or .git are blocked."""
+        for bad in [
+            ".git/config",
+            "state/x.json",
+            "factory_tasks/planned_task.json",
+            "config/factory.yaml",
+        ]:
             data = _valid_proposal_dict()
             data["files_to_modify"] = [bad]
             data["files_to_create"] = []
@@ -174,26 +180,23 @@ class ValidateTests(unittest.TestCase):
             self.assertFalse(verdict.valid, bad)
             self.assertIn(bad, verdict.blocked_paths)
 
-    def test_rejects_root_readme(self) -> None:
-        """The root README is never an allowed proposal target."""
+    def test_app_readme_is_in_project(self) -> None:
+        """A bare README.md is the app's own README — in-project, allowed."""
         data = _valid_proposal_dict()
         data["files_to_modify"] = ["README.md"]
         data["files_to_create"] = []
         verdict = self._validate(parse_coder_proposal(json.dumps(data)))
-        self.assertFalse(verdict.valid)
-        self.assertIn("README.md", verdict.blocked_paths)
+        self.assertTrue(verdict.valid, verdict.reasons)
 
-    def test_rejects_delete_outside_workbench(self) -> None:
-        """files_to_delete is bounded by the same allowed-target rule."""
+    def test_rejects_delete_escape(self) -> None:
+        """A delete that escapes the workbench is blocked."""
         data = _valid_proposal_dict()
         data["files_to_create"] = []
         data["files_to_modify"] = []
-        data["files_to_delete"] = ["factory/governance/ALLOWED_ACTIONS.md"]
+        data["files_to_delete"] = ["../outside.md"]
         verdict = self._validate(parse_coder_proposal(json.dumps(data)))
         self.assertFalse(verdict.valid)
-        self.assertIn(
-            "factory/governance/ALLOWED_ACTIONS.md", verdict.blocked_paths
-        )
+        self.assertIn("../outside.md", verdict.blocked_paths)
 
     def test_rejects_parent_traversal(self) -> None:
         """Reject parent-traversal paths even under an allowed prefix."""
@@ -283,21 +286,31 @@ class DecisionTests(unittest.TestCase):
         self.assertTrue(v.valid)  # eligible *through* the owner-approval gate
         self.assertTrue(v.review_reasons)
 
-    def test_protected_path_is_blocked(self) -> None:
+    def test_factory_runtime_path_is_blocked(self) -> None:
+        # A workbench-relative path into the factory runtime is blocked.
         data = _valid_proposal_dict()
-        data["files_to_modify"] = ["factory/core.py"]
+        data["files_to_modify"] = ["factory_tasks/planned_task.json"]
         data["files_to_create"] = []
         v = self._v(parse_coder_proposal(json.dumps(data)))
         self.assertEqual(v.decision, DECISION_BLOCKED)
         self.assertFalse(v.valid)
 
-    def test_out_of_bounds_path_is_blocked(self) -> None:
+    def test_escape_path_is_blocked(self) -> None:
         data = _valid_proposal_dict()
-        data["files_to_create"] = ["src/elsewhere.py"]
+        data["files_to_create"] = ["/etc/passwd"]
         data["files_to_modify"] = []
         v = self._v(parse_coder_proposal(json.dumps(data)))
         self.assertEqual(v.decision, DECISION_BLOCKED)
         self.assertFalse(v.valid)
+
+    def test_workbench_relative_src_is_valid(self) -> None:
+        # The model's natural "src/x.py" resolves into the workbench → valid.
+        data = _valid_proposal_dict()
+        data["files_to_create"] = ["src/elsewhere.py"]
+        data["files_to_modify"] = []
+        v = self._v(parse_coder_proposal(json.dumps(data)))
+        self.assertEqual(v.decision, DECISION_VALID)
+        self.assertTrue(v.valid)
 
     def test_empty_proposal_is_needs_clarification(self) -> None:
         data = _valid_proposal_dict()

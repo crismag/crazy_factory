@@ -301,11 +301,16 @@ def add_context(
         stored.append(archive_rel)
         extract_abs = resolve_repo_path(f"{extracted_root}/{import_id}", root)
         for abs_path in safe_extract(src, extract_abs):
+            # External app workbenches are not under the repo root; fall back to
+            # a path relative to the extraction dir so cataloging still works.
+            try:
+                rel = str(abs_path.relative_to(root))
+            except ValueError:
+                rel = str(abs_path.relative_to(extract_abs.parent))
             if _is_sensitive(abs_path):
                 abs_path.unlink()
-                skipped.append(str(abs_path.relative_to(root)))
+                skipped.append(rel)
                 continue
-            rel = str(abs_path.relative_to(root))
             _catalog_file(catalog, rel, import_id)
             stored.append(rel)
         extracted = True
