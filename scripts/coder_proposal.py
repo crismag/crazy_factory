@@ -345,6 +345,129 @@ def project_runtime_prefixes(project: dict[str, Any]) -> tuple[str, ...]:
     return tuple(f"{d}/" for d in dirs)
 
 
+# Directories never shown to the coder as source: factory-managed runtime dirs
+# (by basename within the workbench) and build/VCS/cache noise.
+_WORKBENCH_SKIP_DIRS: frozenset[str] = frozenset(
+    {
+        "config",
+        "state",
+        "factory_state",
+        "factory_reports",
+        "factory_tasks",
+        "factory_context",
+        "context",
+        ".git",
+        ".github",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+        "node_modules",
+        ".venv",
+        "venv",
+        ".idea",
+        ".vscode",
+        "dist",
+        "build",
+    }
+)
+# File suffixes worth showing as source/text context (skips binaries; an env
+# file has no allowlisted suffix and is never read).
+_WORKBENCH_SOURCE_SUFFIXES: frozenset[str] = frozenset(
+    {
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".go",
+        ".rs",
+        ".java",
+        ".rb",
+        ".php",
+        ".c",
+        ".h",
+        ".cpp",
+        ".hpp",
+        ".cs",
+        ".sh",
+        ".sql",
+        ".html",
+        ".css",
+        ".md",
+        ".txt",
+        ".toml",
+        ".cfg",
+        ".ini",
+        ".yaml",
+        ".yml",
+        ".json",
+    }
+)
+
+
+def read_workbench_source(
+    app_path: str,
+    *,
+    max_files: int = 25,
+    max_total_bytes: int = 24000,
+    max_file_bytes: int = 8000,
+) -> str:
+    """Read the application's current source files for the coder's context.
+
+    A model that proposes edits or fixes must see the EXACT files, names, and
+    APIs it is changing — otherwise it invents non-existent symbols. This walks
+    only the workbench (``app_path``), skips factory-managed/VCS/build dirs and
+    non-text files, and is bounded by file count and byte budgets so the prompt
+    stays small. Reads are confined to the workbench by construction.
+
+    Returns a Markdown section, or an empty string when there is nothing to
+    show (e.g. a brand-new project with no source yet).
+    """
+    base = Path(app_path)
+    if not base.is_dir():
+        return ""
+    collected: list[tuple[str, str]] = []
+    total = 0
+    for path in sorted(base.rglob("*")):
+        rel = path.relative_to(base)
+        if any(part in _WORKBENCH_SKIP_DIRS for part in rel.parts):
+            continue
+        if path.name == "crazy_project.yaml" or not path.is_file():
+            continue
+        if path.suffix.lower() not in _WORKBENCH_SOURCE_SUFFIXES:
+            continue
+        # Never surface secret-like files to the model, even local ones.
+        lowered = rel.as_posix().lower()
+        if any(marker in lowered for marker in SECRET_MARKERS):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        snippet = text[:max_file_bytes]
+        if total + len(snippet) > max_total_bytes:
+            break
+        total += len(snippet)
+        collected.append((rel.as_posix(), snippet))
+        if len(collected) >= max_files:
+            break
+    if not collected:
+        return ""
+    parts = [
+        "## Current Workbench Source",
+        "",
+        "These are the project's CURRENT files. When you modify or fix code, "
+        "target these EXACT file paths, names, and function/class signatures; "
+        "do not invent symbols that are not defined here.",
+    ]
+    parts.extend(
+        f"### {rel_path}\n\n```\n{text.rstrip()}\n```"
+        for rel_path, text in collected
+    )
+    return "\n\n".join(parts)
+
+
 def resolve_workbench_path(path: str, app_path: str) -> str:
     """Interpret a proposed path against the project workbench.
 
@@ -917,6 +1040,8 @@ def request_coder_proposal(
     remediation_block = (
         f"\n\n{remediation_context.strip()}\n" if remediation_context else ""
     )
+    workbench_source = read_workbench_source(app_path)
+    source_block = f"\n\n{workbench_source}\n" if workbench_source else ""
     messages = [
         {"role": "system", "content": instruction},
         {
@@ -924,6 +1049,7 @@ def request_coder_proposal(
             "content": (
                 f"{prompt_package.prompt}\n\n"
                 f"## Authorized Contract\n\n{contract_summary}\n"
+                f"{source_block}"
                 f"{remediation_block}"
             ),
         },

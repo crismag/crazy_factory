@@ -34,6 +34,7 @@ from coder_proposal import (  # noqa: E402
     coder_to_dict,
     decision_label,
     parse_coder_proposal,
+    read_workbench_source,
     render_coder_proposal_md,
     request_coder_proposal,
     run_coder_stage,
@@ -871,6 +872,61 @@ class StateAndReportTests(unittest.TestCase):
             self.assertIn("CP-001", report)
             self.assertIn("factory/x.py", report)
             self.assertIn("Applied: `false`", report)
+
+
+class WorkbenchSourceTests(unittest.TestCase):
+    """The coder sees current app source, never factory-managed/secret files."""
+
+    def test_includes_source_excludes_factory_and_secrets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "src").mkdir()
+            (base / "src" / "game.py").write_text(
+                "def apply_move():\n    return True\n", encoding="utf-8"
+            )
+            (base / "tests").mkdir()
+            (base / "tests" / "test_game.py").write_text(
+                "from src.game import apply_move\n", encoding="utf-8"
+            )
+            # Factory-managed + secret + binary files must be excluded.
+            (base / "factory_tasks").mkdir()
+            (base / "factory_tasks" / "planned_task.json").write_text(
+                '{"secret_plan": true}', encoding="utf-8"
+            )
+            (base / "config").mkdir()
+            (base / "config" / "factory.yaml").write_text(
+                "mode: apply\n", encoding="utf-8"
+            )
+            (base / ".env").write_text("TOKEN=supersecret\n", encoding="utf-8")
+            (base / "crazy_project.yaml").write_text(
+                "id: x\n", encoding="utf-8"
+            )
+
+            out = read_workbench_source(str(base))
+
+            self.assertIn("src/game.py", out)
+            self.assertIn("def apply_move", out)
+            self.assertIn("tests/test_game.py", out)
+            self.assertNotIn("planned_task.json", out)
+            self.assertNotIn("supersecret", out)
+            self.assertNotIn("crazy_project.yaml", out)
+
+    def test_empty_workbench_returns_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(read_workbench_source(tmp), "")
+
+    def test_total_byte_budget_bounds_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "src").mkdir()
+            for i in range(50):
+                (base / "src" / f"m{i}.py").write_text(
+                    "x = 1\n" * 200, encoding="utf-8"
+                )
+            out = read_workbench_source(
+                str(base), max_total_bytes=4000, max_file_bytes=1000
+            )
+            self.assertLessEqual(len(out), 8000)
 
 
 if __name__ == "__main__":
