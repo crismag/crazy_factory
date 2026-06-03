@@ -206,6 +206,12 @@ def resolve_project(
         "context_root": f"{app_path}/factory_context",
         "task_root": f"{app_path}/factory_tasks",
         "report_root": f"{app_path}/factory_reports",
+        # Phase 9A imported-context store: raw imports, extracted archives, and
+        # the catalog. Distinct from factory_context (goal + grown context).
+        "context_store_root": f"{app_path}/context",
+        "context_imports_root": f"{app_path}/context/imports",
+        "context_extracted_root": f"{app_path}/context/extracted",
+        "context_catalog_path": f"{app_path}/context/catalog.yaml",
     }
 
 

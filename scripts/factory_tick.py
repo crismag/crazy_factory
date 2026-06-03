@@ -34,6 +34,10 @@ from coder_proposal import (  # noqa: E402
     coder_status_label,
     run_coder_stage,
 )
+from context_loader import (  # noqa: E402
+    load_context_bundle,
+    summarize_drops,
+)
 from contract_stage import (  # noqa: E402
     contract_status_label,
     run_contract_stage,
@@ -177,6 +181,19 @@ def main() -> int:
         repo_root=root,
         max_lines_per_file=max_lines,
     )
+    # Phase 9A: aggregate imported project context and inject it into planning
+    # so plans reflect supplied knowledge. The guard bounds prompt growth.
+    context_bundle = load_context_bundle(
+        root, project, max_lines_per_file=max_lines
+    )
+    drop_note = summarize_drops(context_bundle)
+    if drop_note:
+        print(drop_note)
+    if context_bundle.included:
+        print(
+            f"Loaded {len(context_bundle.included)} context file(s) "
+            f"({context_bundle.total_bytes} bytes) into planning."
+        )
     architect_result = request_architect_result(
         project_name=project_name,
         project=project,
@@ -185,6 +202,7 @@ def main() -> int:
         models_config=models_config,
         max_lines=max_lines,
         tasks=tasks,
+        context_bundle=context_bundle.text,
     )
 
     task_root = str(project["task_root"])
@@ -204,6 +222,7 @@ def main() -> int:
         max_lines=max_lines,
         tasks=tasks,
         architect_result=architect_result,
+        context_bundle=context_bundle.text,
     )
     safe_write_text(
         next_action_path,
