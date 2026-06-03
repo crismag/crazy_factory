@@ -299,6 +299,20 @@ def describe_next(
         )
 
     status, reasons = _contract_validation(task)
+    if status == "needs_owner_review":
+        reason_lines = "\n".join(f"  {r}" for r in reasons) or "  (no detail)"
+        review_md = _task_path(project, "CONTRACT_REVIEW.md")
+        return (
+            "Current state: contract_needs_owner_review\n\n"
+            "The reviewer could not auto-resolve this contract; it is safe but "
+            "needs your judgment.\n\n"
+            f"Checklist / reasons:\n{reason_lines}\n\n"
+            f"Review:\n  {review_md}\n  {planned_md}\n\n"
+            "Recommended action:\n"
+            "  Resolve the checklist (edit the goal/context) and run another "
+            "advance, or run an advance to re-plan.\n"
+            "  bin/crazy-admin advance"
+        )
     if status != "valid":
         reason_lines = "\n".join(f"  {r}" for r in reasons) or "  (no detail)"
         return (

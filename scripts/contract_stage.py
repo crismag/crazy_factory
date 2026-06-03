@@ -30,6 +30,11 @@ from repo_tools import (
     safe_write_json,
     safe_write_text,
 )
+from contract_review import (
+    DECISION_VALID,
+    render_contract_review_md,
+    review_contract,
+)
 from task_contract import (
     ContractParseError,
     PlannedTask,
@@ -61,6 +66,7 @@ class ContractResult:
     source: str
     detail: str
     preserved: bool = False
+    decision: str = ""
 
 
 def request_task_contract(
@@ -281,9 +287,53 @@ def run_contract_stage(
         architect_result=architect_result,
         planner_result=planner_result,
     )
+
+    # AI-reviewed decision: a deterministic safety floor first (never relaxed),
+    # then the reviewer interprets/repairs safe completeness gaps, then a
+    # deterministic repair fallback, then an owner-review checklist. This is
+    # what stops a safe-but-incomplete plan from churning to a hard reject.
+    record: dict[str, Any]
+    if result.task is not None:
+        review = review_contract(
+            result.task,
+            context=f"{architect_result.content}\n\n{planner_result.content}",
+            models_config=models_config,
+            factory_config=factory_config,
+        )
+        verdict = ValidationVerdict(valid=review.valid, reasons=review.reasons)
+        result = ContractResult(
+            task=review.task,
+            verdict=verdict,
+            source=result.source,
+            detail=(
+                f"Contract review: {review.decision} (via {review.source}). "
+                + result.detail
+            ),
+            decision=review.decision,
+        )
+        record = contract_to_dict(
+            review.task,
+            verdict,
+            result.source,
+            status=review.status,
+            decision=review.decision,
+            checklist=review.checklist,
+        )
+        # Write the owner checklist/checkpoint whenever the decision is not a
+        # clean valid (repaired, escalated, or rejected) for transparency.
+        if review.decision != DECISION_VALID:
+            safe_write_text(
+                f"{task_root}/CONTRACT_REVIEW.md",
+                render_contract_review_md(review),
+                repo_root=root,
+                allowed_roots=[task_root],
+            )
+    else:
+        record = contract_to_dict(result.task, result.verdict, result.source)
+
     safe_write_json(
         contract_json_path,
-        contract_to_dict(result.task, result.verdict, result.source),
+        record,
         repo_root=root,
         allowed_roots=[task_root],
     )
@@ -313,4 +363,8 @@ def contract_status_label(contract_result: ContractResult) -> str:
     """
     if contract_result.preserved:
         return "authorized"
+    # Prefer the reviewer's graded decision over a bare valid/rejected so the
+    # report distinguishes "needs_owner_review"/"repair" from a hard reject.
+    if contract_result.decision:
+        return contract_result.decision
     return "valid" if contract_result.verdict.valid else "rejected"
