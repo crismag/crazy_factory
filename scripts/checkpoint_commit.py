@@ -362,6 +362,7 @@ def run_checkpoint_stage(
             prefix=prefix,
             task_id=task_id,
             summary=summary,
+            report_root=str(project["report_root"]),
         )
     elif eligible and not allow_auto_commit:
         result = CheckpointResult(
@@ -395,6 +396,7 @@ def _commit_checkpoint(
     prefix: str,
     task_id: str,
     summary: str,
+    report_root: str,
 ) -> CheckpointResult:
     """Stage allowed paths, create the commit, and record the checkpoint.
 
@@ -405,6 +407,7 @@ def _commit_checkpoint(
         prefix: Commit prefix from config.
         task_id: Backing contract task identifier.
         summary: Short summary for the commit message.
+        report_root: The active project's report directory for the log/index.
 
     Returns:
         The committed checkpoint result.
@@ -440,36 +443,49 @@ def _commit_checkpoint(
         commit_message=message,
     )
     _append_checkpoint_log(
-        root=root, result=result, task_id=task_id, timestamp=timestamp
+        root=root,
+        result=result,
+        task_id=task_id,
+        timestamp=timestamp,
+        report_root=report_root,
     )
     return result
 
 
 def _append_checkpoint_log(
-    *, root: Path, result: CheckpointResult, task_id: str, timestamp: str
+    *,
+    root: Path,
+    result: CheckpointResult,
+    task_id: str,
+    timestamp: str,
+    report_root: str,
 ) -> None:
-    """Append the checkpoint to the top-level checkpoint log and index.
+    """Append the checkpoint to the project's checkpoint log and index.
+
+    The log and index live inside the active project's report folder so a
+    project never writes to an engine-root ledger.
 
     Args:
         root: Absolute repository root.
         result: Committed checkpoint result.
         task_id: Backing contract task identifier.
         timestamp: UTC timestamp string.
+        report_root: The active project's report directory.
     """
     record = checkpoint_to_dict(result, task_id=task_id, timestamp=timestamp)
     safe_write_text(
-        "checkpoints/checkpoint_log.jsonl",
+        str(Path(report_root) / "checkpoint_log.jsonl"),
         json.dumps(record) + "\n",
         repo_root=root,
-        allowed_roots=["checkpoints"],
+        allowed_roots=[report_root],
         append=True,
     )
     safe_write_text(
-        "checkpoints/CHECKPOINTS.md",
+        str(Path(report_root) / "CHECKPOINTS.md"),
         f"- `{result.checkpoint_id}` `{result.commit_sha}` "
         f"{result.commit_message}\n",
         repo_root=root,
-        allowed_roots=["checkpoints"],
+        allowed_roots=[report_root],
         append=True,
     )
 

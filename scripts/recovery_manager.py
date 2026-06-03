@@ -81,7 +81,7 @@ def build_recovery_plan(
 def render_stall_report_md(
     stall_signal: StallSignal, project_state: dict[str, Any]
 ) -> str:
-    """Render ``reports/STALL_REPORT.md``.
+    """Render the project's ``STALL_REPORT.md`` body.
 
     Args:
         stall_signal: The detected stall.
@@ -149,17 +149,20 @@ def run_recovery(
         The recovery plan that was recorded.
     """
     plan = build_recovery_plan(stall_signal, project_state)
+    # Stall/recovery reports belong to the active project — write them inside
+    # its report folder, never the engine root.
+    report_root = str(project["report_root"])
     safe_write_text(
-        "reports/STALL_REPORT.md",
+        str(Path(report_root) / "STALL_REPORT.md"),
         render_stall_report_md(stall_signal, project_state),
         repo_root=root,
-        allowed_roots=["reports"],
+        allowed_roots=[report_root],
     )
     safe_write_text(
-        "reports/RECOVERY_REPORT.md",
+        str(Path(report_root) / "RECOVERY_REPORT.md"),
         render_recovery_plan_md(plan),
         repo_root=root,
-        allowed_roots=["reports"],
+        allowed_roots=[report_root],
     )
     task_root = str(project["task_root"])
     safe_write_text(
