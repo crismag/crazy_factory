@@ -50,10 +50,10 @@ from json_parsing import coerce_str, strip_code_fence  # noqa: E402
 from ollama_client import OllamaClient, OllamaConnectionError  # noqa: E402
 from mission_state import initial_state  # noqa: E402
 from project_paths import (  # noqa: E402
-    DEFAULT_FACTORY_CONFIG,
     assert_project_local,
     resolve_paths,
 )
+from settings import load_engine_settings  # noqa: E402
 from project_registry import (  # noqa: E402
     load_registry,
     register_project,
@@ -76,6 +76,7 @@ from seed_context import (  # noqa: E402
     load_seed,
     project_root,
     recent_artifacts,
+    staging_base,
     validate_project_id,
 )
 from task_contract import (  # noqa: E402
@@ -256,7 +257,7 @@ def _write_task_proposal(
     Returns:
         Repository-relative path of the written task-proposal record.
     """
-    path = f"{contexts_dir(project_id)}/{artifact_id}_task_proposal.json"
+    path = f"{contexts_dir(project_id, root)}/{artifact_id}_task_proposal.json"
     try:
         task = parse_planned_task(content)
         verdict = validate_planned_task(task)
@@ -273,7 +274,7 @@ def _write_task_proposal(
     record["authorized"] = False
     record["source_layer"] = "context_growth"
     safe_write_json(
-        path, record, repo_root=root, allowed_roots=["factory_state"]
+        path, record, repo_root=root, allowed_roots=[staging_base(root)]
     )
     return path
 
@@ -319,7 +320,7 @@ def grow(
         )
     else:
         path = (
-            f"{contexts_dir(project_id)}/"
+            f"{contexts_dir(project_id, root)}/"
             f"{artifact_id}_{result.artifact_type}.md"
         )
         document = (
@@ -331,7 +332,10 @@ def grow(
             f"{result.content.rstrip()}\n"
         )
         safe_write_text(
-            path, document, repo_root=root, allowed_roots=["factory_state"]
+            path,
+            document,
+            repo_root=root,
+            allowed_roots=[staging_base(root)],
         )
 
     append_artifact(
@@ -413,7 +417,7 @@ def _register_project(project_id: str, root: Path) -> bool:
         registry,
         project_id=project_id,
         app_path=f"apps/{project_id}",
-        state_path=state_path_for(project_id),
+        state_path=state_path_for(project_id, root),
         repo_mode="embedded",
         seed_file="docs/seed.md",
         now=now,
@@ -450,9 +454,10 @@ def _ensure_workbench(project_id: str, root: Path, seed_text: str) -> None:
     # the run-state and factory-memory folders. Engine root stays clean.
     cfg = f"{base}/config/factory.yaml"
     if not resolve_repo_path(cfg, root).is_file():
+        template = load_engine_settings(root)["factory_config_template"]
         safe_write_text(
             cfg,
-            safe_read_text(DEFAULT_FACTORY_CONFIG, root),
+            safe_read_text(template, root),
             repo_root=root,
             allowed_roots=["apps"],
         )
@@ -546,7 +551,7 @@ def _relocate_seed_state(project_id: str, root: Path) -> bool:
     Returns:
         ``True`` if any file was relocated, else ``False``.
     """
-    source_rel = project_root(project_id)
+    source_rel = project_root(project_id, root)
     dest_rel = resolve_paths(f"apps/{project_id}").factory_state_dir
     source_abs = resolve_repo_path(source_rel, root)
     if not source_abs.is_dir():
@@ -631,10 +636,11 @@ def promote(project_id: str, root: Path) -> dict[str, Any]:
 
 
 def _load_configs(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Load factory and model configuration."""
+    """Load factory and model configuration from the configured locations."""
+    engine = load_engine_settings(root)
     return (
-        load_simple_yaml("config/factory.yaml", root),
-        load_simple_yaml("config/models.yaml", root),
+        load_simple_yaml(engine["factory_config_template"], root),
+        load_simple_yaml(engine["models_config"], root),
     )
 
 

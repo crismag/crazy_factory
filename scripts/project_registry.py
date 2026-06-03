@@ -27,6 +27,7 @@ from typing import Any
 
 from project_paths import resolve_paths
 from repo_tools import load_simple_yaml, safe_write_text
+from settings import load_engine_settings
 
 REGISTRY_RELPATH = "config/projects.yaml"
 REPO_MODES: tuple[str, ...] = ("embedded", "external")
@@ -44,13 +45,18 @@ class RegistryError(RuntimeError):
     """Raised when the project registry is missing or inconsistent."""
 
 
-def state_path_for(project_id: str) -> str:
-    """Return the default factory state path for a project."""
-    return f"factory_state/projects/{project_id}"
+def state_path_for(project_id: str, root: Path) -> str:
+    """Return the pre-promote seed-staging path for a project.
+
+    Built on the configurable ``seed_staging_base`` engine setting so it stays
+    consistent with the seed pipeline (:mod:`seed_context`).
+    """
+    base = load_engine_settings(root)["seed_staging_base"]
+    return f"{base}/{project_id}"
 
 
 def load_registry(root: Path) -> dict[str, Any]:
-    """Load the project registry from ``config/projects.yaml``.
+    """Load the project registry from the configured registry path.
 
     Args:
         root: Absolute repository root.
@@ -58,7 +64,7 @@ def load_registry(root: Path) -> dict[str, Any]:
     Returns:
         Registry mapping with ``active_project`` and ``projects``.
     """
-    data = load_simple_yaml(REGISTRY_RELPATH, root)
+    data = load_simple_yaml(load_engine_settings(root)["registry_path"], root)
     active = str(data.get("active_project") or "")
     projects = data.get("projects")
     if not isinstance(projects, dict):
@@ -93,6 +99,12 @@ def dump_registry(registry: dict[str, Any]) -> str:
         for key in _ENTRY_KEYS:
             value = str(entry.get(key, ""))
             lines.append(f'    {key}: "{value}"')
+        # Per-project workbench path overrides, when any are set.
+        overrides = entry.get("paths")
+        if isinstance(overrides, dict) and overrides:
+            lines.append("    paths:")
+            for okey, ovalue in overrides.items():
+                lines.append(f'      {okey}: "{ovalue}"')
     return "\n".join(lines) + "\n"
 
 
@@ -103,11 +115,12 @@ def save_registry(registry: dict[str, Any], root: Path) -> None:
         registry: Registry mapping to write.
         root: Absolute repository root.
     """
+    registry_path = load_engine_settings(root)["registry_path"]
     safe_write_text(
-        REGISTRY_RELPATH,
+        registry_path,
         dump_registry(registry),
         repo_root=root,
-        allowed_roots=["config"],
+        allowed_roots=[str(Path(registry_path).parent)],
     )
 
 
@@ -120,6 +133,7 @@ def register_project(
     repo_mode: str,
     seed_file: str,
     now: str,
+    paths: dict[str, str] | None = None,
 ) -> None:
     """Add or update a project entry in the registry (in place).
 
@@ -131,6 +145,8 @@ def register_project(
         repo_mode: ``"embedded"`` or ``"external"``.
         seed_file: Seed document path relative to ``app_path``.
         now: ISO timestamp for created/updated bookkeeping.
+        paths: Optional per-project workbench sub-folder overrides; preserved
+            across updates when not supplied.
 
     Raises:
         RegistryError: If ``repo_mode`` is not recognized.
@@ -139,6 +155,12 @@ def register_project(
         raise RegistryError(f"Unknown repo_mode: {repo_mode}")
     projects = registry.setdefault("projects", {})
     existing = projects.get(project_id, {})
+    if paths is None:
+        paths = (
+            existing.get("paths")
+            if isinstance(existing.get("paths"), dict)
+            else {}
+        )
     projects[project_id] = {
         "app_path": app_path,
         "state_path": state_path,
@@ -146,6 +168,7 @@ def register_project(
         "seed_file": seed_file,
         "created_at": str(existing.get("created_at") or now),
         "updated_at": now,
+        "paths": dict(paths or {}),
     }
 
 
@@ -195,7 +218,10 @@ def resolve_project(
     # Legacy registry state_path (e.g. factory_state/projects/<id>); retained
     # only so migrate-project-runtime can find pre-relocation data.
     legacy_state_path = str(entry.get("state_path") or "").rstrip("/")
-    paths = resolve_paths(app_path)
+    overrides = entry.get("paths")
+    paths = resolve_paths(
+        app_path, overrides if isinstance(overrides, dict) else None
+    )
     return {
         "name": project_id,
         "app_path": app_path,

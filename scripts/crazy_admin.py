@@ -32,10 +32,14 @@ sys.dont_write_bytecode = True
 import factory_advance  # noqa: E402
 from mission_state import initial_state  # noqa: E402
 from project_paths import (  # noqa: E402
-    DEFAULT_FACTORY_CONFIG,
     assert_project_local,
     load_project_factory_config,
     project_config_exists,
+)
+from settings import (  # noqa: E402
+    WORKBENCH_DEFAULTS,
+    load_engine_settings,
+    workbench_defaults,
 )
 from archive_utils import ArchiveError  # noqa: E402
 from context_manager import (  # noqa: E402
@@ -126,15 +130,64 @@ def _scaffold_write(
     target.write_text(content, encoding="utf-8")
 
 
-def _crazy_project_yaml(project_id: str, repo_mode: str, app_path: str) -> str:
+def _crazy_project_yaml(
+    project_id: str, repo_mode: str, app_path: str, root: Path
+) -> str:
     """Render the per-app ``crazy_project.yaml`` owner-control file."""
     control = default_control(
         project_id=project_id,
         mode=repo_mode,
         app_path=app_path,
-        state_path=state_path_for(project_id),
+        state_path=state_path_for(project_id, root),
     )
     return dump_control(control)
+
+
+_WORKBENCH_KEYS: frozenset[str] = frozenset(WORKBENCH_DEFAULTS)
+
+
+def parse_path_overrides(
+    items: list[str] | None, root: Path
+) -> dict[str, str]:
+    """Parse ``KEY=VALUE`` workbench path overrides from CLI flags.
+
+    Defaults come from the config ``paths.workbench`` block; only values that
+    differ from the built-in defaults (config edits) plus any explicit CLI
+    overrides are returned, so an unchanged project keeps an empty ``paths``.
+
+    Args:
+        items: Raw ``KEY=VALUE`` strings (may be ``None``).
+        root: Absolute repository root.
+
+    Returns:
+        Mapping of workbench keys to override folder names.
+
+    Raises:
+        AdminError: On an unknown key or an unsafe (absolute/``..``) value.
+    """
+    overrides: dict[str, str] = {}
+    # Config-level defaults that differ from the built-ins become overrides too,
+    # so a project records the layout it was created under.
+    for key, value in workbench_defaults(root).items():
+        if value != WORKBENCH_DEFAULTS[key]:
+            overrides[key] = value
+    for item in items or []:
+        if "=" not in item:
+            raise AdminError(f"--path expects KEY=VALUE, got: {item!r}")
+        key, _, value = item.partition("=")
+        key, value = key.strip(), value.strip()
+        if key not in _WORKBENCH_KEYS:
+            raise AdminError(
+                f"Unknown path key {key!r}. Valid keys: "
+                f"{', '.join(sorted(_WORKBENCH_KEYS))}."
+            )
+        if not value or value.startswith("/") or ".." in Path(value).parts:
+            raise AdminError(
+                f"Path value for {key!r} must be a relative in-workbench "
+                f"path (no leading '/', no '..'): {value!r}"
+            )
+        overrides[key] = value
+    return overrides
 
 
 def _seed_template(project_id: str) -> str:
@@ -155,6 +208,7 @@ def startproject(
     root: Path,
     force: bool = False,
     reuse: bool = False,
+    paths: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Scaffold a new app workbench and register it.
 
@@ -164,6 +218,8 @@ def startproject(
         root: Absolute repository root.
         force: Overwrite existing scaffold files.
         reuse: Allow re-registering an existing project id.
+        paths: Optional workbench sub-folder overrides (the scaffold and the
+            registry both use these so the layout is self-consistent).
 
     Returns:
         The registered entry summary.
@@ -180,11 +236,15 @@ def startproject(
     app_path = target_path or project_id
     repo_mode = "external" if app_is_external(app_path, root) else "embedded"
     base = _abs_app_dir(app_path, root)
+    overrides = paths or {}
+    # Effective workbench folder names: built-in defaults overlaid by overrides.
+    # The scaffold and the resolver must agree, so both read this map.
+    wb = {**WORKBENCH_DEFAULTS, **overrides}
 
     _scaffold_write(
         base,
         "crazy_project.yaml",
-        _crazy_project_yaml(project_id, repo_mode, app_path),
+        _crazy_project_yaml(project_id, repo_mode, app_path, root),
         force=force,
     )
     _scaffold_write(
@@ -219,51 +279,56 @@ def startproject(
     # reason about.
     _scaffold_write(
         base,
-        "factory_context/PROJECT_GOAL.md",
+        f"{wb['factory_context_dir']}/PROJECT_GOAL.md",
         _seed_template(project_id),
         force=force,
     )
-    _scaffold_write(base, "factory_tasks/.gitkeep", "", force=force)
-    _scaffold_write(base, "factory_reports/.gitkeep", "", force=force)
+    _scaffold_write(base, f"{wb['tasks_dir']}/.gitkeep", "", force=force)
+    _scaffold_write(base, f"{wb['reports_dir']}/.gitkeep", "", force=force)
 
     # Phase 9A imported-context store: add-context lands files here and the
     # catalog tracks them. Start with an empty catalog so status reads cleanly.
-    _scaffold_write(base, "context/imports/.gitkeep", "", force=force)
-    _scaffold_write(base, "context/extracted/.gitkeep", "", force=force)
+    ctx = wb["context_dir"]
+    _scaffold_write(base, f"{ctx}/imports/.gitkeep", "", force=force)
+    _scaffold_write(base, f"{ctx}/extracted/.gitkeep", "", force=force)
     _scaffold_write(
         base,
-        "context/catalog.yaml",
+        f"{ctx}/catalog.yaml",
         dump_catalog({"imports": {}, "files": {}}),
         force=force,
     )
 
     # Project-local runtime — config, run-state, and factory memory all live
     # inside the workbench so the engine root stays clean and each project owns
-    # its files. The active factory config is copied from the root default
-    # template; the resolver derives every other path from app_path.
+    # its files. The active factory config is copied from the configured
+    # template; the resolver derives every other path from app_path + overrides.
+    template = load_engine_settings(root)["factory_config_template"]
     _scaffold_write(
         base,
         "config/factory.yaml",
-        safe_read_text(DEFAULT_FACTORY_CONFIG, root),
+        safe_read_text(template, root),
         force=force,
     )
     for fname, body in initial_state(project_id).items():
         _scaffold_write(
             base,
-            f"state/{fname}",
+            f"{wb['state_dir']}/{fname}",
             json.dumps(body, indent=2) + "\n",
             force=force,
         )
-    _scaffold_write(base, "factory_state/.gitkeep", "", force=force)
+    _scaffold_write(
+        base, f"{wb['factory_state_dir']}/.gitkeep", "", force=force
+    )
 
     register_project(
         registry,
         project_id=project_id,
         app_path=app_path,
-        state_path=state_path_for(project_id),
+        state_path=state_path_for(project_id, root),
         repo_mode=repo_mode,
         seed_file="docs/seed.md",
         now=_now(),
+        paths=overrides,
     )
     save_registry(registry, root)
     return {
@@ -303,7 +368,7 @@ def attachproject(
         "external" if app_is_external(existing_path, root) else "embedded"
     )
     registry = load_registry(root)
-    state_path = state_path_for(project_id)
+    state_path = state_path_for(project_id, root)
     register_project(
         registry,
         project_id=project_id,
@@ -318,7 +383,7 @@ def attachproject(
         _scaffold_write(
             base,
             "crazy_project.yaml",
-            _crazy_project_yaml(project_id, repo_mode, existing_path),
+            _crazy_project_yaml(project_id, repo_mode, existing_path, root),
             force=False,
         )
     return {
@@ -486,10 +551,11 @@ def migrate_project_runtime(project_id: str, *, root: Path) -> dict[str, Any]:
     summary["config_materialized"] = False
     if not project_config_exists(app_path, root):
         cfg_dest = str(project["factory_config_path"])
+        template = load_engine_settings(root)["factory_config_template"]
         assert_project_local(cfg_dest, app_path, root)
         safe_write_text(
             cfg_dest,
-            safe_read_text(DEFAULT_FACTORY_CONFIG, root),
+            safe_read_text(template, root),
             repo_root=root,
             allowed_roots=[app_path],
         )
@@ -614,6 +680,50 @@ def _print_status(info: dict[str, Any]) -> None:
     print(f"\nNext:\n  bin/crazy-admin next {info['active_project']}")
 
 
+def set_path(
+    project_id: str, items: list[str], *, root: Path
+) -> dict[str, str]:
+    """Set or update a registered project's workbench path overrides.
+
+    Merges ``KEY=VALUE`` overrides into the registry entry's ``paths`` map.
+    Note this re-points where the factory reads/writes; it does not move any
+    existing files — run before a project accumulates runtime, or relocate by
+    hand.
+
+    Args:
+        project_id: Registered project to update.
+        items: ``KEY=VALUE`` override strings.
+        root: Absolute repository root.
+
+    Returns:
+        The merged override map now stored for the project.
+
+    Raises:
+        AdminError: On an unknown key or unsafe value.
+        RegistryError: If the project is not registered.
+    """
+    if not items:
+        raise AdminError("set-path expects at least one KEY=VALUE.")
+    registry = load_registry(root)
+    entry = (registry.get("projects") or {}).get(project_id)
+    if not isinstance(entry, dict):
+        raise RegistryError(f"Project is not registered: {project_id}")
+    merged = dict(entry.get("paths") or {})
+    merged.update(parse_path_overrides(items, root))
+    register_project(
+        registry,
+        project_id=project_id,
+        app_path=str(entry["app_path"]),
+        state_path=str(entry.get("state_path") or ""),
+        repo_mode=str(entry.get("repo_mode") or "embedded"),
+        seed_file=str(entry.get("seed_file") or "docs/seed.md"),
+        now=_now(),
+        paths=merged,
+    )
+    save_registry(registry, root)
+    return merged
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run the crazy-admin CLI.
 
@@ -630,6 +740,15 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("target_path", nargs="?", default=None)
     sp.add_argument("--force", action="store_true")
     sp.add_argument("--reuse", action="store_true")
+    sp.add_argument(
+        "--path",
+        action="append",
+        metavar="KEY=VALUE",
+        help="Override a workbench folder, e.g. --path reports_dir=out.",
+    )
+    spath = sub.add_parser("set-path")
+    spath.add_argument("project_id")
+    spath.add_argument("overrides", nargs="+", metavar="KEY=VALUE")
     ap = sub.add_parser("attachproject")
     ap.add_argument("project_id")
     ap.add_argument("existing_path")
@@ -685,6 +804,7 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             root=root,
             force=args.force,
             reuse=args.reuse,
+            paths=parse_path_overrides(args.path, root),
         )
         print(
             f"Created project '{info['project_id']}' "
@@ -695,6 +815,12 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             "Next: edit docs/seed.md, then `crazy-admin activate "
             f"{info['project_id']}`."
         )
+        return 0
+    if args.command == "set-path":
+        merged = set_path(args.project_id, args.overrides, root=root)
+        print(f"Path overrides for '{args.project_id}':")
+        for key, value in sorted(merged.items()):
+            print(f"  {key}: {value}")
         return 0
     if args.command == "attachproject":
         info = attachproject(

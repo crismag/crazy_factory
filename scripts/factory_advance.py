@@ -100,6 +100,7 @@ from project_registry import (  # noqa: E402
     workbench_exists,
 )
 from advance_config import validate_dry_run_settings  # noqa: E402
+from settings import load_engine_settings  # noqa: E402
 
 
 def _no_active_project_notice() -> int:
@@ -120,7 +121,9 @@ def main() -> int:
         Process exit code ``0`` after completion, pause, or stop.
     """
     root = find_repo_root()
-    models_config = load_simple_yaml("config/models.yaml", root)
+    models_config = load_simple_yaml(
+        load_engine_settings(root)["models_config"], root
+    )
     registry = load_registry(root)
     project_name = active_project_id(registry)
     if not project_name:

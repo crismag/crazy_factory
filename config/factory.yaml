@@ -44,3 +44,26 @@ ollama:
 logging:
   log_dir: logs
   report_dir: reports
+
+# Where the factory reads and writes. Config provides the defaults below; the
+# CRAZY_FACTORY_* environment variables override the engine locations, and
+# `crazy-admin startproject --path KEY=VALUE` / `set-path` override workbench
+# folders per project. See scripts/settings.py.
+paths:
+  # Per-project workbench sub-folders (relative to a project's app_path).
+  # Editing these changes the default layout for NEWLY created projects.
+  # (config_dir is fixed at <app>/config — not configurable.)
+  workbench:
+    state_dir: state
+    factory_state_dir: factory_state
+    reports_dir: factory_reports
+    tasks_dir: factory_tasks
+    factory_context_dir: factory_context
+    context_dir: context
+  # Engine-level locations (relative to the repo root).
+  engine:
+    registry_path: config/projects.yaml
+    factory_config_template: config/factory.yaml
+    models_config: config/models.yaml
+    seed_staging_base: factory_state/projects
+    logs_dir: logs

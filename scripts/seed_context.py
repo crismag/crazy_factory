@@ -28,6 +28,7 @@ from repo_tools import (
     safe_read_text,
     safe_write_text,
 )
+from settings import load_engine_settings
 
 PROJECT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
@@ -56,21 +57,28 @@ def validate_project_id(project_id: str) -> str:
     return project_id
 
 
-def project_root(project_id: str) -> str:
-    """Return the repository-relative project root.
+def staging_base(root: Path) -> str:
+    """Return the configurable pre-promote seed-staging base directory."""
+    return load_engine_settings(root)["seed_staging_base"]
+
+
+def project_root(project_id: str, root: Path) -> str:
+    """Return the repository-relative seed-staging root for a project.
 
     Args:
         project_id: Validated project identifier.
+        root: Absolute repository root.
 
     Returns:
-        Repository-relative project directory.
+        Repository-relative project staging directory under the configurable
+        ``seed_staging_base``.
     """
-    return f"factory_state/projects/{project_id}"
+    return f"{staging_base(root)}/{project_id}"
 
 
-def contexts_dir(project_id: str) -> str:
+def contexts_dir(project_id: str, root: Path) -> str:
     """Return the repository-relative contexts directory for a project."""
-    return f"{project_root(project_id)}/contexts"
+    return f"{project_root(project_id, root)}/contexts"
 
 
 # Sibling directories created at init for downstream use.
@@ -110,27 +118,28 @@ def init_project(
     if not seed_text.strip():
         raise SeedError(f"Seed file is empty: {seed_path}")
 
-    base = project_root(project_id)
+    base = project_root(project_id, root)
+    staging = staging_base(root)
     # Touch the sibling directories so the layout is visible from the start.
     for sub in _SUBDIRS:
         safe_write_text(
             f"{base}/{sub}/.gitkeep",
             "",
             repo_root=root,
-            allowed_roots=["factory_state"],
+            allowed_roots=[staging],
         )
     safe_write_text(
         f"{base}/seed.md",
         seed_text,
         repo_root=root,
-        allowed_roots=["factory_state"],
+        allowed_roots=[staging],
     )
-    seed_artifact = f"{contexts_dir(project_id)}/000_seed.md"
+    seed_artifact = f"{contexts_dir(project_id, root)}/000_seed.md"
     safe_write_text(
         seed_artifact,
         seed_text,
         repo_root=root,
-        allowed_roots=["factory_state"],
+        allowed_roots=[staging],
     )
 
     ledger = new_ledger(project_id)
@@ -158,7 +167,7 @@ def load_seed(project_id: str, root: Path) -> str:
     Raises:
         SeedError: If the seed is missing.
     """
-    relpath = f"{project_root(project_id)}/seed.md"
+    relpath = f"{project_root(project_id, root)}/seed.md"
     if not resolve_repo_path(relpath, root).is_file():
         raise SeedError(f"No seed stored for project: {project_id}")
     return safe_read_text(relpath, root)
