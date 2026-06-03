@@ -203,6 +203,17 @@ class TestPlanParseValidateTests(unittest.TestCase):
         self.assertFalse(verdict.valid)
         self.assertTrue(any("allowlist" in r.lower() for r in verdict.reasons))
 
+    def test_validate_accepts_python_minus_m_pytest(self) -> None:
+        # `python -m pytest` (not just python3) must be allowlisted, so a plan
+        # is not spuriously rejected over the interpreter name alone.
+        data = _valid_plan_dict()
+        data["required_checks"] = ["python -m pytest tests"]
+        plan = parse_test_plan(json.dumps(data))
+        verdict = validate_test_plan(
+            plan, contract_actionable=True, proposal_valid=True
+        )
+        self.assertTrue(verdict.valid)
+
     def test_validate_rejects_gate_failures(self) -> None:
         plan = parse_test_plan(json.dumps(_valid_plan_dict()))
         self.assertFalse(

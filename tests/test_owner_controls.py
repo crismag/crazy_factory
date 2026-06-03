@@ -137,6 +137,23 @@ class ControlFileTests(unittest.TestCase):
             pc.apply_project_controls(_FACTORY_CONFIG, None), _FACTORY_CONFIG
         )
 
+    def test_enable_apply_capability_flips_mode_to_apply(self) -> None:
+        # enable-apply (allow_apply capability) must fully enable application:
+        # the application stage gates on mode == "apply" too, so the single
+        # owner gate has to flip mode without any hand-edit of config.
+        eff = pc.apply_project_controls(
+            _FACTORY_CONFIG, {"capabilities": {"allow_apply": True}}
+        )
+        self.assertTrue(eff["proposal_application"]["allow_apply"])
+        self.assertEqual(eff["proposal_application"]["mode"], "apply")
+
+    def test_disable_apply_capability_restores_preview_only(self) -> None:
+        eff = pc.apply_project_controls(
+            _FACTORY_CONFIG, {"capabilities": {"allow_apply": False}}
+        )
+        self.assertFalse(eff["proposal_application"]["allow_apply"])
+        self.assertEqual(eff["proposal_application"]["mode"], "preview_only")
+
 
 class AuthorizeTaskTests(unittest.TestCase):
     """authorize-task validates before authorizing."""
