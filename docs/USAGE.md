@@ -79,11 +79,48 @@ apps/todo_app/
 ```
 
 > **Project-local runtime.** Everything the factory writes for a project lives
-> under its workbench — config, state, memory, reports. The engine root holds
-> only the default `config/factory.yaml` *template* and the registry. A
-> project-specific write that would land in the root fails loudly. Projects
-> created before this layout can be brought forward with
-> `crazy-admin migrate-project-runtime <id>`.
+> under its workbench — config, state, memory, reports (including the mission
+> status and checkpoint log). The engine root holds only the default
+> `config/factory.yaml` *template* and the registry. A project-specific write
+> that would land in the root fails loudly. Projects created before this layout
+> can be brought forward with `crazy-admin migrate-project-runtime <id>`.
+
+### Configuring where the factory reads and writes
+
+Locations are config-driven with CLI/env overrides — nothing is hardcoded (see
+[scripts/settings.py](scripts/settings.py)). The `paths:` block in
+`config/factory.yaml` holds the defaults:
+
+```yaml
+paths:
+  workbench:                 # per-project folders, relative to a project's app_path
+    state_dir: state
+    factory_state_dir: factory_state
+    reports_dir: factory_reports
+    tasks_dir: factory_tasks
+    factory_context_dir: factory_context
+    context_dir: context
+  engine:                    # engine-level, relative to the repo root
+    registry_path: config/projects.yaml
+    factory_config_template: config/factory.yaml
+    models_config: config/models.yaml
+    seed_staging_base: factory_state/projects
+    logs_dir: logs
+```
+
+- **Workbench folders** — editing the `workbench:` block changes the default
+  layout for *newly created* projects. Override one project at creation with
+  `startproject <id> --path reports_dir=out`, or later with
+  `set-path <id> state_dir=run`; overrides are stored in that project's registry
+  entry. (`config/` inside a workbench is fixed and not configurable — the
+  project config file must live at a known path.)
+- **Engine locations** — override per invocation with `CRAZY_FACTORY_*`
+  environment variables: `CRAZY_FACTORY_REGISTRY`, `CRAZY_FACTORY_CONFIG_TEMPLATE`,
+  `CRAZY_FACTORY_MODELS_CONFIG`, `CRAZY_FACTORY_SEED_STAGING_BASE`,
+  `CRAZY_FACTORY_LOGS_DIR`. These share across every `bin/*` entry point.
+
+Override values for workbench folders must be in-workbench relative paths (no
+leading `/`, no `..`); the fail-loud guard rejects anything that would escape.
 
 ---
 
@@ -94,7 +131,8 @@ All commands are `bin/crazy-admin <command>` (a thin wrapper over
 
 | Command | Purpose |
 |---------|---------|
-| `startproject <id> [path]` | Scaffold a new app workbench and register it. `path` defaults to `./<id>`; omit it or use `apps/<id>` for embedded. `--force` overwrites scaffold files. |
+| `startproject <id> [path]` | Scaffold a new app workbench and register it. `path` defaults to `./<id>`; omit it or use `apps/<id>` for embedded. `--force` overwrites scaffold files. `--path KEY=VALUE` (repeatable) overrides a workbench folder for this project, e.g. `--path reports_dir=out`. |
+| `set-path <id> KEY=VALUE...` | Set/update a registered project's workbench folder overrides (persisted in the registry). Re-points where the factory reads/writes; it does not move existing files. |
 | `attachproject <id> <path>` | Register an existing codebase without scaffolding or modifying it. `--write-config` drops a `crazy_project.yaml` marker. |
 | `add-context <id> <source>` | Ingest a file, directory, or archive (`zip`/`tar`/`tar.gz`/`tgz`/`gz`) into the project's context store. |
 | `activate <id>` | Make `<id>` the active project (updates the registry + the project-local `apps/<id>/state/*.json`). |

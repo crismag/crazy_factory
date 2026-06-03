@@ -23,10 +23,7 @@ from repo_tools import (
     load_simple_yaml,
     resolve_repo_path,
 )
-
-# The default factory config template at the engine root. Copied into a project
-# at creation; it is never the active runtime config once a project exists.
-DEFAULT_FACTORY_CONFIG = "config/factory.yaml"
+from settings import WORKBENCH_DEFAULTS, load_engine_settings
 
 
 class RuntimePathError(RuntimeError):
@@ -60,26 +57,39 @@ class ProjectPaths:
     context_dir: str
 
 
-def resolve_paths(app_path: str) -> ProjectPaths:
+def resolve_paths(
+    app_path: str, overrides: dict | None = None
+) -> ProjectPaths:
     """Resolve every project-local runtime path from a workbench path.
+
+    Sub-folder names come from ``overrides`` (the per-project registry entry)
+    when present, else the built-in :data:`settings.WORKBENCH_DEFAULTS`. The
+    ``config_dir``/``factory_config_path`` are fixed: the project config file
+    lives at a resolved path, so making them configurable would recurse.
 
     Args:
         app_path: Repository-relative (or absolute) project workbench path.
+        overrides: Optional per-project sub-folder name overrides.
 
     Returns:
         The project's :class:`ProjectPaths`.
     """
     base = str(app_path).rstrip("/")
+    names = overrides or {}
+
+    def sub(key: str) -> str:
+        return f"{base}/{names.get(key) or WORKBENCH_DEFAULTS[key]}"
+
     return ProjectPaths(
         project_root=base,
         config_dir=f"{base}/config",
         factory_config_path=f"{base}/config/factory.yaml",
-        state_dir=f"{base}/state",
-        factory_state_dir=f"{base}/factory_state",
-        reports_dir=f"{base}/factory_reports",
-        tasks_dir=f"{base}/factory_tasks",
-        factory_context_dir=f"{base}/factory_context",
-        context_dir=f"{base}/context",
+        state_dir=sub("state_dir"),
+        factory_state_dir=sub("factory_state_dir"),
+        reports_dir=sub("reports_dir"),
+        tasks_dir=sub("tasks_dir"),
+        factory_context_dir=sub("factory_context_dir"),
+        context_dir=sub("context_dir"),
     )
 
 
@@ -134,9 +144,10 @@ def load_project_factory_config(app_path: str, root: Path) -> dict:
     paths = resolve_paths(app_path)
     if project_config_exists(app_path, root):
         return load_simple_yaml(paths.factory_config_path, root)
+    template = load_engine_settings(root)["factory_config_template"]
     print(
         f"WARNING: no project config at {paths.factory_config_path}; "
-        "using root default template. Run "
+        f"using the default template ({template}). Run "
         "`crazy-admin migrate-project-runtime <id>` to materialize it."
     )
-    return load_simple_yaml(DEFAULT_FACTORY_CONFIG, root)
+    return load_simple_yaml(template, root)

@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from repo_tools import load_simple_yaml, resolve_repo_path
+from settings import load_engine_settings
 
 
 def selected_active_project(
@@ -70,9 +71,10 @@ def load_configuration(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     Returns:
         Tuple containing factory configuration and projects configuration.
     """
+    engine = load_engine_settings(root)
     return (
-        load_simple_yaml("config/factory.yaml", root),
-        load_simple_yaml("config/projects.yaml", root),
+        load_simple_yaml(engine["factory_config_template"], root),
+        load_simple_yaml(engine["registry_path"], root),
     )
 
 

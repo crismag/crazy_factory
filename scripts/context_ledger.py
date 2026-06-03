@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from repo_tools import resolve_repo_path, safe_load_json, safe_write_json
+from settings import load_engine_settings
 
 
 class LedgerError(RuntimeError):
@@ -74,16 +75,20 @@ def next_artifact_id(ledger: dict[str, Any]) -> str:
     return f"{len(ledger.get('artifacts', [])):03d}"
 
 
-def ledger_path(project_id: str) -> str:
+def ledger_path(project_id: str, root: Path) -> str:
     """Return the repository-relative ledger path for a project.
+
+    Built on the configurable ``seed_staging_base`` engine setting.
 
     Args:
         project_id: Stable project identifier.
+        root: Absolute repository root.
 
     Returns:
         Repository-relative ``context_ledger.json`` path.
     """
-    return f"factory_state/projects/{project_id}/context_ledger.json"
+    base = load_engine_settings(root)["seed_staging_base"]
+    return f"{base}/{project_id}/context_ledger.json"
 
 
 def load_ledger(project_id: str, root: Path) -> dict[str, Any]:
@@ -99,7 +104,7 @@ def load_ledger(project_id: str, root: Path) -> dict[str, Any]:
     Raises:
         LedgerError: If the ledger is missing or not a valid object.
     """
-    relpath = ledger_path(project_id)
+    relpath = ledger_path(project_id, root)
     if not resolve_repo_path(relpath, root).is_file():
         raise LedgerError(f"No context ledger for project: {project_id}")
     try:
@@ -116,9 +121,10 @@ def save_ledger(ledger: dict[str, Any], project_id: str, root: Path) -> None:
         project_id: Stable project identifier.
         root: Absolute repository root.
     """
+    base = load_engine_settings(root)["seed_staging_base"]
     safe_write_json(
-        ledger_path(project_id),
+        ledger_path(project_id, root),
         ledger,
         repo_root=root,
-        allowed_roots=["factory_state"],
+        allowed_roots=[base],
     )
