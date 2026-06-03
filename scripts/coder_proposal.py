@@ -12,7 +12,10 @@ Hard boundaries (Phase 3 invariants preserved):
 
 - The Coder activates only when ``planned_task.json`` is owner-authorized and
   revalidates as ``valid`` (see :func:`task_contract.is_contract_actionable`).
-- Proposals may only target ``apps/<project>/app|docs|tests``.
+- Proposals may target anywhere inside the active project workbench EXCEPT the
+  factory-managed runtime folders (config/state/factory_state/reports/tasks/
+  context, from the path resolver) and the owner-control file; anything outside
+  the workbench is blocked.
 - Dangerous paths, secret-like material, destructive commands, empty
   proposals, and proposals over the file limit are rejected.
 - When the model is unavailable or output is malformed, the result is a
@@ -37,6 +40,7 @@ from typing import Any
 from contract_stage import load_existing_contract
 from json_parsing import coerce_str, coerce_str_list, strip_code_fence
 from ollama_client import OllamaClient, OllamaConnectionError
+from project_paths import resolve_paths
 from prompt_builder import build_prompt_package
 from repo_tools import resolve_repo_path, safe_write_json, safe_write_text
 from task_contract import is_contract_actionable
@@ -109,6 +113,25 @@ DECISION_VALUES: tuple[str, ...] = (
 # these decisions. This is the contract that keeps the apply gate unchanged.
 APPLY_ELIGIBLE_DECISIONS: frozenset[str] = frozenset(
     {DECISION_VALID, DECISION_NEEDS_OWNER_REVIEW}
+)
+
+# Stage 2/3 project boundary policy. The boundary is the active project
+# workbench (``app_path``): anything outside is blocked, and the factory's own
+# per-project runtime folders *inside* the workbench (config/state/reports/
+# tasks/context, derived from the path resolver — not a separate policy file)
+# are blocked too, because they are factory-managed, not application content.
+# App-content directories inside the workbench are in-bounds; a few
+# higher-impact classes route to owner review rather than straight to valid.
+REVIEW_DIR_CLASSES: frozenset[str] = frozenset({"scripts", "migrations"})
+# The owner-control file at the workbench root is factory-managed.
+CONTROL_FILE_NAME = "crazy_project.yaml"
+# Placeholder env files are documentation, not real secrets — they must not be
+# blocked by the ``.env`` secret marker.
+PLACEHOLDER_ENV_FILES: tuple[str, ...] = (
+    ".env.example",
+    ".env.sample",
+    ".env.template",
+    ".env.dist",
 )
 
 
@@ -264,17 +287,99 @@ def parse_coder_proposal(raw: str) -> CoderProposal:
 
 
 def allowed_target_prefixes(app_path: str) -> tuple[str, ...]:
-    """Return the only repository prefixes a proposal may target.
+    """Return the primary always-valid target prefixes for the prompt.
+
+    The boundary itself is broader (the whole workbench minus factory runtime,
+    see :func:`classify_path`); these are the directories the coder is steered
+    toward and that classify straight to ``valid``.
 
     Args:
         app_path: Active application workbench path (e.g. ``apps/<id>``).
 
     Returns:
-        Allowed ``app``, ``docs``, and ``tests`` path prefixes under the
-        workbench.
+        The ``app``, ``docs``, and ``tests`` prefixes under the workbench.
     """
     base = app_path.rstrip("/")
     return (f"{base}/app/", f"{base}/docs/", f"{base}/tests/")
+
+
+def _default_runtime_prefixes(app_path: str) -> tuple[str, ...]:
+    """Factory-managed runtime dir prefixes inside a workbench (resolver-based).
+
+    Uses the central path resolver so the protected set tracks the configured
+    workbench layout rather than a hardcoded list.
+    """
+    paths = resolve_paths(app_path)
+    dirs = (
+        paths.config_dir,
+        paths.state_dir,
+        paths.factory_state_dir,
+        paths.reports_dir,
+        paths.tasks_dir,
+        paths.factory_context_dir,
+        paths.context_dir,
+    )
+    return tuple(f"{d.rstrip('/')}/" for d in dirs)
+
+
+def project_runtime_prefixes(project: dict[str, Any]) -> tuple[str, ...]:
+    """Factory-managed runtime dir prefixes from a resolved project mapping.
+
+    Honors per-project path overrides (the resolved dirs already carry them).
+    """
+    keys = (
+        "config_dir",
+        "state_dir",
+        "factory_state_dir",
+        "report_root",
+        "task_root",
+        "context_root",
+        "context_store_root",
+    )
+    dirs = [str(project[k]).rstrip("/") for k in keys if project.get(k)]
+    return tuple(f"{d}/" for d in dirs)
+
+
+def classify_path(
+    path: str, app_path: str, runtime_prefixes: tuple[str, ...]
+) -> str:
+    """Classify one proposed path as ``blocked``, ``review``, or ``valid``.
+
+    The boundary is the active project workbench. Outside it (or absolute /
+    parent-traversal / a top-level factory directory) is ``blocked``; the
+    factory-managed runtime folders and owner-control file *inside* the
+    workbench are ``blocked``; app-content directories are ``valid`` except a
+    few higher-impact classes which route to ``review``.
+
+    Args:
+        path: Repository-relative path proposed by the model.
+        app_path: Active workbench path (e.g. ``apps/<id>``).
+        runtime_prefixes: Factory-managed dir prefixes inside the workbench.
+
+    Returns:
+        ``"blocked"``, ``"review"``, or ``"valid"``.
+    """
+    if not path or path.startswith("/"):
+        return "blocked"
+    normalized = PurePosixPath(path)
+    if ".." in normalized.parts:
+        return "blocked"
+    text = normalized.as_posix()
+    if text.endswith("/"):
+        return "blocked"
+    # Defense in depth: explicit top-level factory directories.
+    lowered = text.lstrip("./").lower()
+    if any(lowered.startswith(p) for p in FORBIDDEN_PATH_PREFIXES):
+        return "blocked"
+    base = app_path.rstrip("/")
+    if not text.startswith(f"{base}/"):
+        return "blocked"  # outside the active project workbench
+    if text == f"{base}/{CONTROL_FILE_NAME}":
+        return "blocked"  # the owner-control file is factory-managed
+    if any(text.startswith(rp) for rp in runtime_prefixes):
+        return "blocked"  # factory-managed runtime inside the workbench
+    top = text[len(base) + 1 :].split("/", 1)[0]
+    return "review" if top in REVIEW_DIR_CLASSES else "valid"
 
 
 def _proposal_paths(proposal: CoderProposal) -> list[str]:
@@ -291,30 +396,6 @@ def _proposal_paths(proposal: CoderProposal) -> list[str]:
         *proposal.files_to_modify,
         *proposal.files_to_delete,
     ]
-
-
-def _is_allowed_path(path: str, allowed_prefixes: tuple[str, ...]) -> bool:
-    """Report whether one proposed path is inside an allowed target.
-
-    Absolute paths and parent-traversal are rejected outright; otherwise the
-    normalized path must sit beneath an allowed prefix and name a file.
-
-    Args:
-        path: Repository-relative path proposed by the model.
-        allowed_prefixes: Allowed target prefixes for the active project.
-
-    Returns:
-        ``True`` only when the path is a safe, in-bounds file target.
-    """
-    if not path or path.startswith("/"):
-        return False
-    normalized = PurePosixPath(path)
-    if ".." in normalized.parts:
-        return False
-    as_text = normalized.as_posix()
-    if as_text.endswith("/"):
-        return False
-    return any(as_text.startswith(prefix) for prefix in allowed_prefixes)
 
 
 def _scan_markers(haystack: str, markers: tuple[str, ...]) -> list[str]:
@@ -338,8 +419,9 @@ def validate_proposal(
     contract_actionable: bool,
     max_files: int,
     contract_task_id: str = "",
+    runtime_prefixes: tuple[str, ...] = (),
 ) -> ProposalVerdict:
-    """Validate a coder proposal against the Phase 4 safety rules.
+    """Validate a coder proposal against the safety + governance rules.
 
     Args:
         proposal: Parsed proposal, or ``None`` when none was produced.
@@ -347,6 +429,9 @@ def validate_proposal(
         contract_actionable: Whether the backing contract is authorized+valid.
         max_files: Maximum number of files a proposal may touch.
         contract_task_id: ``task_id`` of the backing contract, for matching.
+        runtime_prefixes: Factory-managed runtime dir prefixes inside the
+            workbench to block. Defaults to the resolver's layout for
+            ``app_path`` when not supplied.
 
     Returns:
         Validation verdict over all safety rules.
@@ -354,6 +439,8 @@ def validate_proposal(
     reasons: list[str] = []
     blocked: list[str] = []
     warnings: list[str] = []
+    review_reasons: list[str] = []
+    runtime = runtime_prefixes or _default_runtime_prefixes(app_path)
 
     # Rules 1-3: the backing contract must be authorized and valid.
     if not contract_actionable:
@@ -382,29 +469,41 @@ def validate_proposal(
             "create, modify, or delete? It currently targets none."
         )
 
-    # Rule 4 + allowed targets: every path must sit under app/docs/tests and
-    # never under a protected top-level directory.
-    allowed = allowed_target_prefixes(app_path)
-    protected: list[str] = []
+    # Boundary + project policy: outside the workbench (or a factory-managed
+    # runtime folder inside it) is blocked; higher-impact in-bounds classes
+    # (scripts/, migrations/) route to owner review.
+    review_paths: list[str] = []
     for path in paths:
-        normalized = path.lstrip("./").lower()
-        if any(normalized.startswith(p) for p in FORBIDDEN_PATH_PREFIXES):
-            protected.append(path)
+        cls = classify_path(path, app_path, runtime)
+        if cls == "blocked":
             blocked.append(path)
-        elif not _is_allowed_path(path, allowed):
-            blocked.append(path)
-    if protected:
+        elif cls == "review":
+            review_paths.append(path)
+    if blocked:
         reasons.append(
-            "Proposal targets protected directories: " + ", ".join(protected)
+            "Proposal targets paths outside the project workbench or its "
+            "factory-managed runtime: " + ", ".join(blocked)
         )
-    out_of_bounds = [p for p in blocked if p not in protected]
-    if out_of_bounds:
-        reasons.append(
-            "Proposal targets paths outside "
-            f"{app_path}/(app|docs|tests): " + ", ".join(out_of_bounds)
+    if review_paths:
+        review_reasons.append(
+            "Touches higher-impact project areas (scripts/migrations): "
+            + ", ".join(review_paths)
+        )
+    # Deletes inside the workbench are allowed but always owner-reviewed.
+    in_bounds_deletes = [
+        p
+        for p in proposal.files_to_delete
+        if classify_path(p, app_path, runtime) != "blocked"
+    ]
+    if in_bounds_deletes:
+        review_reasons.append(
+            "Deletes files (owner review required): "
+            + ", ".join(in_bounds_deletes)
         )
 
-    # Rule 5: no secret-like material in paths or instructions.
+    # No secret-like material in paths or instructions. Placeholder env files
+    # (.env.example/.sample/.template/.dist) are documentation, not secrets, so
+    # they are excluded from the ``.env`` marker.
     text_blob = " ".join(
         [
             proposal.summary,
@@ -415,7 +514,10 @@ def validate_proposal(
             *proposal.implementation_steps,
         ]
     )
-    secret_hits = _scan_markers(text_blob, SECRET_MARKERS)
+    scrubbed = text_blob
+    for placeholder in PLACEHOLDER_ENV_FILES:
+        scrubbed = scrubbed.replace(placeholder, "env-placeholder")
+    secret_hits = _scan_markers(scrubbed, SECRET_MARKERS)
     if secret_hits:
         reasons.append(
             "Proposal references secret-like material: "
@@ -438,7 +540,6 @@ def validate_proposal(
         )
 
     risk = proposal.estimated_risk.lower()
-    review_reasons: list[str] = []
     if risk not in RISK_LEVELS:
         warnings.append(
             f"Unrecognized estimated_risk: {proposal.estimated_risk!r}"
@@ -458,19 +559,16 @@ def validate_proposal(
             f"task_id {contract_task_id!r}"
         )
 
-    # Governance classification (Stage 1). Hard blocks and structural failures
-    # keep ``valid`` False exactly as before; the only path that maps to a
-    # review (still apply-eligible after owner approval) is the existing
-    # high-risk signal — so this is behavior-preserving for the apply gate.
-    # ``blocked`` covers every fatal safety/boundary reason; an empty proposal
-    # routes to clarification; a clean proposal is valid; clean+high-risk is
-    # needs_owner_review.
+    # Governance classification. Fatal safety/boundary/structural reasons keep
+    # ``valid`` False; an empty proposal routes to clarification; in-bounds
+    # higher-impact areas, deletes, or high risk route to owner review (still
+    # apply-eligible through the existing owner-approval gate); otherwise valid.
     block_reasons = [r for r in reasons if "empty proposal" not in r]
     if block_reasons:
         decision = DECISION_BLOCKED
     elif empty_proposal:
         decision = DECISION_NEEDS_CLARIFICATION
-    elif risk == "high":
+    elif review_reasons:
         decision = DECISION_NEEDS_OWNER_REVIEW
     else:
         decision = DECISION_VALID
@@ -752,18 +850,22 @@ def request_coder_proposal(
         stream=bool(ollama["stream"]),
     )
     contract_task_id = coerce_str(contract_record.get("task_id"))
-    allowed = ", ".join(allowed_target_prefixes(app_path))
+    base = app_path.rstrip("/")
     instruction = (
         "Return ONLY a single JSON object describing an implementation "
         "proposal. Do NOT write code; describe the plan. Use these keys: "
         "proposal_id, task_id, summary, objective, files_to_create (array), "
         "files_to_modify (array), files_to_delete (array), proposed_tests "
         "(array), implementation_steps (array), estimated_risk "
-        "(low|medium|high), notes. Every file path must be under one of: "
-        f"{allowed}. Touch at most {max_files} files. Never reference "
-        "secrets, credentials, tokens, or destructive/git operations "
-        "(push, merge, reset, rm -rf, sudo). Do not propose changes outside "
-        "the application workbench."
+        "(low|medium|high), notes. Every file path MUST stay inside the "
+        f"project workbench {base}/ — prefer app/, docs/, tests/. You may use "
+        "scripts/ and migrations/, but those require owner review. Never "
+        "target the factory-managed folders (config/, state/, factory_state/, "
+        "factory_reports/, factory_tasks/, factory_context/, context/) or "
+        f"{base}/crazy_project.yaml. Touch at most {max_files} files. Never "
+        "reference secrets, credentials, tokens, private keys, or destructive/"
+        "git operations (push, merge, reset, rm -rf, sudo); a .env.example "
+        "placeholder is fine. Do not propose changes outside the workbench."
     )
     contract_summary = json.dumps(
         {
@@ -825,6 +927,7 @@ def request_coder_proposal(
         contract_actionable=True,
         max_files=max_files,
         contract_task_id=contract_task_id,
+        runtime_prefixes=project_runtime_prefixes(project),
     )
     return ProposalResult(
         proposal, verdict, "ollama", f"Coder model `{model}`", activated=True
@@ -836,6 +939,7 @@ def _preserved_proposal_result(
     app_path: str,
     contract_task_id: str,
     max_files: int,
+    runtime_prefixes: tuple[str, ...] = (),
 ) -> ProposalResult | None:
     """Return a preserved proposal result, or ``None`` to regenerate.
 
@@ -848,6 +952,7 @@ def _preserved_proposal_result(
         app_path: Active application workbench path (e.g. `apps/<id>`).
         contract_task_id: Task id of the authorized contract.
         max_files: Maximum number of files a proposal may touch.
+        runtime_prefixes: Factory-managed runtime dir prefixes to block.
 
     Returns:
         A preserved :class:`ProposalResult`, or ``None`` when regeneration is
@@ -864,6 +969,7 @@ def _preserved_proposal_result(
         contract_actionable=True,
         max_files=max_files,
         contract_task_id=contract_task_id,
+        runtime_prefixes=runtime_prefixes,
     )
     if not verdict.valid:
         return None
@@ -936,7 +1042,11 @@ def run_coder_stage(
     existing = load_existing_contract(proposal_json_path, root)
     contract_task_id = coerce_str(contract_record.get("task_id"))
     preserved = _preserved_proposal_result(
-        existing, app_path, contract_task_id, max_files
+        existing,
+        app_path,
+        contract_task_id,
+        max_files,
+        project_runtime_prefixes(project),
     )
     if preserved is not None:
         return preserved, proposal_json_path, proposal_md_path

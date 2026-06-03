@@ -346,6 +346,60 @@ class DecisionTests(unittest.TestCase):
         )
         self.assertEqual(decision_label(skipped), "not_activated")
 
+    def _decision_for(self, **path_fields: object) -> str:
+        data = _valid_proposal_dict()
+        data["files_to_create"] = []
+        data["files_to_modify"] = []
+        data["files_to_delete"] = []
+        data["proposed_tests"] = []
+        data.update(path_fields)
+        return self._v(parse_coder_proposal(json.dumps(data))).decision
+
+    def test_scripts_dir_is_needs_owner_review(self) -> None:
+        # Stage 3: in-bounds but higher-impact -> review, not blocked.
+        d = self._decision_for(files_to_create=["apps/demo_app/scripts/x.py"])
+        self.assertEqual(d, DECISION_NEEDS_OWNER_REVIEW)
+
+    def test_migrations_dir_is_needs_owner_review(self) -> None:
+        d = self._decision_for(
+            files_to_create=["apps/demo_app/migrations/001.sql"]
+        )
+        self.assertEqual(d, DECISION_NEEDS_OWNER_REVIEW)
+
+    def test_in_bounds_delete_is_needs_owner_review(self) -> None:
+        d = self._decision_for(files_to_delete=["apps/demo_app/app/old.py"])
+        self.assertEqual(d, DECISION_NEEDS_OWNER_REVIEW)
+
+    def test_novel_app_dir_is_valid(self) -> None:
+        # Stage 2: the whole workbench is in-bounds (not just app/docs/tests).
+        d = self._decision_for(files_to_create=["apps/demo_app/src/main.py"])
+        self.assertEqual(d, DECISION_VALID)
+
+    def test_factory_runtime_inside_workbench_is_blocked(self) -> None:
+        for runtime in [
+            "apps/demo_app/factory_tasks/planned_task.json",
+            "apps/demo_app/config/factory.yaml",
+            "apps/demo_app/state/factory_state.json",
+            "apps/demo_app/crazy_project.yaml",
+        ]:
+            d = self._decision_for(files_to_modify=[runtime])
+            self.assertEqual(d, DECISION_BLOCKED, runtime)
+
+    def test_env_example_is_not_blocked(self) -> None:
+        # Stage 4: placeholder env files are documentation, not secrets.
+        d = self._decision_for(
+            files_to_create=["apps/demo_app/docs/.env.example"]
+        )
+        self.assertEqual(d, DECISION_VALID)
+
+    def test_bare_env_is_blocked_as_secret(self) -> None:
+        data = _valid_proposal_dict()
+        data["files_to_create"] = ["apps/demo_app/app/.env"]
+        data["files_to_modify"] = []
+        v = self._v(parse_coder_proposal(json.dumps(data)))
+        self.assertEqual(v.decision, DECISION_BLOCKED)
+        self.assertTrue(any("secret" in r.lower() for r in v.reasons))
+
     def test_coder_to_dict_carries_decision(self) -> None:
         data = _valid_proposal_dict()
         data["estimated_risk"] = "high"
