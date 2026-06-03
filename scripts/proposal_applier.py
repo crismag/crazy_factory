@@ -268,7 +268,7 @@ def _is_allowed_write_path(
 def validate_patch_plan(
     plan: PatchPlan | None,
     *,
-    project_name: str,
+    app_path: str,
     proposal_record: object,
     approved: bool,
     max_files: int,
@@ -279,7 +279,7 @@ def validate_patch_plan(
 
     Args:
         plan: Parsed patch plan, or ``None`` when none was produced.
-        project_name: Active application workbench name.
+        app_path: Active application workbench path (e.g. `apps/<id>`).
         proposal_record: The backing ``coder_proposal.json`` mapping.
         approved: Whether the owner approved applying this proposal.
         max_files: Maximum number of files the plan may touch.
@@ -313,7 +313,7 @@ def validate_patch_plan(
             f"approved proposal {expected_id!r}"
         )
 
-    allowed = allowed_target_prefixes(project_name)
+    allowed = allowed_target_prefixes(app_path)
     declared = _declared_proposal_paths(proposal_record)
     blob_parts: list[str] = [plan.notes]
     for patch in plan.files:
@@ -347,7 +347,7 @@ def validate_patch_plan(
     if blocked:
         reasons.append(
             "Patch plan targets paths outside "
-            f"apps/{project_name}/(app|docs|tests) or protected locations: "
+            f"{app_path}/(app|docs|tests) or protected locations: "
             + ", ".join(blocked)
         )
 
@@ -574,7 +574,7 @@ def application_paths(
 
 def request_patch_plan(
     *,
-    project_name: str,
+    app_path: str,
     project: dict[str, Any],
     proposal_record: dict[str, Any],
     factory_config: dict[str, Any],
@@ -591,7 +591,7 @@ def request_patch_plan(
     validates the plan; it never writes files.
 
     Args:
-        project_name: Active application workbench name.
+        app_path: Active application workbench path (e.g. `apps/<id>`).
         project: Active project configuration mapping.
         proposal_record: The approved, valid coder proposal record.
         factory_config: Parsed ``config/factory.yaml`` mapping.
@@ -605,7 +605,7 @@ def request_patch_plan(
     """
     prompt_package = build_prompt_package(
         role="coder",
-        project_name=project_name,
+        project_name=str(project.get("name") or app_path),
         project_context_root=str(project["context_root"]),
         max_lines_per_file=max_lines,
     )
@@ -616,7 +616,7 @@ def request_patch_plan(
         timeout_seconds=int(ollama["timeout_seconds"]),
         stream=bool(ollama["stream"]),
     )
-    allowed = ", ".join(allowed_target_prefixes(project_name))
+    allowed = ", ".join(allowed_target_prefixes(app_path))
     instruction = (
         "Return ONLY a single JSON object describing exact file changes. Use "
         "keys: plan_id, task_id, proposal_id, files (array of objects with "
@@ -678,7 +678,7 @@ def request_patch_plan(
         )
     verdict = validate_patch_plan(
         plan,
-        project_name=project_name,
+        app_path=app_path,
         proposal_record=proposal_record,
         approved=True,
         max_files=max_files,
@@ -755,7 +755,7 @@ def apply_patch_plan(
 
 def run_application_stage(
     *,
-    project_name: str,
+    app_path: str,
     root: Path,
     project: dict[str, Any],
     factory_config: dict[str, Any],
@@ -774,7 +774,7 @@ def run_application_stage(
     explicitly enabled and the plan validates.
 
     Args:
-        project_name: Active application workbench name.
+        app_path: Active application workbench path (e.g. `apps/<id>`).
         root: Absolute repository root.
         project: Active project configuration mapping.
         factory_config: Parsed ``config/factory.yaml`` mapping.
@@ -830,7 +830,7 @@ def run_application_stage(
 
     assert proposal_record is not None  # narrowed by proposal_ok
     result = request_patch_plan(
-        project_name=project_name,
+        app_path=app_path,
         project=project,
         proposal_record=proposal_record,
         factory_config=factory_config,

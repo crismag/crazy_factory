@@ -1,12 +1,18 @@
-# No project is active by default. An app to work on must be explicitly
-# selected — the factory never picks one for you. To select one:
-#   - grow a seed and promote it:
+# Project registry. No project is active by default — the factory never picks
+# one for you. An app to work on must be explicitly created/attached and
+# activated. See docs/app-builder-usage-flow.md. To select one:
+#   - create or attach an app and activate it:
+#       bin/crazy-admin startproject <id> apps/<id>     # new embedded app
+#       bin/crazy-admin attachproject <id> <path>       # existing codebase
+#       bin/crazy-admin activate <id>
+#   - or grow a seed and promote it:
 #       python3 scripts/context_growth.py start --seed examples/seeds/<x>.md \
 #           --project-id <id>
 #       python3 scripts/context_growth.py grow --project-id <id>   # repeat
 #       python3 scripts/context_growth.py promote --project-id <id>
-#   - or register a workbench under apps/<id>/ and set active_project below.
+# Each entry maps a project_id to where the app lives (app_path), the factory's
+# per-project memory (state_path), repo_mode (embedded|external), and seed_file.
 active_project: ""
 
-# Registered application workbenches. `promote` adds entries here.
+# Registered application workbenches. crazy-admin and promote add entries here.
 projects:

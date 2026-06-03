@@ -79,12 +79,17 @@ from repo_tools import (  # noqa: E402
     read_markdown_directory,
     safe_write_text,
 )
+from project_registry import (  # noqa: E402
+    RegistryError,
+    active_project_id,
+    app_is_external,
+    load_registry,
+    resolve_project,
+    workbench_exists,
+)
 from tick_config import (  # noqa: E402
-    load_active_project,
     load_configuration,
-    selected_active_project,
     validate_dry_run_settings,
-    workbench_ready,
 )
 
 
@@ -92,12 +97,9 @@ def _no_active_project_notice() -> int:
     """Print guidance when no app to work on is selected, and exit cleanly."""
     print("No active project selected. Choose an app to work on first:")
     print(
-        "  - grow a seed and promote it: "
-        "python3 scripts/context_growth.py promote --project-id <id>"
-    )
-    print(
-        "  - or set factory.active_project to a registered workbench in "
-        "config/."
+        "  - crazy-admin startproject <id> [path]   (new app)\n"
+        "  - crazy-admin attachproject <id> <path>  (existing codebase)\n"
+        "  - crazy-admin activate <id>              (select it)"
     )
     return 0
 
@@ -113,13 +115,29 @@ def main() -> int:
     models_config = load_simple_yaml("config/models.yaml", root)
     factory = factory_config["factory"]
     validate_dry_run_settings(factory)
-    if not selected_active_project(factory, projects_config):
+    registry = load_registry(root)
+    project_name = active_project_id(registry)
+    if not project_name:
         return _no_active_project_notice()
-    project_name, project = load_active_project(factory, projects_config)
-    if not workbench_ready(project, root):
+    try:
+        project = resolve_project(registry, project_name)
+    except RegistryError as exc:
+        print(f"Active project '{project_name}' is not usable: {exc}")
+        return 0
+    if not workbench_exists(project["app_path"], root):
         print(
-            f"Workbench for '{project_name}' is missing. Promote or create it "
-            "before running a tick."
+            f"Workbench for '{project_name}' is missing "
+            f"({project['app_path']}). Create or re-attach it before a tick."
+        )
+        return 0
+    if app_is_external(project["app_path"], root):
+        # External app paths are registered and inspectable, but writing the
+        # build into a separate repo crosses the repo-confined write boundary
+        # and is the next increment. Embedded apps build now.
+        print(
+            f"Project '{project_name}' is external ({project['app_path']}). "
+            "Building external apps is not enabled in this increment; use an "
+            "embedded app (under apps/) to build now."
         )
         return 0
     state_dir = str(factory["state_dir"])
@@ -210,7 +228,7 @@ def main() -> int:
 
     max_files = int(factory["max_files_per_run"])
     coder_result, proposal_json_path, proposal_md_path = run_coder_stage(
-        project_name=project_name,
+        app_path=str(project["app_path"]),
         root=root,
         project=project,
         factory_config=factory_config,
@@ -222,7 +240,7 @@ def main() -> int:
 
     application_result, patch_plan_json, patch_plan_md, application_report = (
         run_application_stage(
-            project_name=project_name,
+            app_path=str(project["app_path"]),
             root=root,
             project=project,
             factory_config=factory_config,

@@ -31,9 +31,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -47,12 +47,18 @@ from context_ledger import (  # noqa: E402
 )
 from json_parsing import coerce_str, strip_code_fence  # noqa: E402
 from ollama_client import OllamaClient, OllamaConnectionError  # noqa: E402
+from project_registry import (  # noqa: E402
+    load_registry,
+    register_project,
+    save_registry,
+    set_active,
+    state_path_for,
+)
 from repo_tools import (  # noqa: E402
     find_repo_root,
     load_simple_yaml,
     resolve_repo_path,
     safe_load_json,
-    safe_read_text,
     safe_write_json,
     safe_write_text,
 )
@@ -376,40 +382,13 @@ def find_latest_valid_task_proposal(
     return None
 
 
-def _project_yaml_block(project_id: str) -> str:
-    """Build a ``config/projects.yaml`` block for a new app workbench.
-
-    Args:
-        project_id: Validated project identifier.
-
-    Returns:
-        The indented YAML block (no leading blank line).
-    """
-    base = f"apps/{project_id}"
-    roots = (
-        f"  {project_id}:\n"
-        f"    root: {base}\n"
-        f"    source_root: {base}/app\n"
-        f"    docs_root: {base}/docs\n"
-        f"    tests_root: {base}/tests\n"
-        f"    context_root: {base}/factory_context\n"
-        f"    task_root: {base}/factory_tasks\n"
-        f"    report_root: {base}/factory_reports\n"
-        f"    prompt_root: {base}/factory_prompts\n"
-        f"    script_root: {base}/factory_scripts\n"
-        "    allowed_write_paths:\n"
-    )
-    write_paths = "".join(
-        f"      - {base}/{sub}\n" for sub in _WORKBENCH_SUBDIRS
-    )
-    return roots + write_paths
-
-
 def _register_project(project_id: str, root: Path) -> bool:
-    """Register the project in config and make it the active project.
+    """Register the project in the registry and make it the active project.
 
-    Adds a project block to ``config/projects.yaml`` when missing, and sets
-    ``active_project`` to the project in both config files.
+    Writes a registry entry in the App Builder schema (``app_path`` /
+    ``state_path`` / ``repo_mode`` / ``seed_file``) so the tick can resolve the
+    workbench, and sets ``active_project``. Promoted apps are embedded under
+    ``apps/<id>``.
 
     Args:
         project_id: Validated project identifier.
@@ -418,42 +397,20 @@ def _register_project(project_id: str, root: Path) -> bool:
     Returns:
         ``True`` if the project was already registered, else ``False``.
     """
-    projects_cfg = load_simple_yaml("config/projects.yaml", root)
-    already = project_id in (projects_cfg.get("projects") or {})
-
-    text = safe_read_text("config/projects.yaml", root)
-    text = re.sub(
-        r"^active_project:.*$",
-        f"active_project: {project_id}",
-        text,
-        count=1,
-        flags=re.MULTILINE,
+    registry = load_registry(root)
+    already = project_id in registry["projects"]
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    register_project(
+        registry,
+        project_id=project_id,
+        app_path=f"apps/{project_id}",
+        state_path=state_path_for(project_id),
+        repo_mode="embedded",
+        seed_file="docs/seed.md",
+        now=now,
     )
-    if not already:
-        if not text.endswith("\n"):
-            text += "\n"
-        text += _project_yaml_block(project_id)
-    safe_write_text(
-        "config/projects.yaml",
-        text,
-        repo_root=root,
-        allowed_roots=["config"],
-    )
-
-    factory_text = safe_read_text("config/factory.yaml", root)
-    factory_text = re.sub(
-        r"^(\s*)active_project:.*$",
-        rf"\1active_project: {project_id}",
-        factory_text,
-        count=1,
-        flags=re.MULTILINE,
-    )
-    safe_write_text(
-        "config/factory.yaml",
-        factory_text,
-        repo_root=root,
-        allowed_roots=["config"],
-    )
+    set_active(registry, project_id)
+    save_registry(registry, root)
     return already
 
 

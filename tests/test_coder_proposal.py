@@ -117,7 +117,7 @@ class ValidateTests(unittest.TestCase):
         self, proposal: CoderProposal | None, **kwargs: object
     ) -> ProposalVerdict:
         params: dict[str, object] = {
-            "project_name": "demo_app",
+            "app_path": "apps/demo_app",
             "contract_actionable": True,
             "max_files": 5,
         }
@@ -281,7 +281,7 @@ class RequestTests(unittest.TestCase):
             ),
         ):
             return request_coder_proposal(
-                project_name="demo_app",
+                app_path="apps/demo_app",
                 project=self._project(),
                 contract_record=_authorized_contract_dict(),
                 factory_config=self._factory_config(),
@@ -374,7 +374,7 @@ class StageTests(unittest.TestCase):
                 side_effect=AssertionError("must not regenerate proposal"),
             ):
                 result, _, _ = run_coder_stage(
-                    project_name="demo",
+                    app_path="apps/demo",
                     root=root,
                     project=project,
                     factory_config={"ollama": {}},
@@ -426,7 +426,7 @@ class StageTests(unittest.TestCase):
                 "coder_proposal.request_coder_proposal", return_value=fake
             ):
                 result, _, _ = run_coder_stage(
-                    project_name="demo",
+                    app_path="apps/demo",
                     root=root,
                     project=project,
                     factory_config={"ollama": {}},
@@ -457,7 +457,7 @@ class StageTests(unittest.TestCase):
                 side_effect=AssertionError("must not call model"),
             ):
                 result, json_path, _ = run_coder_stage(
-                    project_name="demo",
+                    app_path="apps/demo",
                     root=root,
                     project=project,
                     factory_config={"ollama": {}},
@@ -492,7 +492,7 @@ class StageTests(unittest.TestCase):
                 "coder_proposal.request_coder_proposal", return_value=fake
             ):
                 result, json_path, md_path = run_coder_stage(
-                    project_name="demo",
+                    app_path="apps/demo",
                     root=root,
                     project=project,
                     factory_config={"ollama": {}},
@@ -624,7 +624,7 @@ class StateAndReportTests(unittest.TestCase):
 
     def test_allowed_target_prefixes(self) -> None:
         """Allowed prefixes cover only app/docs/tests."""
-        prefixes = allowed_target_prefixes("demo_app")
+        prefixes = allowed_target_prefixes("apps/demo_app")
         self.assertEqual(
             prefixes,
             (

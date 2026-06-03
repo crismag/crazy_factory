@@ -36,13 +36,17 @@ from repo_tools import (  # noqa: E402
     safe_read_text,
     safe_write_text,
 )
+from project_registry import (  # noqa: E402
+    RegistryError,
+    active_project_id,
+    app_is_external,
+    load_registry,
+    resolve_project,
+    workbench_exists,
+)
 from satisfaction_checker import run_satisfaction  # noqa: E402
 from stall_detector import detect_stall  # noqa: E402
-from tick_config import (  # noqa: E402
-    load_active_project,
-    load_configuration,
-    selected_active_project,
-)
+from tick_config import load_configuration  # noqa: E402
 
 LOCK_NAME = "mission.lock"
 _TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -209,16 +213,34 @@ def main() -> int:
         Process exit code ``0``.
     """
     root = find_repo_root()
-    factory_config, projects_config = load_configuration(root)
+    factory_config, _projects_config = load_configuration(root)
     factory = factory_config["factory"]
     state_dir = str(factory["state_dir"])
-    if not selected_active_project(factory, projects_config):
+    registry = load_registry(root)
+    project_name = active_project_id(registry)
+    if not project_name:
         print(
-            "No active project selected. Promote a seed-grown project or set "
-            "factory.active_project before running the mission loop."
+            "No active project selected. Choose an app to work on first "
+            "(crazy-admin startproject/attachproject, then activate)."
         )
         return 0
-    project_name, project = load_active_project(factory, projects_config)
+    try:
+        project = resolve_project(registry, project_name)
+    except RegistryError as exc:
+        print(f"Active project '{project_name}' is not usable: {exc}")
+        return 0
+    if not workbench_exists(project["app_path"], root):
+        print(
+            f"Workbench for '{project_name}' is missing "
+            f"({project['app_path']}). Create or re-attach it first."
+        )
+        return 0
+    if app_is_external(project["app_path"], root):
+        print(
+            f"Project '{project_name}' is external ({project['app_path']}). "
+            "Building external apps is not enabled in this increment."
+        )
+        return 0
     factory_state, _active_run, project_state = load_state(root, state_dir)
 
     stale_seconds = int(

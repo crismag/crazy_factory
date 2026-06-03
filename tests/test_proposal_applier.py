@@ -163,7 +163,7 @@ class ValidateTests(unittest.TestCase):
         self, plan: PatchPlan | None, **kwargs: object
     ) -> ApplicationVerdict:
         params: dict[str, object] = {
-            "project_name": "demo",
+            "app_path": "apps/demo",
             "proposal_record": _proposal_record(),
             "approved": True,
             "max_files": 5,
@@ -312,7 +312,7 @@ class RequestTests(unittest.TestCase):
             ),
         ):
             return request_patch_plan(
-                project_name="demo",
+                app_path="apps/demo",
                 project={
                     "root": "apps/demo",
                     "task_root": "apps/demo/factory_tasks",
@@ -370,7 +370,7 @@ class StageTests(unittest.TestCase):
         self, root: Path, project: dict[str, object], pa: dict[str, object]
     ) -> tuple[ApplicationResult, str]:
         result, plan_json, _, _ = run_application_stage(
-            project_name="demo",
+            app_path="apps/demo",
             root=root,
             project=project,
             factory_config={"ollama": {}, "proposal_application": pa},
@@ -516,7 +516,7 @@ class StageTests(unittest.TestCase):
         )
         rejected = validate_patch_plan(
             plan,
-            project_name="demo",
+            app_path="apps/demo",
             proposal_record={"proposal_id": "CP-001"},
             approved=True,
             max_files=5,
@@ -526,7 +526,7 @@ class StageTests(unittest.TestCase):
         self.assertTrue(any("delete" in r.lower() for r in rejected.reasons))
         allowed = validate_patch_plan(
             plan,
-            project_name="demo",
+            app_path="apps/demo",
             proposal_record={"proposal_id": "CP-001"},
             approved=True,
             max_files=5,

@@ -452,11 +452,12 @@ class PromoteTests(unittest.TestCase):
             _promote_fixture(root)
             promote("demo", root)
             projects = (root / "config/projects.yaml").read_text()
-            factory = (root / "config/factory.yaml").read_text()
-            self.assertIn("active_project: demo", projects)
-            self.assertIn("active_project: demo", factory)
+            # promote writes a registry entry in the App Builder schema and
+            # makes it active; factory.yaml is no longer the source of truth.
+            self.assertIn('active_project: "demo"', projects)
             self.assertIn("  demo:", projects)
-            self.assertIn("apps/demo/app", projects)
+            self.assertIn('app_path: "apps/demo"', projects)
+            self.assertIn('repo_mode: "embedded"', projects)
 
     def test_state_repointed_to_new_project(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
