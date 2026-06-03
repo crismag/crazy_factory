@@ -538,7 +538,15 @@ def _apply_contract_state(
         )
         return
 
-    status = "valid" if contract_result.verdict.valid else "rejected"
+    if contract_result.verdict.valid:
+        status = "valid"
+    elif contract_result.decision in (
+        "needs_owner_review",
+        "needs_clarification",
+    ):
+        status = "needs_owner_review"
+    else:
+        status = "rejected"
     _record_contract_status(
         factory_state,
         active_run,
@@ -558,6 +566,19 @@ def _apply_contract_state(
             "authorized=false. Set planned_task.json authorized=true to "
             "approve before any Coder phase. Application writes remain "
             "disabled."
+        )
+        return
+
+    if status == "needs_owner_review":
+        # A reviewed-but-incomplete contract is a WAITING checkpoint for the
+        # owner, not a failure. Do not bump failure counters or set a
+        # persistent blocker (which would drive a false stall -> blocked); the
+        # owner resolves the CONTRACT_REVIEW.md checklist, then re-advances.
+        _clear_failure_state(factory_state, active_run, project_state)
+        active_run["resume_from"] = (
+            "Contract needs owner review: resolve the CONTRACT_REVIEW.md "
+            "checklist (edit the goal/context), then run another advance. "
+            "Application writes remain disabled."
         )
         return
 

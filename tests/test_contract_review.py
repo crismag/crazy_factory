@@ -171,5 +171,71 @@ class ReviewTests(unittest.TestCase):
         self.assertTrue(v.valid)
 
 
+class MissionStateCheckpointTests(unittest.TestCase):
+    """needs_owner_review is a waiting checkpoint, not a stall-failure."""
+
+    def test_needs_owner_review_is_not_a_failure(self) -> None:
+        from contract_stage import ContractResult
+        from mission_state import update_success_state
+        from planning_roles import RoleResult
+        from task_contract import ValidationVerdict
+
+        factory_state = {"failure_count": 2}
+        active_run: dict = {}
+        project_state = {"current_task": "T-1", "failure_count": 2}
+        contract = ContractResult(
+            task=_task(objective=""),
+            verdict=ValidationVerdict(False, ["Missing objective"]),
+            source="ollama",
+            detail="needs review",
+            decision="needs_owner_review",
+        )
+        update_success_state(
+            factory_state,
+            active_run,
+            project_state,
+            RoleResult("architect", "x", "ollama", "m"),
+            RoleResult("planner", "y", "ollama", "m"),
+            contract_result=contract,
+        )
+        # Not counted as a failure; no persistent blocker; recorded as waiting.
+        self.assertEqual(project_state["failure_count"], 0)
+        self.assertNotEqual(
+            project_state.get("current_blocker"), "planning_contract_rejected"
+        )
+        self.assertEqual(
+            project_state["last_contract_status"], "needs_owner_review"
+        )
+
+    def test_reject_unsafe_is_still_a_failure(self) -> None:
+        from contract_stage import ContractResult
+        from mission_state import update_success_state
+        from planning_roles import RoleResult
+        from task_contract import ValidationVerdict
+
+        factory_state = {"failure_count": 0}
+        active_run = {}
+        project_state = {"current_task": "T-1", "failure_count": 0}
+        contract = ContractResult(
+            task=_task(scope=["git push to origin"]),
+            verdict=ValidationVerdict(False, ["forbidden op"]),
+            source="ollama",
+            detail="unsafe",
+            decision="reject_unsafe",
+        )
+        update_success_state(
+            factory_state,
+            active_run,
+            project_state,
+            RoleResult("architect", "x", "ollama", "m"),
+            RoleResult("planner", "y", "ollama", "m"),
+            contract_result=contract,
+        )
+        self.assertEqual(project_state["failure_count"], 1)
+        self.assertEqual(
+            project_state["current_blocker"], "planning_contract_rejected"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
