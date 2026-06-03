@@ -292,10 +292,17 @@ def read_markdown_directory(
     folder = resolve_repo_path(directory, root)
     if not folder.is_dir():
         raise RepoSafetyError(f"Expected directory: {directory}")
+
+    def _key(path: Path) -> str:
+        # External app paths are not under the repo root; key them relative to
+        # the directory itself so the mapping stays readable either way.
+        try:
+            return str(path.relative_to(root))
+        except ValueError:
+            return str(path.relative_to(folder))
+
     return {
-        str(path.relative_to(root)): safe_read_text(
-            path, root, max_lines_per_file
-        )
+        _key(path): safe_read_text(path, root, max_lines_per_file)
         for path in sorted(folder.glob("*.md"))
         if path.is_file()
     }

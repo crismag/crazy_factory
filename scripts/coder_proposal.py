@@ -123,6 +123,11 @@ APPLY_ELIGIBLE_DECISIONS: frozenset[str] = frozenset(
 # App-content directories inside the workbench are in-bounds; a few
 # higher-impact classes route to owner review rather than straight to valid.
 REVIEW_DIR_CLASSES: frozenset[str] = frozenset({"scripts", "migrations"})
+# Top-level workbench dirs the coder may never write to — version-control
+# metadata of the project itself (an external app may be its own git repo).
+WORKBENCH_FORBIDDEN_TOP: frozenset[str] = frozenset(
+    {".git", ".github", ".hg", ".svn"}
+)
 # The owner-control file at the workbench root is factory-managed.
 CONTROL_FILE_NAME = "crazy_project.yaml"
 # Placeholder env files are documentation, not real secrets — they must not be
@@ -340,6 +345,34 @@ def project_runtime_prefixes(project: dict[str, Any]) -> tuple[str, ...]:
     return tuple(f"{d}/" for d in dirs)
 
 
+def resolve_workbench_path(path: str, app_path: str) -> str:
+    """Interpret a proposed path against the project workbench.
+
+    Models naturally propose workbench-relative paths (``src/x.py``,
+    ``README.md``). Those are resolved to ``<app_path>/<path>``. A path that is
+    already absolute or already prefixed with the workbench is returned
+    unchanged (and judged by the boundary check). This makes generation robust
+    for both embedded and external (absolute) workbenches.
+
+    Args:
+        path: Raw path proposed by the model.
+        app_path: Active workbench path (repo-relative or absolute).
+
+    Returns:
+        The workbench-resolved path.
+    """
+    base = app_path.rstrip("/")
+    if not path or path.startswith("/"):
+        return path
+    if path == base or path.startswith(f"{base}/"):
+        return path
+    # Strip a leading "./" only — must NOT mangle dotfiles like ".git".
+    rel = path
+    while rel.startswith("./"):
+        rel = rel[2:]
+    return f"{base}/{rel}"
+
+
 def classify_path(
     path: str, app_path: str, runtime_prefixes: tuple[str, ...]
 ) -> str:
@@ -359,26 +392,30 @@ def classify_path(
     Returns:
         ``"blocked"``, ``"review"``, or ``"valid"``.
     """
-    if not path or path.startswith("/"):
+    if not path:
         return "blocked"
-    normalized = PurePosixPath(path)
-    if ".." in normalized.parts:
+    base = app_path.rstrip("/")
+    # Interpret a workbench-relative path (e.g. "src/x.py") against the
+    # workbench, so the model need not echo the full prefix. Already-prefixed
+    # or absolute paths are taken as-is and judged by the containment below.
+    text = PurePosixPath(resolve_workbench_path(path, app_path)).as_posix()
+    if ".." in PurePosixPath(text).parts:
         return "blocked"
-    text = normalized.as_posix()
     if text.endswith("/"):
         return "blocked"
-    # Defense in depth: explicit top-level factory directories.
+    # Defense in depth: explicit top-level factory directories (repo-relative).
     lowered = text.lstrip("./").lower()
     if any(lowered.startswith(p) for p in FORBIDDEN_PATH_PREFIXES):
         return "blocked"
-    base = app_path.rstrip("/")
-    if not text.startswith(f"{base}/"):
+    if text != base and not text.startswith(f"{base}/"):
         return "blocked"  # outside the active project workbench
     if text == f"{base}/{CONTROL_FILE_NAME}":
         return "blocked"  # the owner-control file is factory-managed
     if any(text.startswith(rp) for rp in runtime_prefixes):
         return "blocked"  # factory-managed runtime inside the workbench
     top = text[len(base) + 1 :].split("/", 1)[0]
+    if top in WORKBENCH_FORBIDDEN_TOP:
+        return "blocked"  # the project's own VCS metadata is off-limits
     return "review" if top in REVIEW_DIR_CLASSES else "valid"
 
 
@@ -1049,6 +1086,20 @@ def run_coder_stage(
         project_runtime_prefixes(project),
     )
     if preserved is not None:
+        # Re-persist so the on-disk record reflects the FRESH re-validation
+        # (the cached verdict may be stale, e.g. rejected under an older rule).
+        safe_write_json(
+            proposal_json_path,
+            coder_to_dict(preserved),
+            repo_root=root,
+            allowed_roots=[task_root],
+        )
+        safe_write_text(
+            proposal_md_path,
+            render_coder_proposal_md(preserved),
+            repo_root=root,
+            allowed_roots=[task_root],
+        )
         return preserved, proposal_json_path, proposal_md_path
 
     result = request_coder_proposal(
