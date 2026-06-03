@@ -35,6 +35,12 @@ After step 5 the factory has produced a **planned task** and a **coder
 proposal**, both unauthorized. Nothing was written to your app, committed, or
 pushed. You move it forward by flipping switches (Section 5).
 
+> **Validate your install:** `tests/manual_run_flow.sh` runs this whole flow
+> against a throwaway project and asserts the safety invariants (context
+> loaded, secrets skipped, planned task `authorized: false`, no code
+> generated). It backs up and restores your tracked config/state, so it is
+> safe to run anytime.
+
 ---
 
 ## 2. Core concepts
