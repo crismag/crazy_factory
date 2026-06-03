@@ -123,7 +123,10 @@ def request_task_contract(
         '"pending". Do not include an authorized field and do not propose an '
         "approved status; only the owner authorizes work. Keep scope small "
         "and bounded, and provide explicit exclusions. Do not reference push, "
-        "merge, secrets, or production. Do not generate application code."
+        "merge, secrets, or production. Do not generate application code. The "
+        "task MUST advance the application described under 'The Project To "
+        "Build'; never plan factory/engine setup, configuration files, model "
+        "installation/selection, or bootstrapping — that is not this project."
     )
     task_context = "\n\n".join(
         f"## Task Source: {path}\n\n{text.rstrip()}"
