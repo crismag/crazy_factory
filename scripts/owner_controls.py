@@ -100,11 +100,10 @@ def authorize_task(project: dict[str, Any], root: Path) -> dict[str, Any]:
             f"Contract validation status is {status}.\n"
             f"Validation errors:\n{detail}"
         )
-    if reasons:
-        raise ControlError(
-            "Contract has unresolved validation reasons:\n"
-            + "\n".join(f"  - {r}" for r in reasons)
-        )
+    # A repaired contract is legitimately valid WITH explanatory reasons (the
+    # repair log and any advisory notes), so a non-empty reasons list no longer
+    # blocks authorization. The deterministic floor + content rules are
+    # re-checked at coder-activation time via is_contract_actionable.
     if task.get("authorized") is True:
         raise ControlError("Task is already authorized.")
 
