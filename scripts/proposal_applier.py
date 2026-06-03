@@ -815,6 +815,43 @@ def run_application_stage(
         return result, plan_json_path, plan_md_path, report_md_path
 
     assert proposal_record is not None  # narrowed by proposal_ok
+
+    # Preserve an already-applied patch plan for the SAME proposal instead of
+    # regenerating it. request_patch_plan asks the model for file CONTENTS,
+    # which is nondeterministic — regenerating on every advance would overwrite
+    # an applied (possibly green) build with different, possibly broken code.
+    # Once applied for this proposal the application is idempotent: keep the
+    # plan and do not re-apply. A remediation fix is a NEW proposal id, so it
+    # does not match and is regenerated/applied normally.
+    existing_plan = load_existing_contract(plan_json_path, root)
+    current_pid = coerce_str(proposal_record.get("proposal_id"))
+    if (
+        isinstance(existing_plan, dict)
+        and existing_plan.get("applied") is True
+        and current_pid
+        and coerce_str(existing_plan.get("proposal_id")) == current_pid
+    ):
+        preserved_plan = parse_patch_plan(json.dumps(existing_plan))
+        applied_files = [
+            coerce_str(f) for f in (existing_plan.get("applied_files") or [])
+        ]
+        return (
+            ApplicationResult(
+                preserved_plan,
+                ApplicationVerdict(True, [], [], []),
+                "preserved",
+                "Patch plan already applied for this proposal; preserved "
+                "(not regenerated) to keep the applied code stable.",
+                mode,
+                activated=True,
+                applied=True,
+                applied_files=applied_files,
+            ),
+            plan_json_path,
+            plan_md_path,
+            report_md_path,
+        )
+
     result = request_patch_plan(
         app_path=app_path,
         project=project,
