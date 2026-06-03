@@ -188,16 +188,17 @@ def parse_coder_proposal(raw: str) -> CoderProposal:
     )
 
 
-def allowed_target_prefixes(project_name: str) -> tuple[str, ...]:
+def allowed_target_prefixes(app_path: str) -> tuple[str, ...]:
     """Return the only repository prefixes a proposal may target.
 
     Args:
-        project_name: Active application workbench name.
+        app_path: Active application workbench path (e.g. ``apps/<id>``).
 
     Returns:
-        Allowed ``app``, ``docs``, and ``tests`` path prefixes.
+        Allowed ``app``, ``docs``, and ``tests`` path prefixes under the
+        workbench.
     """
-    base = f"apps/{project_name}"
+    base = app_path.rstrip("/")
     return (f"{base}/app/", f"{base}/docs/", f"{base}/tests/")
 
 
@@ -258,7 +259,7 @@ def _scan_markers(haystack: str, markers: tuple[str, ...]) -> list[str]:
 def validate_proposal(
     proposal: CoderProposal | None,
     *,
-    project_name: str,
+    app_path: str,
     contract_actionable: bool,
     max_files: int,
     contract_task_id: str = "",
@@ -267,7 +268,7 @@ def validate_proposal(
 
     Args:
         proposal: Parsed proposal, or ``None`` when none was produced.
-        project_name: Active application workbench name.
+        app_path: Active application workbench path (e.g. `apps/<id>`).
         contract_actionable: Whether the backing contract is authorized+valid.
         max_files: Maximum number of files a proposal may touch.
         contract_task_id: ``task_id`` of the backing contract, for matching.
@@ -296,7 +297,7 @@ def validate_proposal(
 
     # Rule 4 + allowed targets: every path must sit under app/docs/tests and
     # never under a protected top-level directory.
-    allowed = allowed_target_prefixes(project_name)
+    allowed = allowed_target_prefixes(app_path)
     protected: list[str] = []
     for path in paths:
         normalized = path.lstrip("./").lower()
@@ -313,8 +314,7 @@ def validate_proposal(
     if out_of_bounds:
         reasons.append(
             "Proposal targets paths outside "
-            f"apps/{project_name}/(app|docs|tests): "
-            + ", ".join(out_of_bounds)
+            f"{app_path}/(app|docs|tests): " + ", ".join(out_of_bounds)
         )
 
     # Rule 5: no secret-like material in paths or instructions.
@@ -544,7 +544,7 @@ def coder_proposal_paths(
 
 def request_coder_proposal(
     *,
-    project_name: str,
+    app_path: str,
     project: dict[str, Any],
     contract_record: dict[str, Any],
     factory_config: dict[str, Any],
@@ -560,7 +560,7 @@ def request_coder_proposal(
     written, no code is generated, and nothing is executed.
 
     Args:
-        project_name: Active application workbench name.
+        app_path: Active application workbench path (e.g. `apps/<id>`).
         project: Active project configuration mapping.
         contract_record: The authorized, valid contract record.
         factory_config: Parsed ``config/factory.yaml`` mapping.
@@ -573,7 +573,7 @@ def request_coder_proposal(
     """
     prompt_package = build_prompt_package(
         role="coder",
-        project_name=project_name,
+        project_name=str(project.get("name") or app_path),
         project_context_root=str(project["context_root"]),
         max_lines_per_file=max_lines,
     )
@@ -585,7 +585,7 @@ def request_coder_proposal(
         stream=bool(ollama["stream"]),
     )
     contract_task_id = coerce_str(contract_record.get("task_id"))
-    allowed = ", ".join(allowed_target_prefixes(project_name))
+    allowed = ", ".join(allowed_target_prefixes(app_path))
     instruction = (
         "Return ONLY a single JSON object describing an implementation "
         "proposal. Do NOT write code; describe the plan. Use these keys: "
@@ -644,7 +644,7 @@ def request_coder_proposal(
         )
     verdict = validate_proposal(
         proposal,
-        project_name=project_name,
+        app_path=app_path,
         contract_actionable=True,
         max_files=max_files,
         contract_task_id=contract_task_id,
@@ -656,7 +656,7 @@ def request_coder_proposal(
 
 def _preserved_proposal_result(
     existing: dict[str, Any] | None,
-    project_name: str,
+    app_path: str,
     contract_task_id: str,
     max_files: int,
 ) -> ProposalResult | None:
@@ -668,7 +668,7 @@ def _preserved_proposal_result(
 
     Args:
         existing: Parsed ``coder_proposal.json`` record, or ``None``.
-        project_name: Active application workbench name.
+        app_path: Active application workbench path (e.g. `apps/<id>`).
         contract_task_id: Task id of the authorized contract.
         max_files: Maximum number of files a proposal may touch.
 
@@ -683,7 +683,7 @@ def _preserved_proposal_result(
         return None
     verdict = validate_proposal(
         proposal,
-        project_name=project_name,
+        app_path=app_path,
         contract_actionable=True,
         max_files=max_files,
         contract_task_id=contract_task_id,
@@ -702,7 +702,7 @@ def _preserved_proposal_result(
 
 def run_coder_stage(
     *,
-    project_name: str,
+    app_path: str,
     root: Path,
     project: dict[str, Any],
     factory_config: dict[str, Any],
@@ -719,7 +719,7 @@ def run_coder_stage(
     proposal files. No application code is ever written.
 
     Args:
-        project_name: Active application workbench name.
+        app_path: Active application workbench path (e.g. `apps/<id>`).
         root: Absolute repository root.
         project: Active project configuration mapping.
         factory_config: Parsed ``config/factory.yaml`` mapping.
@@ -759,13 +759,13 @@ def run_coder_stage(
     existing = load_existing_contract(proposal_json_path, root)
     contract_task_id = coerce_str(contract_record.get("task_id"))
     preserved = _preserved_proposal_result(
-        existing, project_name, contract_task_id, max_files
+        existing, app_path, contract_task_id, max_files
     )
     if preserved is not None:
         return preserved, proposal_json_path, proposal_md_path
 
     result = request_coder_proposal(
-        project_name=project_name,
+        app_path=app_path,
         project=project,
         contract_record=contract_record,
         factory_config=factory_config,
