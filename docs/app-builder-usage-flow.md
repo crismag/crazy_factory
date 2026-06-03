@@ -1,5 +1,9 @@
 # App Builder Usage Flow
 
+> For the hands-on end-to-end guide (quick start, execution flow, owner
+> switches) see [USAGE.md](USAGE.md). This document covers the registry design.
+
+
 Crazy Factory builds **one app at a time**, and it never picks that app for
 you. Before any tick runs, an owner must create or attach an app, register it,
 and activate it. This mirrors Django's `startproject` / `manage.py` split: the
