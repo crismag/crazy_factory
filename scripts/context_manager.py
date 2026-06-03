@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from archive_utils import is_archive, safe_extract
-from project_registry import app_is_external
+from project_registry import app_is_buildable
 from repo_tools import (
     BLOCKED_NAMES,
     BLOCKED_SUFFIXES,
@@ -248,10 +248,11 @@ def add_context(
         ContextError: On external apps, a missing source, or unsafe storage.
     """
     app_path = str(project["app_path"])
-    if app_is_external(app_path, root):
+    if not app_is_buildable(app_path, root):
         raise ContextError(
-            "Context ingestion is only supported for embedded apps "
-            f"(under apps/); '{app_path}' is external."
+            "Context ingestion is only supported for apps under an approved "
+            f"build base (the repo or the configured apps_base); '{app_path}' "
+            "is at an unapproved location."
         )
     src = Path(source)
     source_type = _classify_source(src)
