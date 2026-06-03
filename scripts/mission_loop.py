@@ -38,7 +38,11 @@ from repo_tools import (  # noqa: E402
 )
 from satisfaction_checker import run_satisfaction  # noqa: E402
 from stall_detector import detect_stall  # noqa: E402
-from tick_config import load_active_project, load_configuration  # noqa: E402
+from tick_config import (  # noqa: E402
+    load_active_project,
+    load_configuration,
+    selected_active_project,
+)
 
 LOCK_NAME = "mission.lock"
 _TIMESTAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -208,6 +212,12 @@ def main() -> int:
     factory_config, projects_config = load_configuration(root)
     factory = factory_config["factory"]
     state_dir = str(factory["state_dir"])
+    if not selected_active_project(factory, projects_config):
+        print(
+            "No active project selected. Promote a seed-grown project or set "
+            "factory.active_project before running the mission loop."
+        )
+        return 0
     project_name, project = load_active_project(factory, projects_config)
     factory_state, _active_run, project_state = load_state(root, state_dir)
 

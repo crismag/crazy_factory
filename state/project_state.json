@@ -1,17 +1,13 @@
 {
-  "project": "demo_app",
-  "status": "planning",
+  "project": "",
+  "status": "none",
   "satisfaction_status": "not_satisfied",
-  "current_milestone": "DEMO-M2",
-  "last_completed_milestone": "DEMO-M1",
-  "current_task": "DEMO-002",
+  "current_milestone": "",
+  "last_completed_milestone": null,
+  "current_task": "",
   "current_checkpoint": null,
-  "last_completed_checkpoint": "DEMO-MISSION-STATE-001",
+  "last_completed_checkpoint": null,
   "current_blocker": null,
   "failure_count": 0,
-  "recovery_instructions": "Read apps/demo_app/factory_tasks/MASTER_CHECKLIST.md, MILESTONES.md, CURRENT_TASK.md, and NEXT_ACTION.md. Review DEMO-M1 evidence, then plan DEMO-002 without generating application code.",
-  "last_architect_source": "ollama",
-  "last_planner_source": "ollama",
-  "last_role_completed": "reporter",
-  "task_id": "DEMO-002"
+  "recovery_instructions": "No active project. Promote a seed-grown project or set active_project to a registered workbench."
 }

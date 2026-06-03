@@ -7,3 +7,7 @@ state/mission.lock
 
 # Seed-grown project state is runtime output; the engine recreates it.
 factory_state/projects/
+
+# Application workbenches are runtime, created by promote; not committed.
+apps/*
+!apps/.gitkeep

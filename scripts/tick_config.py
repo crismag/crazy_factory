@@ -20,7 +20,45 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from repo_tools import load_simple_yaml
+from repo_tools import load_simple_yaml, resolve_repo_path
+
+
+def selected_active_project(
+    factory: dict[str, Any], projects_config: dict[str, Any]
+) -> str:
+    """Return the explicitly selected active project, or an empty string.
+
+    The factory never picks a project by default; the owner must select one.
+
+    Args:
+        factory: Parsed ``factory`` configuration mapping.
+        projects_config: Parsed ``config/projects.yaml`` mapping.
+
+    Returns:
+        The selected project name, or ``""`` when none is selected.
+    """
+    return str(
+        factory.get("active_project")
+        or projects_config.get("active_project")
+        or ""
+    ).strip()
+
+
+def workbench_ready(project: dict[str, Any], root: Path) -> bool:
+    """Report whether an active project's workbench directories exist.
+
+    Args:
+        project: Active project configuration mapping.
+        root: Absolute repository root.
+
+    Returns:
+        ``True`` when the context, task, and report directories all exist.
+    """
+    for key in ("context_root", "task_root", "report_root"):
+        value = project.get(key)
+        if not value or not resolve_repo_path(str(value), root).is_dir():
+            return False
+    return True
 
 
 def load_configuration(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:

@@ -42,7 +42,9 @@ from planning_roles import (  # noqa: E402
 from tick_config import (  # noqa: E402
     load_active_project,
     load_configuration,
+    selected_active_project,
     validate_dry_run_settings,
+    workbench_ready,
 )
 from ollama_client import OllamaConnectionError  # noqa: E402
 from repo_tools import read_markdown_directory, safe_write_text  # noqa: E402
@@ -58,6 +60,22 @@ from task_contract import (  # noqa: E402
 )
 from task_contract import ContractParseError  # noqa: E402
 
+# Synthetic config/project used by request tests so they do not depend on a
+# committed app workbench. context_root points at the committed global
+# contexts/ directory so prompt assembly finds a real directory.
+_OLLAMA_CONFIG = {
+    "ollama": {
+        "base_url": "http://localhost:11434",
+        "timeout_seconds": 1,
+        "stream": False,
+    }
+}
+_TEST_PROJECT = {
+    "root": "apps/demo",
+    "task_root": "apps/demo/factory_tasks",
+    "context_root": "contexts",
+}
+
 
 class ValidationLoopSmokeTests(unittest.TestCase):
     """Verify Phase 2 planning behavior and safety boundaries."""
@@ -66,14 +84,45 @@ class ValidationLoopSmokeTests(unittest.TestCase):
         """Store the repository root used by read-only fixture checks."""
         self.repo_root = Path(__file__).resolve().parents[1]
 
-    def test_loads_config_and_active_project(self) -> None:
-        """Load configuration and resolve the seeded demo workbench."""
+    def test_no_active_project_by_default(self) -> None:
+        """The shipped config selects no project; one must be chosen."""
         factory_config, projects_config = load_configuration(self.repo_root)
-        project_name, project = load_active_project(
-            factory_config["factory"], projects_config
+        self.assertEqual(
+            selected_active_project(
+                factory_config["factory"], projects_config
+            ),
+            "",
         )
-        self.assertEqual(project_name, "demo_app")
-        self.assertEqual(project["task_root"], "apps/demo_app/factory_tasks")
+
+    def test_active_project_resolution(self) -> None:
+        """Resolve a selected project and reject an unknown one."""
+        factory = {"active_project": "demo"}
+        projects = {
+            "active_project": "demo",
+            "projects": {"demo": {"task_root": "apps/demo/factory_tasks"}},
+        }
+        self.assertEqual(selected_active_project(factory, projects), "demo")
+        name, project = load_active_project(factory, projects)
+        self.assertEqual(name, "demo")
+        self.assertEqual(project["task_root"], "apps/demo/factory_tasks")
+        with self.assertRaises(RuntimeError):
+            load_active_project(
+                {"active_project": "ghost"},
+                {"active_project": "ghost", "projects": {}},
+            )
+
+    def test_workbench_ready_detects_missing_dirs(self) -> None:
+        """A project whose directories are absent is not workbench-ready."""
+        self.assertFalse(
+            workbench_ready(
+                {
+                    "context_root": "apps/ghost/factory_context",
+                    "task_root": "apps/ghost/factory_tasks",
+                    "report_root": "apps/ghost/factory_reports",
+                },
+                self.repo_root,
+            )
+        )
 
     def test_stop_takes_precedence_over_pause(self) -> None:
         """Prefer an explicit stop when both owner control flags are active."""
@@ -84,14 +133,12 @@ class ValidationLoopSmokeTests(unittest.TestCase):
         )
         self.assertIsNone(requested_control_action({}))
 
-    def test_loads_project_context(self) -> None:
-        """Load the active project's Markdown context package."""
+    def test_loads_a_committed_context_directory(self) -> None:
+        """Load a committed Markdown context package (global contexts)."""
         contexts = read_markdown_directory(
-            "apps/demo_app/factory_context", repo_root=self.repo_root
+            "contexts", repo_root=self.repo_root
         )
-        self.assertIn(
-            "apps/demo_app/factory_context/PROJECT_GOAL.md", contexts
-        )
+        self.assertIn("contexts/GLOBAL_MISSION.md", contexts)
 
     def test_rejects_broad_write_capabilities(self) -> None:
         """Refuse dry-run configuration that enables broad file writes."""
@@ -155,10 +202,8 @@ class ValidationLoopSmokeTests(unittest.TestCase):
         self,
     ) -> None:
         """Produce deterministic planning when the local model is offline."""
-        factory_config, projects_config = load_configuration(self.repo_root)
-        project_name, project = load_active_project(
-            factory_config["factory"], projects_config
-        )
+        factory_config = _OLLAMA_CONFIG
+        project_name, project = "demo", _TEST_PROJECT
         models_config = {
             "models": {
                 "architect": "cogito:14b",
@@ -188,10 +233,8 @@ class ValidationLoopSmokeTests(unittest.TestCase):
         self,
     ) -> None:
         """Produce a fallback next action when the local model is offline."""
-        factory_config, projects_config = load_configuration(self.repo_root)
-        project_name, project = load_active_project(
-            factory_config["factory"], projects_config
-        )
+        factory_config = _OLLAMA_CONFIG
+        project_name, project = "demo", _TEST_PROJECT
         models_config = {"models": {"planner": "cogito:14b"}}
         project_state = {"current_task": "DEMO-002"}
         architect_result = RoleResult(
@@ -477,10 +520,8 @@ class TaskContractTests(unittest.TestCase):
         self,
     ) -> None:
         """Return a rejected contract when the local model is offline."""
-        factory_config, projects_config = load_configuration(self.repo_root)
-        project_name, project = load_active_project(
-            factory_config["factory"], projects_config
-        )
+        factory_config = _OLLAMA_CONFIG
+        project_name, project = "demo", _TEST_PROJECT
         architect_result = RoleResult("architect", "x", "fallback", "off")
         planner_result = RoleResult("planner", "y", "fallback", "off")
         with patch(
@@ -503,10 +544,8 @@ class TaskContractTests(unittest.TestCase):
 
     def test_contract_request_rejects_unparseable_response(self) -> None:
         """Reject an Ollama response that is not a JSON contract."""
-        factory_config, projects_config = load_configuration(self.repo_root)
-        project_name, project = load_active_project(
-            factory_config["factory"], projects_config
-        )
+        factory_config = _OLLAMA_CONFIG
+        project_name, project = "demo", _TEST_PROJECT
         architect_result = RoleResult("architect", "x", "ollama", "m")
         planner_result = RoleResult("planner", "y", "ollama", "m")
         with patch(
@@ -529,10 +568,8 @@ class TaskContractTests(unittest.TestCase):
 
     def test_contract_request_validates_ollama_contract(self) -> None:
         """Validate a well-formed contract returned by Ollama."""
-        factory_config, projects_config = load_configuration(self.repo_root)
-        project_name, project = load_active_project(
-            factory_config["factory"], projects_config
-        )
+        factory_config = _OLLAMA_CONFIG
+        project_name, project = "demo", _TEST_PROJECT
         architect_result = RoleResult("architect", "x", "ollama", "m")
         planner_result = RoleResult("planner", "y", "ollama", "m")
         content = json.dumps(_valid_contract_dict())

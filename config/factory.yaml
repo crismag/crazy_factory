@@ -1,6 +1,6 @@
 factory:
   mode: dry_run
-  active_project: demo_app
+  active_project: ""
   allow_application_writes: false
   allow_factory_writes: false
   allow_commit: false

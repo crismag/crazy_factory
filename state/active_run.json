@@ -2,13 +2,13 @@
   "run_status": "idle",
   "run_id": null,
   "started_at": null,
-  "active_project": "demo_app",
+  "active_project": "",
   "current_phase": "WAIT",
-  "current_task": "DEMO-002",
+  "current_task": "",
   "current_checkpoint": null,
-  "last_completed_checkpoint": "DEMO-MISSION-STATE-001",
+  "last_completed_checkpoint": null,
   "current_blocker": null,
-  "last_role_completed": "reporter",
-  "task_id": "DEMO-002",
-  "resume_from": "Resume from the Planner recommendation in NEXT_ACTION.md. Keep application writes disabled until owner approval."
+  "last_role_completed": null,
+  "task_id": "",
+  "resume_from": "Select an app to work on (promote a seed-grown project, or set active_project)."
 }

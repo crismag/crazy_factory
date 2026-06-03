@@ -82,8 +82,24 @@ from repo_tools import (  # noqa: E402
 from tick_config import (  # noqa: E402
     load_active_project,
     load_configuration,
+    selected_active_project,
     validate_dry_run_settings,
+    workbench_ready,
 )
+
+
+def _no_active_project_notice() -> int:
+    """Print guidance when no app to work on is selected, and exit cleanly."""
+    print("No active project selected. Choose an app to work on first:")
+    print(
+        "  - grow a seed and promote it: "
+        "python3 scripts/context_growth.py promote --project-id <id>"
+    )
+    print(
+        "  - or set factory.active_project to a registered workbench in "
+        "config/."
+    )
+    return 0
 
 
 def main() -> int:
@@ -97,7 +113,15 @@ def main() -> int:
     models_config = load_simple_yaml("config/models.yaml", root)
     factory = factory_config["factory"]
     validate_dry_run_settings(factory)
+    if not selected_active_project(factory, projects_config):
+        return _no_active_project_notice()
     project_name, project = load_active_project(factory, projects_config)
+    if not workbench_ready(project, root):
+        print(
+            f"Workbench for '{project_name}' is missing. Promote or create it "
+            "before running a tick."
+        )
+        return 0
     state_dir = str(factory["state_dir"])
     factory_state, active_run, project_state = load_state(root, state_dir)
     validate_state_project(project_name, factory_state, project_state)

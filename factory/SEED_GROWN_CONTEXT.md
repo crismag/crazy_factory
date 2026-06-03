@@ -19,6 +19,17 @@ factory_state/projects/<project_id>/
 
 `factory_state/projects/` is runtime output and is gitignored.
 
+## No default project
+
+The repository ships with **no active project and no committed app
+workbench** — `apps/` is gitignored (workbenches are runtime, created by
+`promote`). The factory never picks a project for you; an app to work on must
+be **explicitly selected**, either by promoting a seed-grown project or by
+setting `active_project` in config to a registered workbench. Running
+`factory_tick.py` / `mission_loop.py` with nothing selected prints guidance and
+exits cleanly. Sample seeds for different app types live in `examples/seeds/`
+and are only used when you pass them explicitly.
+
 ## Commands
 
 ```bash

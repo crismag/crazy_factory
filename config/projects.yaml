@@ -1,22 +1,12 @@
-active_project: demo_app
+# No project is active by default. An app to work on must be explicitly
+# selected — the factory never picks one for you. To select one:
+#   - grow a seed and promote it:
+#       python3 scripts/context_growth.py start --seed examples/seeds/<x>.md \
+#           --project-id <id>
+#       python3 scripts/context_growth.py grow --project-id <id>   # repeat
+#       python3 scripts/context_growth.py promote --project-id <id>
+#   - or register a workbench under apps/<id>/ and set active_project below.
+active_project: ""
 
+# Registered application workbenches. `promote` adds entries here.
 projects:
-  demo_app:
-    root: apps/demo_app
-    source_root: apps/demo_app/app
-    docs_root: apps/demo_app/docs
-    tests_root: apps/demo_app/tests
-    context_root: apps/demo_app/factory_context
-    task_root: apps/demo_app/factory_tasks
-    report_root: apps/demo_app/factory_reports
-    prompt_root: apps/demo_app/factory_prompts
-    script_root: apps/demo_app/factory_scripts
-    allowed_write_paths:
-      - apps/demo_app/app
-      - apps/demo_app/docs
-      - apps/demo_app/tests
-      - apps/demo_app/factory_context
-      - apps/demo_app/factory_tasks
-      - apps/demo_app/factory_reports
-      - apps/demo_app/factory_prompts
-      - apps/demo_app/factory_scripts
