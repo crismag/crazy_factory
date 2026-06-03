@@ -31,6 +31,11 @@ ALLOWED_COMMANDS: tuple[tuple[str, ...], ...] = (
     ("python3", "-m", "ruff"),
     ("python3", "-m", "mypy"),
     ("python3", "-m", "unittest"),
+    # `python` is as safe as `python3`; allowlisting it too avoids a spurious
+    # plan rejection when the model writes `python -m pytest` instead.
+    ("python", "--version"),
+    ("python", "-m", "pytest"),
+    ("python", "-m", "unittest"),
     ("pytest",),
     ("ruff", "check"),
     ("ruff", "format"),
