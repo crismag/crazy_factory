@@ -27,7 +27,7 @@ Example:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from json_parsing import coerce_str, coerce_str_list, strip_code_fence
@@ -241,29 +241,111 @@ def _content_reasons(task: PlannedTask) -> list[str]:
     Returns:
         List of human-readable content violations; empty when well-formed.
     """
-    reasons: list[str] = []
+    reasons = contract_completeness_reasons(task)
+    hits = _forbidden_keyword_hits(task)
+    if hits:
+        reasons.append(
+            "Contract references forbidden operations: " + ", ".join(hits)
+        )
+    return reasons
 
+
+def contract_completeness_reasons(task: PlannedTask) -> list[str]:
+    """Return ONLY the completeness gaps — the repairable, non-safety rules.
+
+    Missing required fields, an empty scope/exclusions/acceptance: these make a
+    contract incomplete, not unsafe. They are candidates for repair (AI or
+    deterministic), never a hard safety rejection.
+    """
+    reasons: list[str] = []
     for name in REQUIRED_TEXT_FIELDS:
         if not coerce_str(getattr(task, name)):
             reasons.append(f"Missing or empty required field: {name}")
     for name in REQUIRED_LIST_FIELDS:
         if not getattr(task, name):
             reasons.append(f"Missing or empty required list: {name}")
-
     # A bounded task must state at least one acceptance criterion and at least
     # one explicit exclusion; otherwise scope is effectively unbounded.
     if not task.acceptance_criteria:
         reasons.append("No acceptance criteria define completion")
     if not task.exclusions:
         reasons.append("No explicit exclusions to bound scope")
+    return reasons
 
+
+def contract_safety_reasons(task: PlannedTask) -> list[str]:
+    """Return the NON-NEGOTIABLE safety-floor violations (Python-enforced).
+
+    This is the deterministic floor an AI reviewer may never relax: forbidden
+    destructive/out-of-bounds operations in instruction-bearing fields, and any
+    attempt to self-authorize or self-approve. A non-empty result means the
+    contract is genuinely unsafe and must be rejected outright.
+    """
+    reasons: list[str] = []
     hits = _forbidden_keyword_hits(task)
     if hits:
         reasons.append(
             "Contract references forbidden operations: " + ", ".join(hits)
         )
-
+    if task.authorized:
+        reasons.append("Contract may not set authorized=true; owner-only")
+    if task.approval_status.lower() not in ALLOWED_APPROVAL_STATUSES:
+        reasons.append(
+            "Contract may not propose an approved status; owner-only"
+        )
     return reasons
+
+
+def synthesize_repairs(task: PlannedTask) -> dict[str, Any]:
+    """Deterministically fill safe completeness gaps (AI-down fallback).
+
+    Only fills EMPTY fields, and only descriptive ones — never touches
+    authorization, approval, scope intent, or anything safety-bearing.
+    """
+    repairs: dict[str, Any] = {}
+    if not coerce_str(task.validation_plan):
+        if task.acceptance_criteria:
+            repairs["validation_plan"] = (
+                "Verify each acceptance criterion is met: "
+                + "; ".join(task.acceptance_criteria)
+            )
+        else:
+            repairs["validation_plan"] = (
+                "Run the project's tests and confirm the stated objective is "
+                "met before considering the task complete."
+            )
+    if not task.exclusions:
+        repairs["exclusions"] = [
+            "No changes beyond the stated scope.",
+            "No destructive or git operations.",
+        ]
+    return repairs
+
+
+def apply_repairs(task: PlannedTask, repairs: dict[str, Any]) -> PlannedTask:
+    """Return a copy of ``task`` with repairs applied to EMPTY fields only.
+
+    Repairs may fill descriptive/completeness fields (validation_plan, scope,
+    exclusions, acceptance_criteria, inputs, risks, title, objective) when they
+    are currently empty. ``authorized`` and ``approval_status`` are never
+    repairable — the safety floor owns those.
+    """
+    fields: dict[str, Any] = {}
+    for name in ("title", "objective", "validation_plan"):
+        text_value = coerce_str(repairs.get(name))
+        if text_value and not coerce_str(getattr(task, name)):
+            fields[name] = text_value
+    for name in (
+        "scope",
+        "exclusions",
+        "acceptance_criteria",
+        "inputs",
+        "risks",
+    ):
+        list_value = coerce_str_list(repairs.get(name))
+        if list_value and not getattr(task, name):
+            fields[name] = list_value
+    return replace(task, **fields) if fields else task
 
 
 def validate_contract_content(task: PlannedTask) -> ValidationVerdict:
@@ -311,7 +393,13 @@ def validate_planned_task(task: PlannedTask) -> ValidationVerdict:
 
 
 def contract_to_dict(
-    task: PlannedTask | None, verdict: ValidationVerdict, source: str
+    task: PlannedTask | None,
+    verdict: ValidationVerdict,
+    source: str,
+    *,
+    status: str | None = None,
+    decision: str = "",
+    checklist: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build the machine-readable ``planned_task.json`` record.
 
@@ -327,7 +415,7 @@ def contract_to_dict(
     Returns:
         JSON-serializable contract record.
     """
-    status = "valid" if verdict.valid else "rejected"
+    status = status or ("valid" if verdict.valid else "rejected")
     body: dict[str, Any] = {
         "task_id": task.task_id if task else None,
         "title": task.title if task else None,
@@ -343,8 +431,10 @@ def contract_to_dict(
         "authorized": False,
         "validation": {
             "status": status,
+            "decision": decision,
             "source": source,
             "reasons": list(verdict.reasons),
+            "checklist": list(checklist or []),
         },
     }
     return body
