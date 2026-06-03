@@ -1,5 +1,9 @@
 # Phase 9A — Context-Aware Project Bootstrapping
 
+> For the hands-on end-to-end guide (quick start, execution flow, owner
+> switches) see [USAGE.md](USAGE.md). This document covers the 9A design.
+
+
 Crazy Factory can receive project knowledge and make it available to the
 existing Think → Plan → Build pipeline. This phase proves one loop end to end:
 
