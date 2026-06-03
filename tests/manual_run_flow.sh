@@ -115,7 +115,7 @@ out="$("$ADMIN" status 2>&1)"
 echo -e "${DIM}${out}${NC}"
 echo "$out" | grep -q "Active project: ${PROJECT_ID}" && pass "project activated" \
   || fail "activation not reflected in status"
-echo "$out" | grep -qE "Context files:[[:space:]]*[1-9]" \
+echo "$out" | grep -qE "Context:[[:space:]]+[1-9]" \
   && pass "status reports imported context" \
   || fail "status shows no context"
 
@@ -145,6 +145,26 @@ fi
 stray="$(find "$APP_PATH/app" -type f ! -name '.gitkeep' 2>/dev/null)"
 [ -z "$stray" ] && pass "no application code generated" \
   || fail "unexpected files in app/: ${stray}"
+
+# --- 6. owner-control surface ----------------------------------------------
+step "6. owner controls"
+out="$("$ADMIN" next "$PROJECT_ID" 2>&1)"
+echo "$out" | sed "s/^/  ${DIM}| /; s/$/${NC}/"
+echo "$out" | grep -qiE "Current (state|blocker):" \
+  && pass "next reports a clear current state" \
+  || fail "next gave no current state"
+
+out="$("$ADMIN" status 2>&1)"
+echo "$out" | grep -q "Capabilities (effective):" \
+  && pass "status shows effective capabilities" \
+  || fail "status missing capabilities section"
+
+# Per-project capability toggle is reflected as an effective capability.
+"$ADMIN" enable-apply "$PROJECT_ID" >/dev/null 2>&1
+"$ADMIN" status 2>&1 | grep -qE "apply:[[:space:]]+true" \
+  && pass "enable-apply flips effective apply capability" \
+  || fail "enable-apply not reflected in status"
+"$ADMIN" disable-apply "$PROJECT_ID" >/dev/null 2>&1
 
 # --- summary ---------------------------------------------------------------
 step "Summary"
