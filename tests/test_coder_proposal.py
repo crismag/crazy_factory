@@ -18,6 +18,12 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from coder_proposal import (  # noqa: E402
+    APPLY_ELIGIBLE_DECISIONS,
+    DECISION_BLOCKED,
+    DECISION_INVALID,
+    DECISION_NEEDS_CLARIFICATION,
+    DECISION_NEEDS_OWNER_REVIEW,
+    DECISION_VALID,
     CoderProposal,
     ProposalParseError,
     ProposalResult,
@@ -26,6 +32,7 @@ from coder_proposal import (  # noqa: E402
     coder_proposal_paths,
     coder_status_label,
     coder_to_dict,
+    decision_label,
     parse_coder_proposal,
     render_coder_proposal_md,
     request_coder_proposal,
@@ -242,6 +249,118 @@ class ValidateTests(unittest.TestCase):
         )
         self.assertTrue(verdict.valid)
         self.assertTrue(any("task_id" in w.lower() for w in verdict.warnings))
+
+
+class DecisionTests(unittest.TestCase):
+    """Verify the Stage 1 governance decision layer.
+
+    ``decision`` is additive; ``valid`` (the apply-gate signal) must stay
+    exactly equivalent to the old ``not reasons`` behavior, i.e.
+    ``valid == decision in APPLY_ELIGIBLE_DECISIONS``.
+    """
+
+    def _v(
+        self, proposal: CoderProposal | None, **kw: object
+    ) -> ProposalVerdict:
+        params: dict[str, object] = {
+            "app_path": "apps/demo_app",
+            "contract_actionable": True,
+            "max_files": 5,
+        }
+        params.update(kw)
+        return validate_proposal(proposal, **params)  # type: ignore[arg-type]
+
+    def test_clean_proposal_is_valid(self) -> None:
+        v = self._v(_valid_proposal())
+        self.assertEqual(v.decision, DECISION_VALID)
+        self.assertTrue(v.valid)
+
+    def test_high_risk_is_needs_owner_review_but_apply_eligible(self) -> None:
+        data = _valid_proposal_dict()
+        data["estimated_risk"] = "high"
+        v = self._v(parse_coder_proposal(json.dumps(data)))
+        self.assertEqual(v.decision, DECISION_NEEDS_OWNER_REVIEW)
+        self.assertTrue(v.valid)  # eligible *through* the owner-approval gate
+        self.assertTrue(v.review_reasons)
+
+    def test_protected_path_is_blocked(self) -> None:
+        data = _valid_proposal_dict()
+        data["files_to_modify"] = ["factory/core.py"]
+        data["files_to_create"] = []
+        v = self._v(parse_coder_proposal(json.dumps(data)))
+        self.assertEqual(v.decision, DECISION_BLOCKED)
+        self.assertFalse(v.valid)
+
+    def test_out_of_bounds_path_is_blocked(self) -> None:
+        data = _valid_proposal_dict()
+        data["files_to_create"] = ["src/elsewhere.py"]
+        data["files_to_modify"] = []
+        v = self._v(parse_coder_proposal(json.dumps(data)))
+        self.assertEqual(v.decision, DECISION_BLOCKED)
+        self.assertFalse(v.valid)
+
+    def test_empty_proposal_is_needs_clarification(self) -> None:
+        data = _valid_proposal_dict()
+        data["files_to_create"] = []
+        data["files_to_modify"] = []
+        data["files_to_delete"] = []
+        data["proposed_tests"] = []
+        v = self._v(parse_coder_proposal(json.dumps(data)))
+        self.assertEqual(v.decision, DECISION_NEEDS_CLARIFICATION)
+        self.assertFalse(v.valid)
+        self.assertTrue(v.clarification_questions)
+
+    def test_none_proposal_is_invalid(self) -> None:
+        v = self._v(None)
+        self.assertEqual(v.decision, DECISION_INVALID)
+        self.assertFalse(v.valid)
+
+    def test_valid_iff_apply_eligible(self) -> None:
+        # The core invariant the apply gate depends on.
+        for proposal in (
+            _valid_proposal(),
+            parse_coder_proposal(
+                json.dumps(
+                    {**_valid_proposal_dict(), "estimated_risk": "high"}
+                )
+            ),
+            parse_coder_proposal(
+                json.dumps(
+                    {
+                        **_valid_proposal_dict(),
+                        "files_to_create": ["factory/x.py"],
+                        "files_to_modify": [],
+                    }
+                )
+            ),
+            None,
+        ):
+            v = self._v(proposal)
+            self.assertEqual(
+                v.valid, v.decision in APPLY_ELIGIBLE_DECISIONS, v.decision
+            )
+
+    def test_decision_label_not_activated(self) -> None:
+        skipped = ProposalResult(
+            None, ProposalVerdict(False, [], [], []), "skipped", "d"
+        )
+        self.assertEqual(decision_label(skipped), "not_activated")
+
+    def test_coder_to_dict_carries_decision(self) -> None:
+        data = _valid_proposal_dict()
+        data["estimated_risk"] = "high"
+        proposal = parse_coder_proposal(json.dumps(data))
+        verdict = self._v(proposal)
+        record = coder_to_dict(
+            ProposalResult(proposal, verdict, "ollama", "d", activated=True)
+        )
+        # status stays the apply-gate signal; decision is additive.
+        self.assertEqual(record["validation"]["status"], "valid")
+        self.assertEqual(
+            record["validation"]["decision"], DECISION_NEEDS_OWNER_REVIEW
+        )
+        self.assertIn("review_reasons", record["validation"])
+        self.assertIn("clarification_questions", record["validation"])
 
 
 class RequestTests(unittest.TestCase):
@@ -603,9 +722,12 @@ class StateAndReportTests(unittest.TestCase):
             "Implementation Steps",
             "Proposed Tests",
             "Validation Verdict",
+            "Owner Review Reasons",
+            "Clarifications Needed",
         ]:
             self.assertIn(heading, text)
         self.assertIn("Applied: `false`", text)
+        self.assertIn("Decision:", text)
 
     def test_status_label(self) -> None:
         """Status labels reflect activation and validity."""

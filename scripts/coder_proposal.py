@@ -17,6 +17,14 @@ Hard boundaries (Phase 3 invariants preserved):
   proposals, and proposals over the file limit are rejected.
 - When the model is unavailable or output is malformed, the result is a
   *rejected* proposal, never a fake-valid one. The run still exits cleanly.
+
+Stage 1 governance layer: alongside the binary ``valid`` (the apply-gate
+signal, unchanged), each verdict carries a ``decision`` — one of
+``invalid``/``blocked``/``needs_clarification``/``needs_owner_review``/``valid``.
+``valid == decision in APPLY_ELIGIBLE_DECISIONS`` by construction, so the
+classifier is purely additive: it explains *why* a proposal is or isn't
+apply-eligible without changing which proposals are. The rejection engine is
+wrapped, not replaced.
 """
 
 from __future__ import annotations
@@ -80,6 +88,29 @@ DANGEROUS_COMMANDS: tuple[str, ...] = (
 
 RISK_LEVELS: frozenset[str] = frozenset({"low", "medium", "high"})
 
+# Governance decision model (Stage 1: classify, do not replace the rejection
+# engine). Ordered most-to-least severe. ``valid`` (apply-eligibility) is
+# derived as ``decision in APPLY_ELIGIBLE_DECISIONS`` — so a proposal flagged
+# for owner review is still eligible *through the existing owner-approval gate*,
+# while blocked/invalid/needs_clarification are not actionable.
+DECISION_INVALID = "invalid"
+DECISION_BLOCKED = "blocked"
+DECISION_NEEDS_CLARIFICATION = "needs_clarification"
+DECISION_NEEDS_OWNER_REVIEW = "needs_owner_review"
+DECISION_VALID = "valid"
+DECISION_VALUES: tuple[str, ...] = (
+    DECISION_INVALID,
+    DECISION_BLOCKED,
+    DECISION_NEEDS_CLARIFICATION,
+    DECISION_NEEDS_OWNER_REVIEW,
+    DECISION_VALID,
+)
+# A proposal is apply-eligible (after the owner's existing approval) only for
+# these decisions. This is the contract that keeps the apply gate unchanged.
+APPLY_ELIGIBLE_DECISIONS: frozenset[str] = frozenset(
+    {DECISION_VALID, DECISION_NEEDS_OWNER_REVIEW}
+)
+
 
 class ProposalParseError(ValueError):
     """Raised when coder output cannot be parsed into a proposal."""
@@ -120,17 +151,61 @@ class CoderProposal:
 class ProposalVerdict:
     """Outcome of validating a :class:`CoderProposal`.
 
+    ``valid`` remains the apply-eligibility signal that downstream stages
+    already consume; ``decision`` is the additive governance classification
+    (Stage 1). They are kept consistent by construction:
+    ``valid == (decision in APPLY_ELIGIBLE_DECISIONS)``.
+
     Attributes:
-        valid: Whether the proposal satisfies every safety rule.
+        valid: Whether the proposal is apply-eligible (after owner approval).
         reasons: Human-readable rejection reasons. Empty when ``valid``.
         blocked_paths: Specific paths that violated the target boundary.
         warnings: Non-fatal concerns worth surfacing to the owner.
+        decision: Governance decision (one of :data:`DECISION_VALUES`).
+        review_reasons: Why owner review is advised (for needs_owner_review).
+        clarification_questions: What the owner/model must clarify.
+        risk_level: The proposal's coarse risk (low/medium/high), or "".
+        policy_hits: Project-policy classes the proposal touched (reserved).
     """
 
     valid: bool
     reasons: list[str] = field(default_factory=list)
     blocked_paths: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    decision: str = ""
+    review_reasons: list[str] = field(default_factory=list)
+    clarification_questions: list[str] = field(default_factory=list)
+    risk_level: str = ""
+    policy_hits: list[str] = field(default_factory=list)
+
+
+def _make_verdict(
+    *,
+    decision: str,
+    reasons: list[str],
+    blocked: list[str],
+    warnings: list[str],
+    review_reasons: list[str] | None = None,
+    clarification_questions: list[str] | None = None,
+    risk_level: str = "",
+    policy_hits: list[str] | None = None,
+) -> ProposalVerdict:
+    """Build a verdict with ``valid`` derived from ``decision``.
+
+    Centralizes the invariant ``valid == decision in APPLY_ELIGIBLE_DECISIONS``
+    so callers cannot set the two inconsistently.
+    """
+    return ProposalVerdict(
+        valid=decision in APPLY_ELIGIBLE_DECISIONS,
+        reasons=reasons,
+        blocked_paths=blocked,
+        warnings=warnings,
+        decision=decision,
+        review_reasons=review_reasons or [],
+        clarification_questions=clarification_questions or [],
+        risk_level=risk_level,
+        policy_hits=policy_hits or [],
+    )
 
 
 @dataclass(frozen=True)
@@ -287,13 +362,25 @@ def validate_proposal(
         )
     if proposal is None:
         reasons.append("No proposal was produced")
-        return ProposalVerdict(False, reasons, blocked, warnings)
+        return _make_verdict(
+            decision=DECISION_INVALID,
+            reasons=reasons,
+            blocked=blocked,
+            warnings=warnings,
+        )
 
     paths = _proposal_paths(proposal)
+    clarification_questions: list[str] = []
 
-    # Rule 7: an empty proposal proposes no work.
-    if not paths:
+    # Rule 7: an empty proposal proposes no work — not unsafe, just not yet
+    # actionable, so it routes to clarification rather than a hard block.
+    empty_proposal = not paths
+    if empty_proposal:
         reasons.append("Proposal targets no files (empty proposal)")
+        clarification_questions.append(
+            "Which files under the workbench should this proposal "
+            "create, modify, or delete? It currently targets none."
+        )
 
     # Rule 4 + allowed targets: every path must sit under app/docs/tests and
     # never under a protected top-level directory.
@@ -351,12 +438,16 @@ def validate_proposal(
         )
 
     risk = proposal.estimated_risk.lower()
+    review_reasons: list[str] = []
     if risk not in RISK_LEVELS:
         warnings.append(
             f"Unrecognized estimated_risk: {proposal.estimated_risk!r}"
         )
     elif risk == "high":
         warnings.append("Estimated risk is high; close owner review advised")
+        review_reasons.append(
+            "Estimated risk is high; owner review advised before approval"
+        )
     if (
         contract_task_id
         and proposal.task_id
@@ -367,11 +458,32 @@ def validate_proposal(
             f"task_id {contract_task_id!r}"
         )
 
-    return ProposalVerdict(
-        valid=not reasons,
+    # Governance classification (Stage 1). Hard blocks and structural failures
+    # keep ``valid`` False exactly as before; the only path that maps to a
+    # review (still apply-eligible after owner approval) is the existing
+    # high-risk signal — so this is behavior-preserving for the apply gate.
+    # ``blocked`` covers every fatal safety/boundary reason; an empty proposal
+    # routes to clarification; a clean proposal is valid; clean+high-risk is
+    # needs_owner_review.
+    block_reasons = [r for r in reasons if "empty proposal" not in r]
+    if block_reasons:
+        decision = DECISION_BLOCKED
+    elif empty_proposal:
+        decision = DECISION_NEEDS_CLARIFICATION
+    elif risk == "high":
+        decision = DECISION_NEEDS_OWNER_REVIEW
+    else:
+        decision = DECISION_VALID
+
+    return _make_verdict(
+        decision=decision,
         reasons=reasons,
-        blocked_paths=blocked,
+        blocked=blocked,
         warnings=warnings,
+        review_reasons=review_reasons,
+        clarification_questions=clarification_questions,
+        risk_level=risk,
+        policy_hits=[],
     )
 
 
@@ -390,6 +502,7 @@ def coder_to_dict(result: ProposalResult) -> dict[str, Any]:
     """
     proposal = result.proposal
     status = coder_status_label(result)
+    decision = decision_label(result)
     return {
         "proposal_id": proposal.proposal_id if proposal else None,
         "task_id": proposal.task_id if proposal else None,
@@ -408,11 +521,20 @@ def coder_to_dict(result: ProposalResult) -> dict[str, Any]:
         # The Coder never applies or authorizes anything in Phase 4.
         "applied": False,
         "validation": {
+            # ``status`` stays the apply-gate signal (valid/rejected/
+            # not_activated); ``decision`` is the additive governance layer.
             "status": status,
+            "decision": decision,
             "source": result.source,
             "reasons": list(result.verdict.reasons),
             "blocked_paths": list(result.verdict.blocked_paths),
             "warnings": list(result.verdict.warnings),
+            "review_reasons": list(result.verdict.review_reasons),
+            "clarification_questions": list(
+                result.verdict.clarification_questions
+            ),
+            "risk_level": result.verdict.risk_level,
+            "policy_hits": list(result.verdict.policy_hits),
         },
     }
 
@@ -431,6 +553,28 @@ def coder_status_label(result: ProposalResult) -> str:
     return "valid" if result.verdict.valid else "rejected"
 
 
+def decision_label(result: ProposalResult) -> str:
+    """Return the governance decision label for a proposal outcome.
+
+    Distinct from :func:`coder_status_label` (the apply-gate signal). When the
+    Coder is not activated there is no proposal to classify, so this reports
+    ``"not_activated"``. Otherwise it returns the verdict's ``decision``,
+    falling back to a value derived from ``valid`` for verdicts built outside
+    :func:`validate_proposal`.
+
+    Args:
+        result: Proposal result for the current advance.
+
+    Returns:
+        One of :data:`DECISION_VALUES`, or ``"not_activated"``.
+    """
+    if not result.activated:
+        return "not_activated"
+    if result.verdict.decision:
+        return result.verdict.decision
+    return DECISION_VALID if result.verdict.valid else DECISION_INVALID
+
+
 def _bullets(items: list[str]) -> list[str]:
     """Render a list as Markdown bullets, or a placeholder when empty."""
     return [f"- {item}" for item in items] if items else ["_None._"]
@@ -446,6 +590,7 @@ def render_coder_proposal_md(result: ProposalResult) -> str:
         Markdown document describing the proposal and its verdict.
     """
     status = coder_status_label(result)
+    decision = decision_label(result)
     proposal = result.proposal
     verdict = result.verdict
     lines = [
@@ -457,6 +602,9 @@ def render_coder_proposal_md(result: ProposalResult) -> str:
         f"- Detail: {result.detail}",
         f"- Activated: `{str(result.activated).lower()}`",
         f"- Verdict: `{status}`",
+        f"- Decision: `{decision}`",
+        f"- Owner review required: "
+        f"`{str(decision == DECISION_NEEDS_OWNER_REVIEW).lower()}`",
         "- Applied: `false` (Phase 4 proposes only; no files are written)",
         "",
     ]
@@ -503,16 +651,35 @@ def render_coder_proposal_md(result: ProposalResult) -> str:
                 "",
             ]
         )
-    lines.extend(["## Validation Verdict", "", f"- Valid: `{verdict.valid}`"])
-    lines.append("")
-    lines.append("### Reasons")
-    lines.append("")
-    lines.extend(_bullets(verdict.reasons))
-    lines.extend(["", "### Warnings", ""])
-    lines.extend(_bullets(verdict.warnings))
-    lines.extend(["", "### Blocked Paths", ""])
-    lines.extend(_bullets(verdict.blocked_paths))
-    lines.append("")
+    lines.extend(
+        [
+            "## Validation Verdict",
+            "",
+            f"- Decision: `{decision}`",
+            f"- Valid (apply-eligible after owner approval): `{verdict.valid}`",
+            "",
+            "### Reasons",
+            "",
+            *_bullets(verdict.reasons),
+            "",
+            "### Owner Review Reasons",
+            "",
+            *_bullets(verdict.review_reasons),
+            "",
+            "### Clarifications Needed",
+            "",
+            *_bullets(verdict.clarification_questions),
+            "",
+            "### Warnings",
+            "",
+            *_bullets(verdict.warnings),
+            "",
+            "### Blocked Paths",
+            "",
+            *_bullets(verdict.blocked_paths),
+            "",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -623,7 +790,12 @@ def request_coder_proposal(
         reason = f"Ollama unavailable; no validated proposal produced: {exc}"
         return ProposalResult(
             None,
-            ProposalVerdict(False, [reason], [], []),
+            _make_verdict(
+                decision=DECISION_INVALID,
+                reasons=[reason],
+                blocked=[],
+                warnings=[],
+            ),
             "fallback",
             reason,
             activated=True,
@@ -637,7 +809,12 @@ def request_coder_proposal(
         reason = f"Proposal parse failed: {exc}"
         return ProposalResult(
             None,
-            ProposalVerdict(False, [reason], [], []),
+            _make_verdict(
+                decision=DECISION_INVALID,
+                reasons=[reason],
+                blocked=[],
+                warnings=[],
+            ),
             "ollama",
             f"Coder model `{model}` (unparseable proposal)",
             activated=True,
