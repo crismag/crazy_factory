@@ -39,7 +39,6 @@ from stall_detector import detect_stall  # noqa: E402
 
 def _demo_project(root: Path) -> dict[str, object]:
     (root / "state").mkdir()
-    (root / "reports").mkdir()
     task_root = root / "apps/demo/factory_tasks"
     report_root = root / "apps/demo/factory_reports"
     task_root.mkdir(parents=True)
@@ -160,10 +159,20 @@ class RecoveryTests(unittest.TestCase):
                 stall_signal=signal,
                 project_state=project_state,
             )
-            self.assertTrue((root / "reports/STALL_REPORT.md").is_file())
+            # Stall/recovery reports land in the project's report folder,
+            # never the engine root.
+            self.assertTrue(
+                (root / "apps/demo/factory_reports/STALL_REPORT.md").is_file()
+            )
+            self.assertTrue(
+                (
+                    root / "apps/demo/factory_reports/RECOVERY_REPORT.md"
+                ).is_file()
+            )
             self.assertTrue(
                 (root / "apps/demo/factory_tasks/RECOVERY_PLAN.md").is_file()
             )
+            self.assertFalse((root / "reports").exists())
             self.assertTrue(flag_active("blocked", root))
 
 

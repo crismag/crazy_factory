@@ -20,6 +20,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from context_growth import (  # noqa: E402
     PromoteError,
+    _relocate_seed_state,
     grow,
     promote,
     request_growth,
@@ -472,6 +473,38 @@ class PromoteTests(unittest.TestCase):
             self.assertEqual(ps["project"], "demo")
             self.assertEqual(ps["current_task"], "T1")
             self.assertEqual(ps["failure_count"], 0)
+
+    def test_seed_state_relocated_into_workbench(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _promote_fixture(root)
+            result = promote("demo", root)
+            self.assertTrue(result["seed_state_relocated"])
+            # The pre-promote root staging is gone…
+            self.assertFalse((root / "factory_state/projects/demo").exists())
+            # …and the grown context now lives inside the workbench.
+            fstate = root / "apps/demo/factory_state"
+            self.assertTrue((fstate / "context_ledger.json").is_file())
+            self.assertTrue((fstate / "seed.md").is_file())
+            self.assertTrue(
+                (fstate / "contexts/001_task_proposal.json").is_file()
+            )
+            # Ledger artifact paths were rewritten to the new prefix.
+            ledger = json.loads((fstate / "context_ledger.json").read_text())
+            for art in ledger["artifacts"]:
+                self.assertTrue(
+                    art["path"].startswith("apps/demo/factory_state/"),
+                    art["path"],
+                )
+
+    def test_relocation_is_idempotent_no_op(self) -> None:
+        # Relocation moves staging once; a second call with no staging left is
+        # a clean no-op (returns False), so the move can never double-run.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _promote_fixture(root)
+            promote("demo", root)
+            self.assertFalse(_relocate_seed_state("demo", root))
 
     def test_contract_forced_unauthorized(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

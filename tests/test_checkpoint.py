@@ -240,10 +240,14 @@ class StageTests(unittest.TestCase):
             self.assertTrue(
                 all("scripts/" not in f for f in result.staged_files)
             )
-            # Checkpoint log was recorded.
+            # Checkpoint log was recorded inside the project's report folder
+            # — never an engine-root ledger.
             self.assertTrue(
-                (root / "checkpoints/checkpoint_log.jsonl").is_file()
+                (
+                    root / "apps/demo/factory_reports/checkpoint_log.jsonl"
+                ).is_file()
             )
+            self.assertFalse((root / "checkpoints").exists())
 
     def test_not_eligible_does_not_commit(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

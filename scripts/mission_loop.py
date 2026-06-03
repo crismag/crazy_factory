@@ -177,7 +177,7 @@ def render_mission_status_md(
     factory_state: dict[str, Any],
     project_state: dict[str, Any],
 ) -> str:
-    """Render ``reports/MISSION_STATUS.md``.
+    """Render the project's ``MISSION_STATUS.md`` body.
 
     Args:
         action: The decided action for this iteration.
@@ -255,7 +255,14 @@ def main() -> int:
         stale_seconds=stale_seconds,
     ):
         # Another mission run holds a fresh lock; do not overlap.
-        _write_status(root, "locked", factory_state, project_state, state_dir)
+        _write_status(
+            root,
+            "locked",
+            factory_state,
+            project_state,
+            state_dir,
+            report_root=str(project["report_root"]),
+        )
         print("Crazy Factory mission iteration: action=locked")
         print("Another mission run is in progress; skipping this beat.")
         return 0
@@ -267,7 +274,14 @@ def main() -> int:
             project_state=project_state,
             state_dir=state_dir,
         )
-        _write_status(root, action, factory_state, project_state, state_dir)
+        _write_status(
+            root,
+            action,
+            factory_state,
+            project_state,
+            state_dir,
+            report_root=str(project["report_root"]),
+        )
 
         if action == "run":
             factory_advance.main()
@@ -298,7 +312,9 @@ def main() -> int:
     print(
         f"Active flags: {', '.join(active_flags(root, state_dir)) or 'none'}"
     )
-    print("Mission status written: reports/MISSION_STATUS.md")
+    print(
+        f"Mission status written: {project['report_root']}/MISSION_STATUS.md"
+    )
     return 0
 
 
@@ -308,6 +324,8 @@ def _write_status(
     factory_state: dict[str, Any],
     project_state: dict[str, Any],
     state_dir: str,
+    *,
+    report_root: str,
 ) -> None:
     """Write the mission-status report for the current iteration.
 
@@ -317,9 +335,11 @@ def _write_status(
         factory_state: Global state snapshot.
         project_state: Active project state snapshot.
         state_dir: Repository-relative state directory.
+        report_root: The active project's report directory; the status lands
+            inside the workbench, never the engine root.
     """
     safe_write_text(
-        "reports/MISSION_STATUS.md",
+        str(Path(report_root) / "MISSION_STATUS.md"),
         render_mission_status_md(
             action=action,
             flags=active_flags(root, state_dir),
@@ -327,7 +347,7 @@ def _write_status(
             project_state=project_state,
         ),
         repo_root=root,
-        allowed_roots=["reports"],
+        allowed_roots=[report_root],
     )
 
 

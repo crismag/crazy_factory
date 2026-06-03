@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -48,7 +49,11 @@ from context_ledger import (  # noqa: E402
 from json_parsing import coerce_str, strip_code_fence  # noqa: E402
 from ollama_client import OllamaClient, OllamaConnectionError  # noqa: E402
 from mission_state import initial_state  # noqa: E402
-from project_paths import DEFAULT_FACTORY_CONFIG  # noqa: E402
+from project_paths import (  # noqa: E402
+    DEFAULT_FACTORY_CONFIG,
+    assert_project_local,
+    resolve_paths,
+)
 from project_registry import (  # noqa: E402
     load_registry,
     register_project,
@@ -69,6 +74,7 @@ from seed_context import (  # noqa: E402
     contexts_dir,
     init_project,
     load_seed,
+    project_root,
     recent_artifacts,
     validate_project_id,
 )
@@ -518,6 +524,67 @@ def _point_state_at_project(project_id: str, task_id: str, root: Path) -> None:
         )
 
 
+def _relocate_seed_state(project_id: str, root: Path) -> bool:
+    """Move pre-promote seed-grown state into the project workbench.
+
+    The seed phase stages context under the engine root
+    (``factory_state/projects/<id>/``) because no workbench exists yet. At
+    promote the workbench does exist, so the whole staging tree moves into
+    ``apps/<id>/factory_state/`` — after this, the project owns its grown
+    context and nothing for it lives at the root.
+
+    Non-destructive and idempotent: a missing source is a clean no-op (the
+    project may have been started without seed-growth), and a destination file
+    that already exists is left untouched. The moved ledger's artifact paths
+    are rewritten from the old root prefix to the workbench prefix so post-
+    promote inspection still resolves.
+
+    Args:
+        project_id: Validated project identifier.
+        root: Absolute repository root.
+
+    Returns:
+        ``True`` if any file was relocated, else ``False``.
+    """
+    source_rel = project_root(project_id)
+    dest_rel = resolve_paths(f"apps/{project_id}").factory_state_dir
+    source_abs = resolve_repo_path(source_rel, root)
+    if not source_abs.is_dir():
+        return False
+
+    for item in sorted(source_abs.rglob("*")):
+        if not item.is_file():
+            continue
+        rel = item.relative_to(source_abs).as_posix()
+        dest = f"{dest_rel}/{rel}"
+        assert_project_local(dest, f"apps/{project_id}", root)
+        # Non-destructive: a project file already in the workbench wins.
+        if not resolve_repo_path(dest, root).exists():
+            safe_write_text(
+                dest,
+                safe_read_text(item, root),
+                repo_root=root,
+                allowed_roots=["apps"],
+            )
+
+    # Rewrite the relocated ledger's artifact paths to the new prefix.
+    dest_ledger = f"{dest_rel}/context_ledger.json"
+    if resolve_repo_path(dest_ledger, root).is_file():
+        ledger = safe_load_json(dest_ledger, root)
+        for artifact in ledger.get("artifacts", []) or []:
+            old = str(artifact.get("path") or "")
+            if old.startswith(f"{source_rel}/"):
+                artifact["path"] = f"{dest_rel}/{old[len(source_rel) + 1 :]}"
+        safe_write_json(
+            dest_ledger, ledger, repo_root=root, allowed_roots=["apps"]
+        )
+
+    # Move semantics: the workbench now owns the grown context — drop the
+    # engine-root staging tree (gitignored runtime).
+    shutil.rmtree(source_abs)
+    return True
+
+
 def promote(project_id: str, root: Path) -> dict[str, Any]:
     """Promote a grown project into the build pipeline (owner-driven).
 
@@ -549,6 +616,9 @@ def promote(project_id: str, root: Path) -> dict[str, Any]:
 
     already_registered = _register_project(project_id, root)
     _ensure_workbench(project_id, root, seed)
+    # The workbench now exists — move the pre-promote seed staging into it so
+    # the project owns its grown context and nothing remains at the root.
+    relocated = _relocate_seed_state(project_id, root)
     contract_path = _write_pipeline_contract(project_id, record, root)
     _point_state_at_project(project_id, task_id, root)
     return {
@@ -556,6 +626,7 @@ def promote(project_id: str, root: Path) -> dict[str, Any]:
         "task_id": task_id,
         "contract_path": contract_path,
         "already_registered": already_registered,
+        "seed_state_relocated": relocated,
     }
 
 
