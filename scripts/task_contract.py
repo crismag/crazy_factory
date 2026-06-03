@@ -303,6 +303,33 @@ def synthesize_repairs(task: PlannedTask) -> dict[str, Any]:
     authorization, approval, scope intent, or anything safety-bearing.
     """
     repairs: dict[str, Any] = {}
+    # Header derived from scope: a planner that emits concrete scope but omits
+    # task_id/title/objective has given enough signal to summarize them. This
+    # is summarization of the provided scope, not invented intent — the floor
+    # re-runs over the derived text, and the owner still authorizes downstream.
+    objective = coerce_str(task.objective)
+    if not objective and task.scope:
+        objective = "Complete the planned scope: " + "; ".join(task.scope)
+        repairs["objective"] = objective
+    if not coerce_str(task.title):
+        basis = objective or (task.scope[0] if task.scope else "")
+        if basis:
+            repairs["title"] = basis[:72]
+    if not coerce_str(task.task_id):
+        basis = (
+            coerce_str(repairs.get("title"))
+            or coerce_str(task.title)
+            or objective
+        )
+        if basis:
+            slug = "".join(
+                ch if ch.isalnum() else "-" for ch in basis.lower()
+            ).strip("-")
+            repairs["task_id"] = slug[:40] or "planned-task"
+    if not task.acceptance_criteria and task.scope:
+        repairs["acceptance_criteria"] = [
+            "Each scope item is implemented and the validation plan passes."
+        ]
     if not coerce_str(task.validation_plan):
         if task.acceptance_criteria:
             repairs["validation_plan"] = (
@@ -325,13 +352,14 @@ def synthesize_repairs(task: PlannedTask) -> dict[str, Any]:
 def apply_repairs(task: PlannedTask, repairs: dict[str, Any]) -> PlannedTask:
     """Return a copy of ``task`` with repairs applied to EMPTY fields only.
 
-    Repairs may fill descriptive/completeness fields (validation_plan, scope,
-    exclusions, acceptance_criteria, inputs, risks, title, objective) when they
+    Repairs may fill descriptive/completeness fields (task_id, title,
+    objective, validation_plan, scope, exclusions, acceptance_criteria, inputs,
+    risks) when they
     are currently empty. ``authorized`` and ``approval_status`` are never
     repairable — the safety floor owns those.
     """
     fields: dict[str, Any] = {}
-    for name in ("title", "objective", "validation_plan"):
+    for name in ("task_id", "title", "objective", "validation_plan"):
         text_value = coerce_str(repairs.get(name))
         if text_value and not coerce_str(getattr(task, name)):
             fields[name] = text_value

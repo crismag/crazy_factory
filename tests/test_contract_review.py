@@ -19,6 +19,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from contract_review import (  # noqa: E402
+    DECISION_NEEDS_CLARIFICATION,
     DECISION_NEEDS_OWNER_REVIEW,
     DECISION_REJECT_UNSAFE,
     DECISION_REPAIR,
@@ -132,14 +133,15 @@ class ReviewTests(unittest.TestCase):
         self.assertTrue(v.task.validation_plan)  # synthesized, non-empty
 
     def test_indeterminate_escalates_to_owner_checklist(self) -> None:
-        # A gap deterministic repair cannot fill (empty objective) + AI down →
-        # owner-review checklist, not a fake valid.
+        # Gaps deterministic repair cannot fill (no scope to derive a header
+        # from, empty objective) + AI down → owner-review checklist, not a fake
+        # valid.
         with patch(
             "contract_review.OllamaClient.chat",
             side_effect=OllamaConnectionError("down"),
         ):
             v = review_contract(
-                _task(objective=""),
+                _task(scope=[], objective=""),
                 models_config=_MODELS,
                 factory_config=_FACTORY,
             )
@@ -148,12 +150,39 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(v.status, "needs_owner_review")
         self.assertTrue(v.checklist)
 
-    def test_ai_can_escalate_to_owner_review(self) -> None:
+    def test_header_derived_from_scope_when_planner_omits_it(self) -> None:
+        # The planner reliably emits concrete scope but drops the header
+        # (task_id/title/objective). AI down → deterministic header repair
+        # summarizes them from scope → valid, not parked at owner-review.
+        with patch(
+            "contract_review.OllamaClient.chat",
+            side_effect=OllamaConnectionError("down"),
+        ):
+            v = review_contract(
+                _task(
+                    task_id="",
+                    title="",
+                    objective="",
+                    scope=["Separate game logic into an importable module"],
+                ),
+                models_config=_MODELS,
+                factory_config=_FACTORY,
+            )
+        self.assertEqual(v.decision, DECISION_REPAIR)
+        self.assertTrue(v.valid)
+        self.assertTrue(v.task.task_id)
+        self.assertTrue(v.task.title)
+        self.assertTrue(v.task.objective)
+
+    def test_ai_owner_review_is_advisory_when_repairable(self) -> None:
+        # needs_owner_review is ADVISORY: a contract whose only gap is safely
+        # repairable becomes valid (repair), carrying the AI's concern as an
+        # advisory note rather than blocking — the owner authorizes downstream.
         with patch(
             "contract_review.OllamaClient.chat",
             return_value=_ai(
                 "needs_owner_review",
-                owner_review_reasons=["Scope is ambiguous"],
+                owner_review_reasons=["Consider documenting the API"],
             ),
         ):
             v = review_contract(
@@ -161,8 +190,28 @@ class ReviewTests(unittest.TestCase):
                 models_config=_MODELS,
                 factory_config=_FACTORY,
             )
-        self.assertEqual(v.decision, DECISION_NEEDS_OWNER_REVIEW)
-        self.assertIn("Scope is ambiguous", v.checklist)
+        self.assertEqual(v.decision, DECISION_REPAIR)
+        self.assertTrue(v.valid)
+        self.assertIn("Consider documenting the API", v.checklist)
+
+    def test_ai_clarification_with_questions_is_binding(self) -> None:
+        # needs_clarification WITH questions is binding: the AI needs an answer
+        # only the owner can give, so it escalates instead of guessing.
+        with patch(
+            "contract_review.OllamaClient.chat",
+            return_value=_ai(
+                "needs_clarification",
+                clarification_questions=["Which module layout do you want?"],
+            ),
+        ):
+            v = review_contract(
+                _task(validation_plan=""),
+                models_config=_MODELS,
+                factory_config=_FACTORY,
+            )
+        self.assertEqual(v.decision, DECISION_NEEDS_CLARIFICATION)
+        self.assertFalse(v.valid)
+        self.assertIn("Which module layout do you want?", v.checklist)
 
     def test_no_configs_uses_deterministic_repair(self) -> None:
         # Without model/factory config (e.g. unit context), still repairs.

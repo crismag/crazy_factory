@@ -224,29 +224,32 @@ def review_contract(
     )
     repairs: dict[str, Any] = {}
     ai_reasons: list[str] = []
+    owner_concerns: list[str] = []
     source = "deterministic"
     if ai is not None:
         source = "ollama"
         ai_reasons = [coerce_str(r) for r in (ai.get("reasons") or []) if r]
+        owner_concerns = [
+            coerce_str(r) for r in (ai.get("owner_review_reasons") or []) if r
+        ]
         decision = str(ai.get("decision") or "")
-        if decision in (
-            DECISION_NEEDS_OWNER_REVIEW,
-            DECISION_NEEDS_CLARIFICATION,
-        ):
-            checklist = [
-                coerce_str(r)
-                for r in (
-                    (ai.get("owner_review_reasons") or [])
-                    + (ai.get("clarification_questions") or [])
-                )
-                if r
-            ] or completeness
+        # needs_clarification is BINDING: the AI has a question only the owner
+        # can answer, so we escalate without guessing. needs_owner_review is
+        # ADVISORY (the approved "advisory + auto-repair" model): we still
+        # attempt repair, and only escalate if the gaps cannot be safely
+        # filled — the owner authorizes downstream regardless.
+        questions = [
+            coerce_str(r)
+            for r in (ai.get("clarification_questions") or [])
+            if r
+        ]
+        if decision == DECISION_NEEDS_CLARIFICATION and questions:
             return ReviewVerdict(
-                decision=decision,
-                status=_STATUS_BY_DECISION[decision],
+                decision=DECISION_NEEDS_CLARIFICATION,
+                status=_STATUS_BY_DECISION[DECISION_NEEDS_CLARIFICATION],
                 task=task,
                 reasons=ai_reasons or completeness,
-                checklist=checklist,
+                checklist=questions,
                 source="ollama",
             )
         if isinstance(ai.get("repairs"), dict):
@@ -271,6 +274,7 @@ def review_contract(
     repaired_fields = [
         name
         for name in (
+            "task_id",
             "title",
             "objective",
             "validation_plan",
@@ -288,7 +292,9 @@ def review_contract(
             status="valid",
             task=repaired,
             reasons=(ai_reasons or [])
-            + [f"Repaired completeness gaps: {', '.join(repaired_fields)}."],
+            + [f"Repaired completeness gaps: {', '.join(repaired_fields)}."]
+            + ([f"Advisory: {c}" for c in owner_concerns]),
+            checklist=owner_concerns,
             repairs_applied=repaired_fields,
             source=source,
         )
@@ -300,7 +306,7 @@ def review_contract(
         task=repaired,
         reasons=ai_reasons
         or ["Could not complete the contract automatically."],
-        checklist=remaining,
+        checklist=remaining + owner_concerns,
         repairs_applied=repaired_fields,
         source=source,
     )
