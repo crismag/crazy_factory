@@ -266,6 +266,39 @@ def app_is_external(app_path: str, root: Path) -> bool:
     return root.resolve() != target and root.resolve() not in target.parents
 
 
+def app_is_buildable(app_path: str, root: Path) -> bool:
+    """Report whether the factory may build at this app path.
+
+    Buildable means the app lives under the repo (embedded) OR under the
+    owner-configured external apps base. An app resolved anywhere else (an
+    arbitrary external path that the owner has not approved as the apps base)
+    is NOT buildable — the factory refuses rather than writing there.
+
+    Args:
+        app_path: Repo-relative or absolute app path.
+        root: Absolute repository root.
+
+    Returns:
+        ``True`` when the app path is inside an owner-approved build base.
+    """
+    repo = root.resolve()
+    candidate = Path(app_path)
+    target = (
+        candidate.resolve()
+        if candidate.is_absolute()
+        else (repo / candidate).resolve()
+    )
+    bases = [repo]
+    try:
+        from settings import is_apps_base_external, resolve_apps_base
+
+        if is_apps_base_external(root):
+            bases.append(resolve_apps_base(root))
+    except Exception:  # noqa: BLE001 - missing/odd config → repo-only
+        pass
+    return any(target == b or b in target.parents for b in bases)
+
+
 def workbench_exists(app_path: str, root: Path) -> bool:
     """Report whether the workbench directory exists on disk.
 

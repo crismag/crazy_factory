@@ -50,6 +50,12 @@ ENGINE_DEFAULTS: dict[str, str] = {
     "models_config": "config/models.yaml",
     "seed_staging_base": "factory_state/projects",
     "logs_dir": "logs",
+    # Base directory under which generated application workbenches live. The
+    # default ``apps`` is inside the repo (fully backward-compatible). An owner
+    # may set an ABSOLUTE path (e.g. /mnt/ai/workspaces/crazy_apps) so generated
+    # apps are built OUTSIDE the factory repo — each project still confined to
+    # its own <apps_base>/<id> folder.
+    "apps_base": "apps",
 }
 
 # Environment override channel for engine locations (env var -> engine key).
@@ -59,6 +65,7 @@ _ENGINE_ENV: dict[str, str] = {
     "CRAZY_FACTORY_MODELS_CONFIG": "models_config",
     "CRAZY_FACTORY_SEED_STAGING_BASE": "seed_staging_base",
     "CRAZY_FACTORY_LOGS_DIR": "logs_dir",
+    "CRAZY_FACTORY_APPS_BASE": "apps_base",
 }
 
 
@@ -119,3 +126,42 @@ def load_engine_settings(root: Path) -> dict[str, str]:
         if override and override.strip():
             result[key] = override.strip()
     return result
+
+
+def get_apps_base(root: Path) -> str:
+    """Return the configured apps base (default ``apps``, may be absolute)."""
+    return load_engine_settings(root)["apps_base"]
+
+
+def resolve_apps_base(root: Path) -> Path:
+    """Resolve the apps base to an absolute directory.
+
+    A relative ``apps_base`` resolves under the repo root; an absolute one
+    (owner-configured external workbench) resolves as-is.
+    """
+    base = Path(get_apps_base(root))
+    return (
+        base.resolve()
+        if base.is_absolute()
+        else (Path(root).resolve() / base).resolve()
+    )
+
+
+def is_apps_base_external(root: Path) -> bool:
+    """Report whether the configured apps base lives outside the repo root."""
+    repo = Path(root).resolve()
+    base = resolve_apps_base(root)
+    return base != repo and repo not in base.parents
+
+
+def project_app_path(project_id: str, root: Path) -> str:
+    """Compose the default app path for a project under the apps base.
+
+    Embedded (in-repo) bases return a repo-relative path (backward-compatible);
+    an external base returns the absolute ``<apps_base>/<project_id>``.
+    """
+    base = resolve_apps_base(root)
+    if is_apps_base_external(root):
+        return str(base / project_id)
+    rel = base.relative_to(Path(root).resolve())
+    return f"{rel.as_posix()}/{project_id}"

@@ -104,6 +104,8 @@ def assert_project_local(rel_path: str, app_path: str, root: Path) -> None:
     Raises:
         RuntimePathError: If ``rel_path`` does not sit inside ``app_path``.
     """
+    # resolve_repo_path admits the owner-configured external app base for
+    # absolute paths; the containment check below still confines to app_path.
     try:
         app_abs = resolve_repo_path(app_path, root)
         target = resolve_repo_path(rel_path, root)

@@ -67,3 +67,7 @@ paths:
     models_config: config/models.yaml
     seed_staging_base: factory_state/projects
     logs_dir: logs
+    # Base for generated app workbenches. Default "apps" is in-repo. Set an
+    # ABSOLUTE path (or CRAZY_FACTORY_APPS_BASE) to build apps outside the repo;
+    # each project stays confined to <apps_base>/<id>.
+    apps_base: apps

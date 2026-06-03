@@ -64,19 +64,28 @@ def find_repo_root(start: str | Path | None = None) -> Path:
 
 
 def resolve_repo_path(
-    path: str | Path, repo_root: str | Path | None = None
+    path: str | Path,
+    repo_root: str | Path | None = None,
+    *,
+    extra_bases: Iterable[str | Path] = (),
 ) -> Path:
     """Resolve a path while rejecting traversal or symlink escape.
+
+    The resolved path must sit under the repo root, or under one of
+    ``extra_bases`` (owner-approved external app workbench bases). Resolving
+    before the containment check blocks symlink-based escapes for every base.
 
     Args:
         path: Absolute or repository-relative path to validate.
         repo_root: Optional explicit repository root.
+        extra_bases: Additional absolute base directories the path may sit
+            under (besides the repo root). Empty by default — repo-only.
 
     Returns:
-        Absolute resolved path inside the repository.
+        Absolute resolved path inside an approved base.
 
     Raises:
-        RepoSafetyError: If the resolved path is outside the repository.
+        RepoSafetyError: If the resolved path is outside every approved base.
     """
     root = Path(repo_root or find_repo_root()).resolve()
     candidate = Path(path)
@@ -85,10 +94,40 @@ def resolve_repo_path(
         if candidate.is_absolute()
         else (root / candidate).resolve()
     )
-    # Resolving before the containment check also blocks symlink-based escapes.
-    if target != root and root not in target.parents:
-        raise RepoSafetyError(f"Path escapes repository: {path}")
+    # Approved bases: the repo root, any explicit extra_bases, plus the
+    # owner-configured external app base (added only when an absolute path is in
+    # play, which both prevents config-read recursion and keeps factory-internal
+    # relative resolution strictly repo-only).
+    bases = [
+        root,
+        *(Path(b).resolve() for b in extra_bases),
+        *_app_workspace_bases([path], root),
+    ]
+    if not any(target == base or base in target.parents for base in bases):
+        raise RepoSafetyError(f"Path escapes approved roots: {path}")
     return target
+
+
+def _app_workspace_bases(
+    paths: Iterable[str | Path], root: Path
+) -> tuple[Path, ...]:
+    """Approved external app bases, but only when an absolute path is in play.
+
+    Returning ``()`` for the common all-relative case keeps the factory-internal
+    hot paths repo-only AND avoids recursion: reading the engine config to learn
+    the apps base goes through this module with a RELATIVE path, which short-
+    circuits here before any config read happens.
+    """
+    if not any(Path(p).is_absolute() for p in paths):
+        return ()
+    try:
+        from settings import is_apps_base_external, resolve_apps_base
+
+        if is_apps_base_external(root):
+            return (resolve_apps_base(root),)
+    except Exception:  # noqa: BLE001 - never let path config break I/O
+        return ()
+    return ()
 
 
 def _assert_not_sensitive(path: Path) -> None:
@@ -187,8 +226,9 @@ def safe_write_text(
     root = Path(repo_root or find_repo_root()).resolve()
     target = resolve_repo_path(path, root)
     _assert_not_sensitive(target)
-    # Callers must opt in to each writable subtree. Merely being inside the
-    # repository is not sufficient permission to write.
+    # Callers must opt in to each writable subtree. Being inside an approved
+    # base (repo or the owner-configured external app base) is not sufficient
+    # permission to write — the target must sit under an explicit allowed root.
     allowed = [resolve_repo_path(item, root) for item in allowed_roots]
     if not any(target == item or item in target.parents for item in allowed):
         raise RepoSafetyError(f"Write path is not approved: {path}")
