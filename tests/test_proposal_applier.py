@@ -400,6 +400,40 @@ class StageTests(unittest.TestCase):
             self.assertEqual(result.source, "skipped")
             self.assertFalse((root / plan_json).exists())
 
+    def test_applied_plan_is_preserved_not_regenerated(self) -> None:
+        # Once a proposal's patch plan is applied, a later advance must NOT
+        # regenerate file contents (nondeterministic) — it preserves the plan
+        # so an applied/green build stays stable. The model is never called.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = self._setup(root)
+            (
+                root / "apps/demo/factory_tasks/approved_proposal.json"
+            ).write_text(
+                json.dumps(
+                    {"proposal_id": "CP-001", "application_approved": True}
+                ),
+                encoding="utf-8",
+            )
+            applied = _valid_plan_dict()
+            applied["applied"] = True
+            applied["applied_files"] = ["apps/demo/app/status.py"]
+            (root / "apps/demo/factory_tasks/patch_plan.json").write_text(
+                json.dumps(applied), encoding="utf-8"
+            )
+            with patch(
+                "proposal_applier.request_patch_plan",
+                side_effect=AssertionError("must not regenerate applied plan"),
+            ):
+                result, _ = self._run(
+                    root,
+                    project,
+                    {"mode": "apply", "allow_apply": True},
+                )
+            self.assertEqual(result.source, "preserved")
+            self.assertTrue(result.applied)
+            self.assertEqual(result.applied_files, ["apps/demo/app/status.py"])
+
     def test_preview_when_approved(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
