@@ -1,9 +1,10 @@
 __pycache__/
 *.py[cod]
 
-# Runtime control flags and the mission lock are transient, not committed.
-state/*.flag
-state/mission.lock
+# Tool caches — regenerated on demand, never committed.
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
 # Seed-grown project state is runtime output; the engine recreates it.
 factory_state/projects/
