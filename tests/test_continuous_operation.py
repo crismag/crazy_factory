@@ -1,7 +1,7 @@
 """Tests for the Phase 8 continuous-operation modules.
 
 These cover control flags, stall detection, recovery, satisfaction, and the
-mission-loop decision logic without running the full tick or calling Ollama.
+mission-loop decision logic without running the full advance or calling Ollama.
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Load and validate Crazy Factory configuration for a tick.
+"""Load and validate Crazy Factory configuration for a advance.
 
 This module isolates configuration concerns: reading ``config/factory.yaml``
 and ``config/projects.yaml``, refusing settings that exceed dry-run authority,
@@ -88,16 +88,18 @@ def validate_dry_run_settings(factory: dict[str, Any]) -> None:
     """
     mode = str(factory["mode"])
     if mode != "dry_run":
-        raise RuntimeError(f"Validation tick refuses non-dry-run mode: {mode}")
+        raise RuntimeError(
+            f"Validation advance refuses non-dry-run mode: {mode}"
+        )
     if factory.get("allow_commit") or factory.get("allow_push"):
         raise RuntimeError(
-            "Validation tick refuses enabled commit or push settings"
+            "Validation advance refuses enabled commit or push settings"
         )
     if factory.get("allow_application_writes") or factory.get(
         "allow_factory_writes"
     ):
         raise RuntimeError(
-            "Validation tick refuses broad application or factory writes"
+            "Validation advance refuses broad application or factory writes"
         )
 
 

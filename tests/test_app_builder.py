@@ -15,7 +15,7 @@ The eight capabilities under test:
 5. ``activate`` syncs durable ``state/*.json`` to the active project.
 6. ``resolve_project`` maps an entry to an app_path-rooted workbench.
 7. The registry round-trips through dump/load (custom serializer).
-8. ``factory_tick`` resolves the active project via the registry, with no
+8. ``factory_advance`` resolves the active project via the registry, with no
    default project and a graceful external-app guard.
 """
 
@@ -33,7 +33,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import crazy_admin as ca  # noqa: E402
-import factory_tick  # noqa: E402
+import factory_advance  # noqa: E402
 from project_registry import (  # noqa: E402
     RegistryError,
     active_project_id,
@@ -82,7 +82,7 @@ class StartProjectTests(unittest.TestCase):
             info = ca.startproject("widget", "apps/widget", root=root)
             self.assertEqual(info["repo_mode"], "embedded")
             base = root / "apps/widget"
-            # Scaffold lays down the workbench the coder + tick consume.
+            # Scaffold lays down the workbench the coder + advance consume.
             for rel in (
                 "crazy_project.yaml",
                 "docs/seed.md",
@@ -246,16 +246,16 @@ class ResolveAndRoundtripTests(unittest.TestCase):
         self.assertEqual(reloaded["projects"]["a"]["repo_mode"], "embedded")
 
 
-class FactoryTickResolutionTests(unittest.TestCase):
-    """factory_tick resolves via the registry with no default project."""
+class FactoryAdvanceResolutionTests(unittest.TestCase):
+    """factory_advance resolves via the registry with no default project."""
 
     def _run_main(self, root: Path) -> tuple[int, str]:
         out = StringIO()
         with (
-            patch("factory_tick.find_repo_root", return_value=root),
+            patch("factory_advance.find_repo_root", return_value=root),
             patch("sys.stdout", out),
         ):
-            code = factory_tick.main()
+            code = factory_advance.main()
         return code, out.getvalue()
 
     def _min_configs(self, root: Path) -> None:

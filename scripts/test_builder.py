@@ -176,7 +176,7 @@ def test_plan_status_label(result: TestPlanResult) -> str:
     """Return the reporting label for a test-plan outcome.
 
     Args:
-        result: Test-plan result for the current tick.
+        result: Test-plan result for the current advance.
 
     Returns:
         ``"not_activated"``, ``"valid"``, or ``"rejected"``.

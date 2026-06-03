@@ -9,7 +9,7 @@ workbench (``app_path``). These tests pin that invariant down:
    ``factory_state/projects/<id>``.
 2. ``activate`` syncs run-state under the workbench, leaving root ``state/``
    untouched.
-3. ``assert_project_local`` (the tick's fail-loud guard) rejects engine-root
+3. ``assert_project_local`` (the advance's fail-loud guard) rejects engine-root
    runtime paths and accepts every workbench path, and the report writer lands
    reports inside the workbench rather than a root ``reports/`` folder.
 4. ``status`` reads project-local run-state.
@@ -39,7 +39,7 @@ from report_writer import append_dry_run_report  # noqa: E402
 
 
 def _bootstrap_repo(root: Path) -> None:
-    """Create the minimal engine-root layout the CLI and tick expect."""
+    """Create the minimal engine-root layout the CLI and advance expect."""
     (root / "config").mkdir(parents=True, exist_ok=True)
     (root / "state").mkdir(parents=True, exist_ok=True)
     (root / "factory_state").mkdir(parents=True, exist_ok=True)
@@ -131,7 +131,7 @@ class ActivateRuntimeTests(unittest.TestCase):
 
 
 class RuntimeGuardTests(unittest.TestCase):
-    """assert_project_local is the fail-loud chokepoint the tick relies on."""
+    """assert_project_local is the fail-loud chokepoint the advance relies on."""
 
     def test_rejects_root_runtime_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

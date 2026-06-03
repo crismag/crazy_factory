@@ -58,17 +58,17 @@ crazy-admin add-context todo_app requirements.md
 crazy-admin add-context todo_app package.zip
 crazy-admin add-context todo_app bundle.tar.gz
 
-# Select the project and run one context-aware tick.
+# Select the project and run one context-aware advance.
 crazy-admin activate todo_app
-crazy-admin status        # shows context file count, last tick, last contract
-crazy-admin tick
+crazy-admin status        # shows context file count, last advance, last contract
+crazy-admin advance
 ```
 
 Supported archive kinds: `zip`, `tar`, `tar.gz` / `tgz`, and single-file `gz`.
 
 ## How context reaches the AI
 
-On each tick, before planning:
+On each advance, before planning:
 
 1. `context_loader` reads the supported files recorded in the catalog.
 2. It aggregates them into one plain-text **context bundle**:
@@ -120,7 +120,7 @@ what it dropped** — never a silent truncation.
 | `scripts/project_registry.py` | Resolves `context_*` store paths per project |
 | `scripts/crazy_admin.py` | `startproject` (scaffold store), `add-context`, `status` |
 | `scripts/planning_roles.py` | Injects the bundle into Architect/Planner prompts |
-| `scripts/factory_tick.py` | Loads the bundle once per tick and passes it to planning |
+| `scripts/factory_advance.py` | Loads the bundle once per advance and passes it to planning |
 
 ## Catalog format
 
@@ -149,7 +149,7 @@ The catalog tracks imports and files only — it is not a search index or graph.
 ## Success metric
 
 A project supplied with different context files produces different planning
-output. The tick logs `Loaded N context file(s) (… bytes) into planning.`, and
+output. The advance logs `Loaded N context file(s) (… bytes) into planning.`, and
 the Architect/Planner prompts contain the imported material — verified by
 `tests/test_context_ingestion.py` (the planner receives the bundle; different
 context yields different prompts) and by the live workflow above.

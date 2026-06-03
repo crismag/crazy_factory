@@ -389,7 +389,7 @@ def _register_project(project_id: str, root: Path) -> bool:
     """Register the project in the registry and make it the active project.
 
     Writes a registry entry in the App Builder schema (``app_path`` /
-    ``state_path`` / ``repo_mode`` / ``seed_file``) so the tick can resolve the
+    ``state_path`` / ``repo_mode`` / ``seed_file``) so the advance can resolve the
     workbench, and sets ``active_project``. Promoted apps are embedded under
     ``apps/<id>``.
 

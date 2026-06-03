@@ -91,7 +91,7 @@ def authorize_task(project: dict[str, Any], root: Path) -> dict[str, Any]:
     task = _read_json_or_none(project, PLANNED_TASK_FILE, root)
     if task is None:
         raise ControlError(
-            "No planned task yet. Run `crazy-admin tick` to produce one."
+            "No planned task yet. Run `crazy-admin advance` to produce one."
         )
     status, reasons = _contract_validation(task)
     if status != "valid":
@@ -145,7 +145,7 @@ def approve_proposal(project: dict[str, Any], root: Path) -> dict[str, Any]:
     proposal = _read_json_or_none(project, CODER_PROPOSAL_FILE, root)
     if proposal is None:
         raise ControlError(
-            "No coder proposal yet. Authorize the task and run a tick first."
+            "No coder proposal yet. Authorize the task and run a advance first."
         )
     proposal_id = proposal.get("proposal_id")
     if not proposal_id:
@@ -295,7 +295,7 @@ def describe_next(
             "Current state: no_planned_task\n\n"
             "No planning contract yet.\n\n"
             "Recommended action:\n"
-            "  bin/crazy-admin tick"
+            "  bin/crazy-admin advance"
         )
 
     status, reasons = _contract_validation(task)
@@ -307,9 +307,9 @@ def describe_next(
             f"Reason:\n{reason_lines}\n\n"
             f"Review:\n  {planned_md}\n\n"
             "Recommended action:\n"
-            "  Run another tick to re-plan, or fix the planning contract "
+            "  Run another advance to re-plan, or fix the planning contract "
             "source so the rejected field is populated.\n"
-            "  bin/crazy-admin tick"
+            "  bin/crazy-admin advance"
         )
 
     if not _is_authorized(task, raw_control):
@@ -322,10 +322,10 @@ def describe_next(
 
     if proposal is None:
         return (
-            "Current state: authorized_waiting_for_tick\n\n"
+            "Current state: authorized_waiting_for_advance\n\n"
             "The task is authorized but no coder proposal exists yet.\n\n"
             "Recommended action:\n"
-            "  bin/crazy-admin tick"
+            "  bin/crazy-admin advance"
         )
 
     pverdict = proposal.get("validation")
@@ -334,8 +334,8 @@ def describe_next(
             "Current state: proposal_rejected\n\n"
             f"Review:\n  {proposal_json}\n\n"
             "Recommended action:\n"
-            "  Run another tick to regenerate the proposal.\n"
-            "  bin/crazy-admin tick"
+            "  Run another advance to regenerate the proposal.\n"
+            "  bin/crazy-admin advance"
         )
 
     if not _is_approved(proposal, approval):
@@ -358,5 +358,5 @@ def describe_next(
         "Current state: ready_to_apply\n\n"
         "Task authorized, proposal approved, apply enabled.\n\n"
         "Recommended action:\n"
-        "  bin/crazy-admin tick"
+        "  bin/crazy-admin advance"
     )

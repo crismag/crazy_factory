@@ -2,7 +2,7 @@
 """Write and inspect human-readable Crazy Factory dry-run reports.
 
 Reports make autonomous activity observable and recoverable. This module writes
-one application-specific report per tick and appends compact summaries to the
+one application-specific report per advance and appends compact summaries to the
 factory-level activity and daily reports. All writes use explicit approved
 directories through :mod:`repo_tools`.
 
@@ -80,7 +80,7 @@ def _render_contract_section(
         source: Planning source of the contract.
         detail: Human-readable explanation of the source.
         reasons: Rejection reasons, rendered only for a rejected contract.
-        files: Contract files written or preserved this tick.
+        files: Contract files written or preserved this advance.
         authorized: Whether the contract is owner-authorized (preserved).
 
     Returns:
@@ -135,7 +135,7 @@ def _render_coder_section(
         activated: Whether an authorized contract activated the Coder.
         warnings: Non-fatal proposal warnings.
         blocked_paths: Paths blocked by the target boundary.
-        files: Proposal files written this tick.
+        files: Proposal files written this advance.
 
     Returns:
         Markdown section text, or an empty string when ``status`` is ``None``.
@@ -175,7 +175,7 @@ def _render_application_section(
         applied: Whether files were actually written.
         reasons: Patch-plan rejection reasons, rendered when rejected.
         blocked_paths: Paths blocked by the boundary.
-        files: Application artifact files written this tick.
+        files: Application artifact files written this advance.
 
     Returns:
         Markdown section text, or an empty string when ``status`` is ``None``.
@@ -325,9 +325,9 @@ def append_dry_run_report(
         project_name: Active application workbench name.
         project_report_root: Approved app-specific report directory.
         mode: Current factory mode. Bootstrap expects ``"dry_run"``.
-        context_files: Repository-relative context files read by the tick.
-        task_files: Repository-relative task files read by the tick.
-        git_status: Read-only Git status captured during the tick.
+        context_files: Repository-relative context files read by the advance.
+        task_files: Repository-relative task files read by the advance.
+        git_status: Read-only Git status captured during the advance.
         factory_state: Global persistent state snapshot.
         active_run: Current run and resume-point snapshot.
         project_state: Active project state snapshot.
@@ -336,38 +336,38 @@ def append_dry_run_report(
         planner_source: Whether planning came from Ollama or fallback logic.
         planner_detail: Human-readable explanation of the planning source.
         last_role_completed: Last worker role completed during the run.
-        planning_files: Fixed planning files updated during the tick.
+        planning_files: Fixed planning files updated during the advance.
         contract_status: Structured-contract verdict (``"valid"`` or
             ``"rejected"``), or ``None`` when no contract step ran.
         contract_source: Whether the contract came from Ollama or fallback.
         contract_detail: Human-readable explanation of the contract source.
         contract_reasons: Rejection reasons for the contract, if any.
-        contract_files: Contract files written during the tick.
+        contract_files: Contract files written during the advance.
         contract_authorized: Whether the recorded contract is owner-authorized
             (a preserved contract); the factory never sets this itself.
         coder_status: Coder proposal verdict label, or ``None`` when the coder
-            stage did not run this tick.
+            stage did not run this advance.
         coder_proposal_id: Proposal identifier, if a proposal was produced.
         coder_task_id: Task identifier the proposal serves, if any.
         coder_activated: Whether an authorized contract activated the Coder.
         coder_warnings: Non-fatal proposal warnings, if any.
         coder_blocked_paths: Proposal paths blocked by the target boundary.
-        coder_files: Proposal files written during the tick.
+        coder_files: Proposal files written during the advance.
         application_status: Application verdict label, or ``None`` when the
-            application stage did not run this tick.
+            application stage did not run this advance.
         application_mode: ``"preview_only"`` or ``"apply"``.
         application_applied: Whether files were actually written.
         application_reasons: Patch-plan rejection reasons, if any.
         application_blocked_paths: Patch paths blocked by the boundary.
-        application_files: Application artifact files written this tick.
+        application_files: Application artifact files written this advance.
         test_plan_status: Test-plan verdict label, or ``None`` when the test
-            builder did not run this tick.
+            builder did not run this advance.
         test_plan_id: Test-plan identifier, if any.
         validation_status: Validation verdict label, or ``None`` when
             validation did not run.
         validation_executed: Whether any check was actually executed.
         validation_checks: ``"status command"`` lines for each check.
-        validation_files: Validation artifact files written this tick.
+        validation_files: Validation artifact files written this advance.
         checkpoint_status: Checkpoint verdict label, or ``None`` when the
             checkpoint stage did not run.
         checkpoint_id: Checkpoint identifier, when committed.
@@ -477,7 +477,7 @@ def append_dry_run_report(
         + "- No git commit or push was attempted.\n"
     )
     entry = (
-        f"\n## {stamp} - Dry-run tick\n\n"
+        f"\n## {stamp} - Dry-run advance\n\n"
         f"- Active project: `{project_name}`\n"
         f"- Result: created `{app_report_path}`\n"
         f"- Architect planning source: `{architect_source}`\n"
@@ -487,11 +487,11 @@ def append_dry_run_report(
     )
     daily_entry = (
         f"\n## {stamp}\n\n"
-        f"Dry-run tick completed for `{project_name}`. "
+        f"Dry-run advance completed for `{project_name}`. "
         f"Detailed report: `{app_report_path}`.\n"
     )
     # Reports are the only app-workbench writes performed by the bootstrap
-    # tick. Each destination is constrained to an approved report subtree.
+    # advance. Each destination is constrained to an approved report subtree.
     safe_write_text(
         app_report_path,
         body,
@@ -531,7 +531,7 @@ def append_control_event(
         project_name: Active application workbench name.
         project_report_root: The project's own report directory.
         outcome: Short control result, such as ``"paused"`` or ``"stopped"``.
-        detail: Human-readable reason for ending the tick early.
+        detail: Human-readable reason for ending the advance early.
         repo_root: Optional explicit repository root, primarily for tests.
 
     Raises:
@@ -540,7 +540,7 @@ def append_control_event(
     root = Path(repo_root or find_repo_root()).resolve()
     stamp = _timestamp(utc_now())
     entry = (
-        f"\n## {stamp} - Tick {outcome}\n\n"
+        f"\n## {stamp} - Advance {outcome}\n\n"
         f"- Active project: `{project_name}`\n"
         f"- Result: `{outcome}`\n"
         f"- Detail: {detail}\n"

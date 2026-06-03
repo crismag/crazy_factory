@@ -319,7 +319,7 @@ def validation_status_label(result: ValidationResult) -> str:
     """Return the reporting label for a validation outcome.
 
     Args:
-        result: Validation result for the current tick.
+        result: Validation result for the current advance.
 
     Returns:
         The overall validation status string.

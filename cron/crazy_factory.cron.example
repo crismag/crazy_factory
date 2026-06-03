@@ -3,7 +3,7 @@
 # This is intentionally not installed automatically.
 #
 # The mission loop is the guarded entrypoint: it honors stop/pause/blocked/
-# satisfied flags, detects stalls, runs one tick when safe, and writes
+# satisfied flags, detects stalls, runs one advance when safe, and writes
 # reports/MISSION_STATUS.md. It never loops internally; cron supplies the beat.
 #
 # */30 * * * * cd /path/to/crazy_factory && python3 scripts/mission_loop.py >> logs/cron.log 2>&1
@@ -13,5 +13,5 @@
 #   touch state/stop.flag     # stop
 #   rm -f state/blocked.flag  # clear a recovery block after fixing the cause
 #
-# Lower-level single tick (no flag/stall/satisfaction guard):
-# */30 * * * * cd /path/to/crazy_factory && ./bin/factory-tick >> logs/cron.log 2>&1
+# Lower-level single advance (no flag/stall/satisfaction guard):
+# */30 * * * * cd /path/to/crazy_factory && ./bin/factory-advance >> logs/cron.log 2>&1

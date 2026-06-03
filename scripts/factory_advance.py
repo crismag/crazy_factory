@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Run one conservative Crazy Factory planning tick.
+"""Run one conservative Crazy Factory planning advance.
 
 This module is the orchestrator. It wires together the cohesive helper modules
 and owns no domain logic of its own:
 
-- :mod:`tick_config` loads and validates configuration and the active project.
+- :mod:`advance_config` loads and validates configuration and the active project.
 - :mod:`mission_state` loads, transitions, and persists durable state.
 - :mod:`planning_roles` runs the Architect and Planner planning roles.
 - :mod:`contract_stage` produces or preserves the structured task contract.
@@ -12,16 +12,16 @@ and owns no domain logic of its own:
 
 The loop reads context, asks the Architect for an expansion and the Planner for
 a next action, derives a validated task contract, updates resume state, and
-writes reports. If Ollama is unavailable, deterministic fallbacks keep the tick
+writes reports. If Ollama is unavailable, deterministic fallbacks keep the advance
 useful and recoverable. It may update fixed planning and contract files,
 approved report files, and JSON state snapshots only. It cannot modify
 application source code, choose arbitrary write paths, commit, push, or
 activate scheduling.
 
 Example:
-    Run one local dry-run validation tick from the repository root::
+    Run one local dry-run validation advance from the repository root::
 
-        python3 scripts/factory_tick.py
+        python3 scripts/factory_advance.py
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ from project_registry import (  # noqa: E402
     resolve_project,
     workbench_exists,
 )
-from tick_config import validate_dry_run_settings  # noqa: E402
+from advance_config import validate_dry_run_settings  # noqa: E402
 
 
 def _no_active_project_notice() -> int:
@@ -114,7 +114,7 @@ def _no_active_project_notice() -> int:
 
 
 def main() -> int:
-    """Execute one planning-only Architect, Planner, and contract tick.
+    """Execute one planning-only Architect, Planner, and contract advance.
 
     Returns:
         Process exit code ``0`` after completion, pause, or stop.
@@ -133,7 +133,7 @@ def main() -> int:
     if not workbench_exists(project["app_path"], root):
         print(
             f"Workbench for '{project_name}' is missing "
-            f"({project['app_path']}). Create or re-attach it before a tick."
+            f"({project['app_path']}). Create or re-attach it before a advance."
         )
         return 0
     if app_is_external(project["app_path"], root):
@@ -190,7 +190,7 @@ def main() -> int:
             detail=detail,
             repo_root=root,
         )
-        print(f"Crazy Factory tick {control_action}: {detail}")
+        print(f"Crazy Factory advance {control_action}: {detail}")
         return 0
 
     max_lines = int(factory["max_lines_per_file"])

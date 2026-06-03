@@ -3,7 +3,7 @@
 
 One invocation is one guarded mission iteration, intended to be driven by cron.
 It reads owner control flags and the stall signal, writes a mission-status
-report, and then either runs one planning tick, records a recovery plan, or
+report, and then either runs one planning advance, records a recovery plan, or
 stays idle. It never loops internally and never forces work past a stop, pause,
 blocked, or satisfied state.
 
@@ -25,7 +25,7 @@ from datetime import datetime, timezone  # noqa: E402
 from pathlib import Path  # noqa: E402
 from typing import Any  # noqa: E402
 
-import factory_tick  # noqa: E402
+import factory_advance  # noqa: E402
 from flags import active_flags, control_decision  # noqa: E402
 from mission_state import load_state  # noqa: E402
 from recovery_manager import run_recovery  # noqa: E402
@@ -149,7 +149,7 @@ def decide_action(
     """Decide what the mission loop should do this iteration.
 
     Owner control signals win first (stop/pause/blocked/satisfied), then a
-    detected stall, otherwise the loop may run a tick.
+    detected stall, otherwise the loop may run a advance.
 
     Args:
         root: Absolute repository root.
@@ -270,7 +270,7 @@ def main() -> int:
         _write_status(root, action, factory_state, project_state, state_dir)
 
         if action == "run":
-            factory_tick.main()
+            factory_advance.main()
             _f, _a, refreshed = load_state(root, state_dir)
             run_satisfaction(
                 root=root,

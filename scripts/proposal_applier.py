@@ -395,7 +395,7 @@ def application_status_label(result: ApplicationResult) -> str:
     """Return the reporting label for an application outcome.
 
     Args:
-        result: Application result for the current tick.
+        result: Application result for the current advance.
 
     Returns:
         ``"not_approved"``, ``"rejected"``, ``"applied"``, or ``"preview"``.

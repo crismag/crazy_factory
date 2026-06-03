@@ -4,9 +4,9 @@
 #
 # Exercises the documented usage flow (see docs/USAGE.md):
 #
-#     startproject -> add-context -> activate -> status -> tick
+#     startproject -> add-context -> activate -> status -> advance
 #
-# and checks the safety-critical invariants of a planning-only tick:
+# and checks the safety-critical invariants of a planning-only advance:
 #   * imported context is loaded into planning
 #   * secret-like files are skipped on ingestion
 #   * archives are extracted
@@ -14,7 +14,7 @@
 #   * no application code is generated (capability switches stay OFF)
 #
 # This is SAFE to run against your working tree: it backs up and restores the
-# tracked files a tick touches (config/projects.yaml, state/, reports/), uses a
+# tracked files a advance touches (config/projects.yaml, state/, reports/), uses a
 # unique throwaway project under apps/ (gitignored), and never enables any
 # capability switch. Ollama may be up or down — the flow works either way.
 #
@@ -119,13 +119,13 @@ echo "$out" | grep -qE "Context:[[:space:]]+[1-9]" \
   && pass "status reports imported context" \
   || fail "status shows no context"
 
-# --- 5. tick (planning-only; nothing built) --------------------------------
-step "5. tick"
-out="$("$ADMIN" tick 2>&1)"
+# --- 5. advance (planning-only; nothing built) --------------------------------
+step "5. advance"
+out="$("$ADMIN" advance 2>&1)"
 rc=$?
 echo "$out" | grep -iE "context|contract|planner|architect" \
   | sed "s/^/  ${DIM}| /; s/$/${NC}/"
-[ $rc -eq 0 ] && pass "tick exited 0" || fail "tick exit code ${rc}"
+[ $rc -eq 0 ] && pass "advance exited 0" || fail "advance exit code ${rc}"
 echo "$out" | grep -q "Loaded .* context file" \
   && pass "imported context loaded into planning" \
   || fail "context not loaded into planning"
@@ -138,10 +138,10 @@ if [ -f "$PT" ]; then
     fail "planned task is not authorized: false"
   fi
 else
-  echo -e "  ${DIM}(no planned_task.json written this tick)${NC}"
+  echo -e "  ${DIM}(no planned_task.json written this advance)${NC}"
 fi
 
-# Safety: a planning-only tick must not write application code.
+# Safety: a planning-only advance must not write application code.
 stray="$(find "$APP_PATH/app" -type f ! -name '.gitkeep' 2>/dev/null)"
 [ -z "$stray" ] && pass "no application code generated" \
   || fail "unexpected files in app/: ${stray}"

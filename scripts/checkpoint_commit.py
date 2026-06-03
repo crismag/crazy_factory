@@ -478,7 +478,7 @@ def checkpoint_status_label(result: CheckpointResult) -> str:
     """Return the reporting label for a checkpoint outcome.
 
     Args:
-        result: Checkpoint result for the current tick.
+        result: Checkpoint result for the current advance.
 
     Returns:
         ``"committed"``, ``"eligible"``, or ``"not_eligible"``.

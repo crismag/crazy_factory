@@ -5,7 +5,7 @@ The owner controls a continuous worker through simple flag files in the state
 directory — ``stop.flag``, ``pause.flag``, ``blocked.flag``, ``satisfied.flag``
 — which are easy to ``touch`` or remove from a shell or cron without parsing
 JSON. These coexist with the JSON control booleans
-(``stop_requested``/``pause_requested``) used by the tick: either surface can
+(``stop_requested``/``pause_requested``) used by the advance: either surface can
 halt or pause the factory.
 """
 
