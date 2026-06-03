@@ -27,6 +27,7 @@ Example:
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 sys.dont_write_bytecode = True
 
@@ -90,7 +91,6 @@ from repo_tools import (  # noqa: E402
     find_repo_root,
     load_simple_yaml,
     read_markdown_directory,
-    safe_read_text,
     safe_write_json,
     safe_write_text,
 )
@@ -283,11 +283,13 @@ def main() -> int:
     # the owner enabled remediation, re-engage the coder with the failing
     # report as context and auto-approve the fix (within budget). Every
     # deterministic floor still applies; this only removes per-iteration typing.
+    # Read directly (not safe_read_text): task_root is absolute for an external
+    # app and would fail repo-root confinement. The path is inside the
+    # workbench, and a missing report (first run) just yields empty context.
+    report_path = Path(f"{task_root}/VALIDATION_REPORT.md")
     try:
-        prior_validation_report = safe_read_text(
-            f"{task_root}/VALIDATION_REPORT.md", root, max_lines
-        )
-    except (FileNotFoundError, OSError, ValueError):
+        prior_validation_report = report_path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError, UnicodeDecodeError):
         prior_validation_report = ""
     remediation_plan = plan_remediation(
         factory_config, project_state, prior_validation_report
