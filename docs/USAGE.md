@@ -1,7 +1,7 @@
 # Crazy Factory — Usage & Execution Flow
 
 This is the practical "how do I drive it" guide. It covers creating a project,
-giving it context, running the tick pipeline, and the owner-controlled switches
+giving it context, running the advance pipeline, and the owner-controlled switches
 that gate every action. For the design rationale behind each layer see
 [app-builder-usage-flow.md](app-builder-usage-flow.md),
 [phase-9a-context-aware-project-bootstrapping.md](phase-9a-context-aware-project-bootstrapping.md),
@@ -27,8 +27,8 @@ bin/crazy-admin activate todo_app
 # 4. See where things stand.
 bin/crazy-admin status
 
-# 5. Run one planning tick (reads context, plans, proposes — never builds yet).
-bin/crazy-admin tick
+# 5. Run one planning advance (reads context, plans, proposes — never builds yet).
+bin/crazy-admin advance
 ```
 
 After step 5 the factory has produced a **planned task** and a **coder
@@ -50,7 +50,7 @@ pushed. You move it forward by flipping switches (Section 5).
 | **Project registry** | `config/projects.yaml` maps each `project_id` to where its app lives (`app_path`), `repo_mode`, and `seed_file`. Every runtime path is derived from `app_path` (the `state_path` entry is retained only so legacy data can be migrated). The factory never picks a project — you `activate` one. |
 | **Embedded vs external** | *Embedded* apps live under `apps/<id>` (build now). *External* apps live anywhere on disk — registerable and inspectable, but building/ingesting into them is a later increment. |
 | **Engine vs workbench** | The Crazy Factory root is the *engine* (code, templates, global defaults, docs). A project's *runtime* — its `config/factory.yaml`, run state, factory memory, reports, tasks, and context — lives entirely inside its workbench (`app_path`). Nothing project-specific is written to the root. |
-| **Workbench** | The app directory. Holds your code plus the factory's per-tick working files and project-local runtime (see layout below). |
+| **Workbench** | The app directory. Holds your code plus the factory's per-advance working files and project-local runtime (see layout below). |
 | **Context store** | `<app_path>/context/` — imported project knowledge (Phase 9A). Separate from `factory_context/` (the goal + grown context). |
 | **Capability switches** | Flags in the project-local `<app_path>/config/factory.yaml` (copied from the root template at `startproject`). All default OFF. They are the only way actions escalate from "proposed" to "applied". |
 
@@ -75,7 +75,7 @@ apps/todo_app/
   factory_context/          # PROJECT_GOAL.md + seed-grown context (prompt input)
   factory_tasks/            # planned_task.json, TASK_EXPANSION.md, NEXT_ACTION.md,
                             #   coder_proposal.json, patch_plan.json, approved_proposal.json
-  factory_reports/          # per-tick reports + CHECKPOINT_HISTORY.md
+  factory_reports/          # per-advance reports + CHECKPOINT_HISTORY.md
 ```
 
 > **Project-local runtime.** Everything the factory writes for a project lives
@@ -101,7 +101,7 @@ All commands are `bin/crazy-admin <command>` (a thin wrapper over
 | `migrate-project-runtime <id>` | Bring a pre-relocation project forward: non-destructively copy legacy root `state/`, `factory_state/projects/<id>/`, and `reports/` into the workbench, and materialize `config/factory.yaml` if missing. Leaves the old root folders in place. |
 | `status` | Show the active project: contract validation/authorization, proposal/approval, effective capabilities, current blocker. |
 | `next [id]` | Tell you exactly what to do next for a project (defaults to the active one). |
-| `tick` | Run one factory tick on the active project. |
+| `advance` | Run one factory advance on the active project. |
 
 Owner-control commands (the normal way to drive the safety gates — no manual
 JSON editing). Each takes an optional `<id>`, defaulting to the active project:
@@ -117,26 +117,26 @@ JSON editing). Each takes an optional `<id>`, defaulting to the active project:
 | `enable-commit` / `disable-commit [id]` | Toggle checkpoint auto-commit (never push/merge). |
 
 These edit the project-local control file `apps/<id>/crazy_project.yaml` (and
-mirror the runtime artifacts the tick reads). They never relax a safety
+mirror the runtime artifacts the advance reads). They never relax a safety
 boundary — `authorize-task` refuses a rejected contract, `approve-proposal`
 refuses a missing/rejected proposal, and capabilities still default OFF.
 
 Other entry points:
 
-- `bin/factory-tick` — run a tick directly (same as `crazy-admin tick`).
+- `bin/factory-advance` — run a advance directly (same as `crazy-admin advance`).
 - `bin/factory-status` / `bin/factory-report` / `bin/factory-watch` — inspect state and reports.
 - `scripts/mission_loop.py` — the guarded, cron-friendly continuous entry point (Section 6).
 - `scripts/context_growth.py start|grow|promote` — grow a project from a seed and promote it into the pipeline (see SEED_GROWN_CONTEXT.md).
 
 ---
 
-## 4. Execution flow (one tick)
+## 4. Execution flow (one advance)
 
-A tick is a single planning-and-proposal pass. Stages run in order; each later
+A advance is a single planning-and-proposal pass. Stages run in order; each later
 stage only escalates if the matching owner switch is on.
 
 ```text
-crazy-admin tick
+crazy-admin advance
   │
   ├─ resolve active project (registry)         # no project → prints guidance, exits 0
   ├─ honor control flags (stop/pause/blocked)  # owner can halt a run
@@ -163,7 +163,7 @@ The hard invariant chain:
 > no push/merge.
 
 `is_contract_actionable` = the contract is `authorized: true` **and**
-re-validates as valid on this tick (a cached "valid" is never trusted).
+re-validates as valid on this advance (a cached "valid" is never trusted).
 
 ---
 
@@ -176,16 +176,16 @@ The factory escalates only when you act. Drive it with `crazy-admin` commands �
 ```bash
 crazy-admin next                       # what should I do?
 crazy-admin authorize-task todo_app    # Step 1
-crazy-admin tick                       # Coder now proposes
+crazy-admin advance                       # Coder now proposes
 crazy-admin approve-proposal todo_app  # Step 2
 crazy-admin enable-apply todo_app      # Step 3 (then validation, then commit)
-crazy-admin tick                       # applies within app/, docs/, tests/
+crazy-admin advance                       # applies within app/, docs/, tests/
 ```
 
 ### Step 1 — Authorize the planned task
 `crazy-admin authorize-task <id>` reviews the contract and authorizes it. It
 **refuses** if the contract's validation is not `valid` (e.g. a rejected
-contract) — fix the plan or run another tick first. On the next tick the Coder
+contract) — fix the plan or run another advance first. On the next advance the Coder
 activates and produces a proposal.
 
 ### Step 2 — Approve applying the proposal
@@ -225,7 +225,7 @@ they are not implemented as automated actions.
 
 ## 6. Running continuously (optional)
 
-`scripts/mission_loop.py` wraps a tick with guards so it can be scheduled
+`scripts/mission_loop.py` wraps a advance with guards so it can be scheduled
 (e.g. cron) without runaway behavior:
 
 - **Lock** — `apps/<id>/state/mission.lock` prevents overlapping runs (stale
@@ -247,7 +247,7 @@ does one guarded beat and exits.
 | Location | Contents |
 |----------|----------|
 | `apps/<id>/factory_tasks/` | planned task, proposals, patch plan, approval, planning records |
-| `apps/<id>/factory_reports/` | per-tick reports, activity/daily blog, `CHECKPOINT_HISTORY.md` |
+| `apps/<id>/factory_reports/` | per-advance reports, activity/daily blog, `CHECKPOINT_HISTORY.md` |
 | `apps/<id>/context/catalog.yaml` | imported-context catalog |
 | `apps/<id>/config/factory.yaml` | project-local active config (capability switches) |
 | `apps/<id>/state/` | `factory_state.json`, `project_state.json`, `active_run.json`, flags, lock |

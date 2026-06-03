@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Architect and Planner planning roles for a Crazy Factory tick.
+"""Architect and Planner planning roles for a Crazy Factory advance.
 
 This module owns the planning-only worker roles: requesting an Architect task
 expansion and a Planner next action from local Ollama models, deterministic

@@ -421,7 +421,7 @@ def coder_status_label(result: ProposalResult) -> str:
     """Return the reporting label for a proposal outcome.
 
     Args:
-        result: Proposal result for the current tick.
+        result: Proposal result for the current advance.
 
     Returns:
         ``"not_activated"``, ``"valid"``, or ``"rejected"``.

@@ -16,7 +16,7 @@ The registry removes the ambiguity around "where does the app live". It maps a
 
 The factory never picks a project by default; an owner selects one with
 ``active_project``. ``resolve_project`` turns a registry entry into the path
-mapping the tick consumes — workbench at ``app_path``, factory working files
+mapping the advance consumes — workbench at ``app_path``, factory working files
 under ``state_path`` — so no stage hardwires ``apps/<active_project>``.
 """
 
@@ -172,7 +172,7 @@ def active_project_id(registry: dict[str, Any]) -> str:
 def resolve_project(
     registry: dict[str, Any], project_id: str
 ) -> dict[str, Any]:
-    """Resolve a registry entry into the path mapping the tick consumes.
+    """Resolve a registry entry into the path mapping the advance consumes.
 
     The workbench is ``app_path``; the factory's own working files live under
     ``state_path``. No path is hardwired to ``apps/<id>``.

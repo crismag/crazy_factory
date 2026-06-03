@@ -12,7 +12,7 @@ Commands:
     crazy-admin attachproject <id> <existing_path> register an existing codebase
     crazy-admin activate <id>                      set the active project
     crazy-admin status                             show the active project
-    crazy-admin tick                               run one build tick on it
+    crazy-admin advance                               run one build advance on it
 
 This CLI only writes the app scaffold (owner-driven), the per-project factory
 state, and the registry. It never applies code, commits, pushes, or merges.
@@ -29,7 +29,7 @@ from typing import Any
 
 sys.dont_write_bytecode = True
 
-import factory_tick  # noqa: E402
+import factory_advance  # noqa: E402
 from mission_state import initial_state  # noqa: E402
 from project_paths import (  # noqa: E402
     DEFAULT_FACTORY_CONFIG,
@@ -213,9 +213,9 @@ def startproject(
     _scaffold_write(base, "app/.gitkeep", "", force=force)
     _scaffold_write(base, "tests/.gitkeep", "", force=force)
 
-    # The factory's per-tick working dirs live in the workbench so the
+    # The factory's per-advance working dirs live in the workbench so the
     # existing path-confinement checks hold (see resolve_project). Seed the
-    # build context from the project goal so the first tick has something to
+    # build context from the project goal so the first advance has something to
     # reason about.
     _scaffold_write(
         base,
@@ -642,7 +642,7 @@ def main(argv: list[str] | None = None) -> int:
     ac.add_argument("project_id")
     ac.add_argument("source")
     sub.add_parser("status")
-    sub.add_parser("tick")
+    sub.add_parser("advance")
     # Owner-control commands. project_id is optional → defaults to active.
     for name in (
         "next",
@@ -735,8 +735,8 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
     owner_result = _dispatch_owner(args, root)
     if owner_result is not None:
         return owner_result
-    # tick
-    return factory_tick.main()
+    # advance
+    return factory_advance.main()
 
 
 _CAPABILITY_COMMANDS: dict[str, tuple[str, bool]] = {
@@ -765,7 +765,7 @@ def _dispatch_owner(args: argparse.Namespace, root: Path) -> int | None:
     if cmd == "authorize-task":
         project = _resolve_project_arg(root, args.project_id)
         authorize_task(project, root)
-        print("Task authorized.\n\nNext:\n  bin/crazy-admin tick")
+        print("Task authorized.\n\nNext:\n  bin/crazy-admin advance")
         return 0
     if cmd == "revoke-task":
         project = _resolve_project_arg(root, args.project_id)
@@ -778,7 +778,7 @@ def _dispatch_owner(args: argparse.Namespace, root: Path) -> int | None:
         pid = project["name"]
         print(
             f"Proposal approved: {result['proposal_id']}\n\nNext:\n"
-            f"  bin/crazy-admin enable-apply {pid}\n  bin/crazy-admin tick"
+            f"  bin/crazy-admin enable-apply {pid}\n  bin/crazy-admin advance"
         )
         return 0
     if cmd == "revoke-proposal":

@@ -39,7 +39,7 @@ from planning_roles import (  # noqa: E402
     request_architect_result,
     request_planner_result,
 )
-from tick_config import (  # noqa: E402
+from advance_config import (  # noqa: E402
     load_active_project,
     load_configuration,
     selected_active_project,

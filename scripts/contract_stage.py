@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Structured task-contract stage for a Crazy Factory tick.
+"""Structured task-contract stage for a Crazy Factory advance.
 
 This module orchestrates the planning contract: asking the Planner model for a
 JSON contract, parsing and validating it via :mod:`task_contract`, preserving
@@ -10,7 +10,7 @@ two fixed contract files. The pure parse/validate/render rules live in
 Two invariants are upheld here:
 
 - An owner-authorized valid contract is preserved, never regenerated, so owner
-  authorization survives later ticks until a Coder phase consumes it.
+  authorization survives later advances until a Coder phase consumes it.
 - A contract is never authorized by the factory; ``authorized`` stays ``False``
   for every freshly generated contract regardless of verdict.
 """
@@ -200,7 +200,7 @@ def load_existing_contract(
     try:
         return safe_load_json(contract_json_path, root)
     except ValueError:
-        # A corrupt or non-object contract is treated as absent so the tick
+        # A corrupt or non-object contract is treated as absent so the advance
         # can regenerate it rather than fail.
         return None
 
@@ -217,10 +217,10 @@ def run_contract_stage(
     architect_result: RoleResult,
     planner_result: RoleResult,
 ) -> tuple[ContractResult, str, str]:
-    """Produce or preserve the structured task contract for this tick.
+    """Produce or preserve the structured task contract for this advance.
 
     If an owner-authorized valid contract already exists, it is preserved and
-    no new contract is generated, so owner authorization survives later ticks
+    no new contract is generated, so owner authorization survives later advances
     until a Coder phase consumes it. Otherwise a fresh contract is requested,
     validated, and written to the two fixed contract files.
 
@@ -305,7 +305,7 @@ def contract_status_label(contract_result: ContractResult) -> str:
     """Return the reporting label for a contract outcome.
 
     Args:
-        contract_result: Contract result for the current tick.
+        contract_result: Contract result for the current advance.
 
     Returns:
         ``"authorized"`` when preserved, otherwise ``"valid"`` or

@@ -14,8 +14,8 @@
 
 ## Current Boundary
 
-Phase 2 ticks may call local Architect and Planner models for planning-only
-outputs. When Ollama is unavailable or returns an invalid response, the tick
+Phase 2 advances may call local Architect and Planner models for planning-only
+outputs. When Ollama is unavailable or returns an invalid response, the advance
 must use deterministic fallback planning, report the fallback, and exit
 cleanly.
 

@@ -111,13 +111,13 @@ class PathTests(unittest.TestCase):
             [
                 "apps/demo/app/x.py",
                 "apps/demo/factory_tasks/planned_task.json",
-                "scripts/factory_tick.py",
+                "scripts/factory_advance.py",
                 "config/factory.yaml",
             ],
             allowed_prefixes,
         )
         self.assertEqual(len(allowed), 2)
-        self.assertIn("scripts/factory_tick.py", excluded)
+        self.assertIn("scripts/factory_advance.py", excluded)
         self.assertIn("config/factory.yaml", excluded)
 
     def test_allowed_commit_prefixes_substitutes_project(self) -> None:

@@ -7,7 +7,7 @@
 5. Do not edit application code during Phase 1.
 6. Do not commit or push automatically.
 7. Do not read secrets, credentials, keys, or files outside the repository.
-8. Record a human-readable report for every tick.
+8. Record a human-readable report for every advance.
 9. Keep the next action visible.
 10. Stop and report when boundaries are unclear.
 11. Read durable state, checklists, and milestones before selecting work.

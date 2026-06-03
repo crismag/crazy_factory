@@ -5,7 +5,7 @@
 
 
 Crazy Factory builds **one app at a time**, and it never picks that app for
-you. Before any tick runs, an owner must create or attach an app, register it,
+you. Before any advance runs, an owner must create or attach an app, register it,
 and activate it. This mirrors Django's `startproject` / `manage.py` split: the
 admin CLI sets up and selects the project; the factory then works the active
 project.
@@ -66,8 +66,8 @@ bin/crazy-admin activate widget
 # Show the active project and its resolved paths / last status.
 bin/crazy-admin status
 
-# Run one build tick on the active project.
-bin/crazy-admin tick
+# Run one build advance on the active project.
+bin/crazy-admin advance
 ```
 
 `startproject` scaffolds a Django-like workbench:
@@ -82,9 +82,9 @@ bin/crazy-admin tick
   app/                    # application code (the coder's only write target)
   tests/                  # tests (a write target)
   factory_context/
-    PROJECT_GOAL.md       # build context the tick reads
+    PROJECT_GOAL.md       # build context the advance reads
   factory_tasks/          # planned_task.json, contracts land here
-  factory_reports/        # tick + checkpoint reports land here
+  factory_reports/        # advance + checkpoint reports land here
 ```
 
 `attachproject` does **not** scaffold or modify the existing code; it only
@@ -92,7 +92,7 @@ registers it (and, with `--write-config`, drops a `crazy_project.yaml` marker).
 
 ## What the factory resolves
 
-When `factory_tick.py` (or `mission_loop.py`) runs, it:
+When `factory_advance.py` (or `mission_loop.py`) runs, it:
 
 1. loads the registry and reads `active_project`;
 2. exits cleanly with guidance if nothing is selected;
@@ -110,7 +110,7 @@ factory's repo-confined write helpers can read context and write contracts,
 proposals, patch plans, and reports.
 
 **External apps are first-class in the registry** — you can `startproject` /
-`attachproject` / `activate` / `status` them — but a `tick` on an external app
+`attachproject` / `activate` / `status` them — but a `advance` on an external app
 **stops with a notice instead of building**. Writing a build into a separate
 repository crosses the factory's repo-confined write boundary, which is the
 next increment. Until then, build under `apps/<id>/`.

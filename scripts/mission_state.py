@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Persistent mission-state handling for a Crazy Factory tick.
+"""Persistent mission-state handling for a Crazy Factory advance.
 
 This module loads, validates, transitions, and persists the three durable
-state snapshots in ``state/``. It encodes the recovery semantics: how a tick
+state snapshots in ``state/``. It encodes the recovery semantics: how a advance
 records success, how a rejected contract becomes a recoverable failure, and how
 a healthy run clears prior failures. It performs no model calls.
 
@@ -47,7 +47,7 @@ def initial_state(project_id: str) -> dict[str, dict[str, Any]]:
     """Return the three bootstrap state snapshots for a new project.
 
     Used by ``startproject`` and ``promote`` to seed a project's own
-    ``<app>/state/`` so its first tick passes ``validate_state_project``.
+    ``<app>/state/`` so its first advance passes ``validate_state_project``.
 
     Args:
         project_id: The project the state belongs to.
@@ -82,7 +82,7 @@ def initial_state(project_id: str) -> dict[str, dict[str, Any]]:
             "last_completed_checkpoint": None,
             "current_blocker": None,
             "failure_count": 0,
-            "recovery_instructions": "Run a tick to produce a planned task.",
+            "recovery_instructions": "Run a advance to produce a planned task.",
         },
         "active_run.json": {
             "run_status": "idle",
@@ -96,7 +96,7 @@ def initial_state(project_id: str) -> dict[str, dict[str, Any]]:
             "current_blocker": None,
             "last_role_completed": None,
             "task_id": f"{project_id}-001",
-            "resume_from": "Run a tick to begin planning.",
+            "resume_from": "Run a advance to begin planning.",
         },
     }
 
@@ -180,7 +180,7 @@ def update_success_state(
 ) -> str:
     """Update in-memory state after a planning (and optional coder) dry run.
 
-    The tick itself always completes (records, validates, reports), so the run
+    The advance itself always completes (records, validates, reports), so the run
     is recorded as successful. A *rejected* contract or an *activated but
     rejected* coder proposal is a normal outcome, not a crash: it bumps the
     failure counters and sets a blocker so the Watcher can detect repeated
@@ -314,7 +314,7 @@ def _apply_test_plan_state(
         active_run: Mutable active-run state snapshot.
         project_state: Mutable project state snapshot.
         test_plan_result: Test-plan outcome.
-        completed_at: UTC completion timestamp for the current tick.
+        completed_at: UTC completion timestamp for the current advance.
     """
     status = test_plan_status_label(test_plan_result)
     plan = test_plan_result.plan
@@ -353,7 +353,7 @@ def _apply_validation_state(
         active_run: Mutable active-run state snapshot.
         project_state: Mutable project state snapshot.
         validation_result: Validation outcome.
-        completed_at: UTC completion timestamp for the current tick.
+        completed_at: UTC completion timestamp for the current advance.
     """
     status = validation_status_label(validation_result)
     checks_run = [
@@ -408,7 +408,7 @@ def _apply_application_state(
         active_run: Mutable active-run state snapshot.
         project_state: Mutable project state snapshot.
         application_result: Proposal application outcome.
-        completed_at: UTC completion timestamp for the current tick.
+        completed_at: UTC completion timestamp for the current advance.
     """
     status = application_status_label(application_result)
     plan = application_result.plan
@@ -466,7 +466,7 @@ def _apply_coder_state(
         active_run: Mutable active-run state snapshot.
         project_state: Mutable project state snapshot.
         coder_result: Coder proposal outcome.
-        completed_at: UTC completion timestamp for the current tick.
+        completed_at: UTC completion timestamp for the current advance.
     """
     status = coder_status_label(coder_result)
     proposal = coder_result.proposal
@@ -521,7 +521,7 @@ def _apply_contract_state(
         active_run: Mutable active-run state snapshot.
         project_state: Mutable project state snapshot.
         contract_result: Validated structured contract outcome.
-        completed_at: UTC completion timestamp for the current tick.
+        completed_at: UTC completion timestamp for the current advance.
     """
     # A preserved contract is one the owner already authorized; it is healthy
     # and is held for a future Coder phase rather than regenerated.

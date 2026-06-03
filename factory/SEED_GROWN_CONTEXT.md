@@ -26,7 +26,7 @@ workbench** — `apps/` is gitignored (workbenches are runtime, created by
 `promote`). The factory never picks a project for you; an app to work on must
 be **explicitly selected**, either by promoting a seed-grown project or by
 setting `active_project` in config to a registered workbench. Running
-`factory_tick.py` / `mission_loop.py` with nothing selected prints guidance and
+`factory_advance.py` / `mission_loop.py` with nothing selected prints guidance and
 exits cleanly. Sample seeds for different app types live in `examples/seeds/`
 and are only used when you pass them explicitly.
 
@@ -54,9 +54,9 @@ and they are NOT auto-wired:
   by `--project-id`. `grow` only touches it.
 - The **build pipeline's active project** is `active_project` in
   `config/projects.yaml` (default `demo_app`); its workbench is
-  `apps/<active_project>/`. `factory_tick.py` only touches that.
+  `apps/<active_project>/`. `factory_advance.py` only touches that.
 
-So growing context for `my_app` does not change what `factory_tick.py` builds.
+So growing context for `my_app` does not change what `factory_advance.py` builds.
 `promote` is the explicit, owner-driven bridge between the two.
 
 ## promote
@@ -67,7 +67,7 @@ owner-driven and never builds:
 - registers the app workbench `apps/<id>/` and adds it to
   `config/projects.yaml`,
 - makes `<id>` the active project (in both config files) and repoints
-  `state/*.json` (so the next tick does not fail the project-mismatch check),
+  `state/*.json` (so the next advance does not fail the project-mismatch check),
 - copies the **latest valid** grown `task_proposal` into
   `apps/<id>/factory_tasks/planned_task.json`, forced to `authorized: false`,
 - materializes the seed as `apps/<id>/factory_context/PROJECT_GOAL.md`.

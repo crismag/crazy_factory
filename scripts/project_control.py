@@ -235,7 +235,7 @@ def apply_project_controls(
         raw_control: Parsed control mapping (or ``None``).
 
     Returns:
-        An effective config mapping for this project's tick.
+        An effective config mapping for this project's advance.
     """
     if raw_control is None:
         return factory_config
