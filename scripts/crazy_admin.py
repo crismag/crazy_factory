@@ -39,6 +39,7 @@ from project_paths import (  # noqa: E402
 from settings import (  # noqa: E402
     WORKBENCH_DEFAULTS,
     load_engine_settings,
+    project_app_path,
     workbench_defaults,
 )
 from archive_utils import ArchiveError  # noqa: E402
@@ -66,6 +67,7 @@ from project_control import (  # noqa: E402
 from project_registry import (  # noqa: E402
     RegistryError,
     active_project_id,
+    app_is_buildable,
     app_is_external,
     load_registry,
     register_project,
@@ -201,6 +203,30 @@ def _seed_template(project_id: str) -> str:
     )
 
 
+def _persist_apps_base(value: str, root: Path) -> None:
+    """Persist ``paths.engine.apps_base`` into the engine config file.
+
+    So a separate runtime process (advance/mission-loop) honors the same base.
+    """
+    rel = "config/factory.yaml"
+    out: list[str] = []
+    replaced = False
+    for line in safe_read_text(rel, root).splitlines(keepends=True):
+        if line.startswith("    apps_base:"):
+            out.append(f"    apps_base: {value}\n")
+            replaced = True
+        else:
+            out.append(line)
+    if not replaced:
+        raise AdminError(
+            "Could not set apps_base: no 'apps_base:' line under paths.engine "
+            "in config/factory.yaml."
+        )
+    safe_write_text(
+        rel, "".join(out), repo_root=root, allowed_roots=["config"]
+    )
+
+
 def startproject(
     project_id: str,
     target_path: str | None,
@@ -209,23 +235,30 @@ def startproject(
     force: bool = False,
     reuse: bool = False,
     paths: dict[str, str] | None = None,
+    apps_base: str | None = None,
+    target_location: str | None = None,
 ) -> dict[str, Any]:
     """Scaffold a new app workbench and register it.
 
     Args:
         project_id: New project identifier.
-        target_path: Where to create the app. Defaults to ``./<project_id>``.
+        target_path: Explicit app path (positional). When omitted, the app path
+            is composed as ``<apps_base>/<project_id>``.
         root: Absolute repository root.
         force: Overwrite existing scaffold files.
         reuse: Allow re-registering an existing project id.
         paths: Optional workbench sub-folder overrides (the scaffold and the
             registry both use these so the layout is self-consistent).
+        apps_base: Owner-configured apps base; persisted to the engine config so
+            the runtime honors it, then used to compose the app path.
+        target_location: Explicit full app path (wins over apps_base/positional).
 
     Returns:
         The registered entry summary.
 
     Raises:
-        AdminError: If the project exists and neither --force nor --reuse set.
+        AdminError: If the project exists, or the target path is not an
+            owner-approved build location (``TARGET_PATH_UNSUPPORTED``).
     """
     validate_project_id(project_id)
     registry = load_registry(root)
@@ -233,7 +266,17 @@ def startproject(
         raise AdminError(
             f"Project '{project_id}' already exists. Use --force or --reuse."
         )
-    app_path = target_path or project_id
+    # Persist an owner-supplied apps base first, so buildability is judged
+    # against (and the runtime later honors) the same configured base.
+    if apps_base:
+        _persist_apps_base(apps_base, root)
+    # Decide the app path: explicit target_location > positional > composed
+    # <apps_base>/<id>. The requested path is honored as-is — never silently
+    # substituted. Building is gated later by app_is_buildable at advance time,
+    # so a path not under an approved base registers but will not build.
+    app_path = (
+        target_location or target_path or project_app_path(project_id, root)
+    )
     repo_mode = "external" if app_is_external(app_path, root) else "embedded"
     base = _abs_app_dir(app_path, root)
     overrides = paths or {}
@@ -410,7 +453,7 @@ def activate(project_id: str, *, root: Path) -> None:
     project = resolve_project(registry, project_id)
     # External app runtime lives outside the repo (a deferred increment); its
     # project-local state cannot be written through the repo-confined helpers.
-    if not app_is_external(project["app_path"], root):
+    if app_is_buildable(project["app_path"], root):
         _sync_state_active(project_id, project, root)
 
 
@@ -628,7 +671,7 @@ def status(root: Path) -> dict[str, Any]:
         "workbench_exists": workbench_exists(project["app_path"], root),
     }
     if (
-        not app_is_external(project["app_path"], root)
+        app_is_buildable(project["app_path"], root)
         and info["workbench_exists"]
     ):
         catalog = load_catalog(root, project)
@@ -746,6 +789,16 @@ def main(argv: list[str] | None = None) -> int:
         metavar="KEY=VALUE",
         help="Override a workbench folder, e.g. --path reports_dir=out.",
     )
+    sp.add_argument(
+        "--apps-base",
+        default=None,
+        help="Owner apps base (persisted); apps build at <apps-base>/<id>.",
+    )
+    sp.add_argument(
+        "--target-location",
+        default=None,
+        help="Explicit full app path (must be under an approved apps base).",
+    )
     spath = sub.add_parser("set-path")
     spath.add_argument("project_id")
     spath.add_argument("overrides", nargs="+", metavar="KEY=VALUE")
@@ -805,6 +858,8 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             force=args.force,
             reuse=args.reuse,
             paths=parse_path_overrides(args.path, root),
+            apps_base=args.apps_base,
+            target_location=args.target_location,
         )
         print(
             f"Created project '{info['project_id']}' "

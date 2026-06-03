@@ -39,7 +39,7 @@ from repo_tools import (  # noqa: E402
 from project_registry import (  # noqa: E402
     RegistryError,
     active_project_id,
-    app_is_external,
+    app_is_buildable,
     load_registry,
     resolve_project,
     workbench_exists,
@@ -232,10 +232,12 @@ def main() -> int:
             f"({project['app_path']}). Create or re-attach it first."
         )
         return 0
-    if app_is_external(project["app_path"], root):
+    if not app_is_buildable(project["app_path"], root):
         print(
-            f"Project '{project_name}' is external ({project['app_path']}). "
-            "Building external apps is not enabled in this increment."
+            f"TARGET_PATH_UNSUPPORTED: project '{project_name}' is at an "
+            f"unapproved location ({project['app_path']}). Configure "
+            "paths.engine.apps_base to cover it, or use an embedded app "
+            "under apps/."
         )
         return 0
     # The project owns its config, run-state, lock, and flags — all under its

@@ -106,6 +106,7 @@ paths:
     models_config: config/models.yaml
     seed_staging_base: factory_state/projects
     logs_dir: logs
+    apps_base: apps          # where generated app workbenches live
 ```
 
 - **Workbench folders** — editing the `workbench:` block changes the default
@@ -121,6 +122,26 @@ paths:
 
 Override values for workbench folders must be in-workbench relative paths (no
 leading `/`, no `..`); the fail-loud guard rejects anything that would escape.
+
+### Building apps outside the repo (external workbench)
+
+By default apps build in-repo at `apps/<id>`. To emit generated apps to a
+location you choose, set `paths.engine.apps_base` to an **absolute** path (or
+`CRAZY_FACTORY_APPS_BASE`). Then a project builds at `<apps_base>/<id>`:
+
+```bash
+# config persists the base; the app builds at /mnt/ai/workspaces/crazy_apps/tic-tac-toe
+bin/crazy-admin startproject tic-tac-toe --apps-base /mnt/ai/workspaces/crazy_apps
+# or an explicit full path:
+bin/crazy-admin startproject tic-tac-toe --target-location /mnt/ai/workspaces/crazy_apps/tic-tac-toe
+```
+
+Confinement is preserved: each project may write only inside its own
+`<apps_base>/<id>` folder. Attempts to reach a sibling project, the factory
+repo, `/etc`, the home directory, `..`, or through a symlink are rejected. An
+app at a location **not** under an approved base registers but refuses to build
+with `TARGET_PATH_UNSUPPORTED` (no silent fallback to `apps/<id>`). Factory
+internals (registry, logs, seed staging) always stay in the repo.
 
 ---
 

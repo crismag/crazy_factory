@@ -94,7 +94,7 @@ from project_paths import (  # noqa: E402
 from project_registry import (  # noqa: E402
     RegistryError,
     active_project_id,
-    app_is_external,
+    app_is_buildable,
     load_registry,
     resolve_project,
     workbench_exists,
@@ -139,14 +139,15 @@ def main() -> int:
             f"({project['app_path']}). Create or re-attach it before a advance."
         )
         return 0
-    if app_is_external(project["app_path"], root):
-        # External app paths are registered and inspectable, but writing the
-        # build into a separate repo crosses the repo-confined write boundary
-        # and is the next increment. Embedded apps build now.
+    if not app_is_buildable(project["app_path"], root):
+        # An app may live under the repo (embedded) or under the owner-
+        # configured external apps base. Anywhere else is not an approved build
+        # location, so the factory refuses rather than writing there.
         print(
-            f"Project '{project_name}' is external ({project['app_path']}). "
-            "Building external apps is not enabled in this increment; use an "
-            "embedded app (under apps/) to build now."
+            f"TARGET_PATH_UNSUPPORTED: project '{project_name}' is at an "
+            f"unapproved location ({project['app_path']}). Configure "
+            "paths.engine.apps_base (or CRAZY_FACTORY_APPS_BASE) to cover it, "
+            "or use an embedded app under apps/."
         )
         return 0
     # Fail loudly if any runtime path is not inside the project folder — the

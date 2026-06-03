@@ -280,7 +280,9 @@ class FactoryAdvanceResolutionTests(unittest.TestCase):
             self.assertEqual(code, 0)
             self.assertIn("No active project", text)
 
-    def test_external_active_project_is_guarded(self) -> None:
+    def test_unapproved_external_project_is_guarded(self) -> None:
+        # An external app NOT under the configured apps base registers, but the
+        # advance refuses to build it with a clear, non-silent reason.
         with (
             tempfile.TemporaryDirectory() as tmp,
             tempfile.TemporaryDirectory() as ext,
@@ -292,7 +294,7 @@ class FactoryAdvanceResolutionTests(unittest.TestCase):
             ca.activate("myapp", root=root)
             code, text = self._run_main(root)
             self.assertEqual(code, 0)
-            self.assertIn("external", text.lower())
+            self.assertIn("TARGET_PATH_UNSUPPORTED", text)
 
 
 if __name__ == "__main__":
