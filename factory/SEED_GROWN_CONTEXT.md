@@ -21,14 +21,14 @@ factory_state/projects/<project_id>/
 
 ## No default project
 
-The repository ships with **no active project and no committed app
-workbench** — `apps/` is gitignored (workbenches are runtime, created by
-`promote`). The factory never picks a project for you; an app to work on must
-be **explicitly selected**, either by promoting a seed-grown project or by
-setting `active_project` in config to a registered workbench. Running
-`factory_advance.py` / `mission_loop.py` with nothing selected prints guidance and
-exits cleanly. Sample seeds for different app types live in `examples/seeds/`
-and are only used when you pass them explicitly.
+The repository ships with **no implicit project selection** and no committed app
+workbench — `apps/` is gitignored (workbenches are runtime, created by
+`startproject` or `promote`). The factory never picks a project for you; each
+build-pipeline command targets a project by id, by `--path`, or by running from
+inside a workbench. Running `factory_advance.py` / `mission_loop.py` without a
+resolvable target prints guidance and exits cleanly. Sample seeds for different
+app types live in `examples/seeds/` and are only used when you pass them
+explicitly.
 
 ## Commands
 
@@ -52,12 +52,13 @@ and they are NOT auto-wired:
 
 - A **context project** lives in `factory_state/projects/<id>/` and is selected
   by `--project-id`. `grow` only touches it.
-- The **build pipeline's active project** is `active_project` in
-  `config/projects.yaml` (default `demo_app`); its workbench is
-  `apps/<active_project>/`. `factory_advance.py` only touches that.
+- A **build pipeline project** is a registered workbench resolved by id, by
+  `--path`, or from cwd. Its runtime lives inside that workbench, and
+  `factory_advance.py` only touches the resolved project.
 
-So growing context for `my_app` does not change what `factory_advance.py` builds.
-`promote` is the explicit, owner-driven bridge between the two.
+So growing context for `my_app` does not automatically make
+`factory_advance.py` build it. `promote` is the explicit, owner-driven bridge
+between the two.
 
 ## promote
 
@@ -66,8 +67,8 @@ owner-driven and never builds:
 
 - registers the app workbench `apps/<id>/` and adds it to
   `config/projects.yaml`,
-- makes `<id>` the active project (in both config files) and repoints
-  `state/*.json` (so the next advance does not fail the project-mismatch check),
+- materializes project-local runtime state under the workbench so the next
+  targeted advance has matching project identity,
 - copies the **latest valid** grown `task_proposal` into
   `apps/<id>/factory_tasks/planned_task.json`, forced to `authorized: false`,
 - materializes the seed as `apps/<id>/factory_context/PROJECT_GOAL.md`.

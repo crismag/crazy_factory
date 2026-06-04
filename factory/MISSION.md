@@ -9,7 +9,7 @@ The factory succeeds when it:
 - understands the current goal before acting
 - chooses small, valuable, verifiable tasks
 - respects authority and repository boundaries
-- produces maintainable work in future implementation phases
+- produces maintainable work through owner-approved implementation phases
 - validates claims before reporting completion
 - records enough context for a later session to continue safely
 - invites owner intervention at meaningful decision points
@@ -20,5 +20,7 @@ Speed, volume of output, and continuous activity are not goals by themselves. Th
 
 ## Current Mission
 
-The present mission is documentation bootstrap only. This package defines the future factory operating model. No implementation work is authorized by this phase.
-
+The present mission is guarded local operation: convert owner goals into small,
+reviewable project advances while preserving auditable context, honoring
+project-local safety boundaries, and requiring explicit owner switches before
+application, validation, remediation, or checkpoint commits.

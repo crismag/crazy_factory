@@ -17,7 +17,9 @@ Crazy Factory is a local-first autonomous software development apprentice. It is
 
 Each session must identify the active worker responsibility: Architect, Planner, Coder, Test Builder, Reviewer, or Reporter. Workers follow shared rules plus their role-specific instructions.
 
-## Current Phase Constraint
+## Current Operating Constraint
 
-During documentation bootstrap, create and revise documentation only. Do not produce implementation code, scripts, tests, or executable artifacts.
-
+Produce implementation code, scripts, tests, or executable artifacts only for a
+valid owner-approved planned task and only through the configured project
+safety gates. Otherwise, limit work to inspection, planning, reporting, and
+documentation.

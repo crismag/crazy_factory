@@ -2,9 +2,11 @@
 
 ## Applicability
 
-These rules govern future implementation work. Current documentation bootstrap does not authorize code generation.
+These rules govern owner-approved implementation work. Code generation is
+authorized only for a valid planned task and only within the current operating
+mode's safety gates.
 
-## Future Coding Standards
+## Coding Standards
 
 - Implement only an approved planned task.
 - Follow existing repository conventions before introducing new patterns.
@@ -18,4 +20,3 @@ These rules govern future implementation work. Current documentation bootstrap d
 ## Stop Conditions
 
 Stop and return to planning when implementation requires broader scope, a new architectural decision, a restricted action, or modification of unrelated owner work.
-

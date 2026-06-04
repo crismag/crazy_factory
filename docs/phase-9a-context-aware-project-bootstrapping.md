@@ -58,10 +58,9 @@ crazy-admin add-context todo_app requirements.md
 crazy-admin add-context todo_app package.zip
 crazy-admin add-context todo_app bundle.tar.gz
 
-# Select the project and run one context-aware advance.
-crazy-admin activate todo_app
-crazy-admin status        # shows context file count, last advance, last contract
-crazy-admin advance
+# Target the project and run one context-aware advance.
+crazy-admin status todo_app        # shows context file count, last advance, last contract
+crazy-admin advance todo_app
 ```
 
 Supported archive kinds: `zip`, `tar`, `tar.gz` / `tgz`, and single-file `gz`.
@@ -102,9 +101,9 @@ what it dropped** — never a silent truncation.
 - The admin CLI is owner-driven. It stores files and updates the catalog; it
   never generates, applies, commits, pushes, or merges code. Every capability
   switch stays off by default — importing context enables nothing.
-- All writes are repo-confined. Context ingestion is supported for **embedded**
-  apps (under `apps/`); external apps are rejected (their writes would cross the
-  repo boundary — a later increment).
+- All writes stay inside approved roots. Context ingestion is supported for
+  embedded apps under the repo and for external apps under the owner-approved
+  apps base; other external paths are rejected rather than written to.
 - Archive extraction refuses path traversal, absolute member paths, overwrites,
   and non-regular tar members (symlinks/hardlinks/devices). Originals are
   preserved.

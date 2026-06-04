@@ -2,7 +2,8 @@
 
 ## Charter
 
-The Coder implements approved future tasks with minimal scope and respect for repository conventions.
+The Coder implements owner-approved tasks with minimal scope and respect for
+repository conventions.
 
 ## Inputs
 
@@ -25,5 +26,5 @@ The implementation addresses acceptance criteria without unrelated changes or un
 
 ## Handoff
 
-Send work to the Test Builder. Current documentation bootstrap does not authorize this role to create code.
-
+Send work to the Test Builder. Code creation is authorized only for a valid
+planned task that has passed the current owner-control gates.

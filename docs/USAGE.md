@@ -21,25 +21,17 @@ bin/crazy-admin startproject todo_app apps/todo_app
 # 2. Give it project knowledge (a file, a folder, or an archive).
 bin/crazy-admin add-context todo_app ./seed/
 
-# 3. Select it as the active project.
-bin/crazy-admin activate todo_app
+# 3. See where things stand for that project.
+bin/crazy-admin status todo_app
 
-# 4. See where things stand.
-bin/crazy-admin status
-
-# 5. Run one planning advance (reads context, plans, proposes — never builds yet).
-bin/crazy-admin advance
+# 4. Run one planning advance (reads context, plans, proposes — never builds yet).
+bin/crazy-admin advance todo_app
 ```
 
-After step 5 the factory has produced a **planned task** and a **coder
-proposal**, both unauthorized. Nothing was written to your app, committed, or
-pushed. You move it forward by flipping switches (Section 5).
-
-> **Validate your install:** `tests/manual_run_flow.sh` runs this whole flow
-> against a throwaway project and asserts the safety invariants (context
-> loaded, secrets skipped, planned task `authorized: false`, no code
-> generated). It backs up and restores your tracked config/state, so it is
-> safe to run anytime.
+After step 4 the factory has produced a **planned task** with
+`authorized: false`. Nothing was written to your app, committed, or pushed. You
+move it forward by flipping switches (Section 5); the Coder proposes only after
+the owner authorizes a valid task and runs another advance.
 
 ---
 
@@ -47,8 +39,8 @@ pushed. You move it forward by flipping switches (Section 5).
 
 | Concept | What it is |
 |---------|-----------|
-| **Project registry** | `config/projects.yaml` maps each `project_id` to where its app lives (`app_path`), `repo_mode`, and `seed_file`. Every runtime path is derived from `app_path` (the `state_path` entry is retained only so legacy data can be migrated). The factory never picks a project — you `activate` one. |
-| **Embedded vs external** | *Embedded* apps live under `apps/<id>` (build now). *External* apps live anywhere on disk — registerable and inspectable, but building/ingesting into them is a later increment. |
+| **Project registry** | `config/projects.yaml` maps each `project_id` to where its app lives (`app_path`), `repo_mode`, and `seed_file`. Every runtime path is derived from `app_path` (the `state_path` entry is retained only so legacy data can be migrated). The factory never picks a project. Each command targets one by id, by `--path`, or by running from inside a workbench. |
+| **Embedded vs external** | *Embedded* apps live under `apps/<id>` and build inside the repo. *External* apps are buildable only under the owner-approved apps base (`paths.engine.apps_base` or `CRAZY_FACTORY_APPS_BASE`); other external paths are registerable and inspectable, but refuse writes with `TARGET_PATH_UNSUPPORTED`. |
 | **Engine vs workbench** | The Crazy Factory root is the *engine* (code, templates, global defaults, docs). A project's *runtime* — its `config/factory.yaml`, run state, factory memory, reports, tasks, and context — lives entirely inside its workbench (`app_path`). Nothing project-specific is written to the root. |
 | **Workbench** | The app directory. Holds your code plus the factory's per-advance working files and project-local runtime (see layout below). |
 | **Context store** | `<app_path>/context/` — imported project knowledge (Phase 9A). Separate from `factory_context/` (the goal + grown context). |
@@ -156,14 +148,14 @@ All commands are `bin/crazy-admin <command>` (a thin wrapper over
 | `set-path <id> KEY=VALUE...` | Set/update a registered project's workbench folder overrides (persisted in the registry). Re-points where the factory reads/writes; it does not move existing files. |
 | `attachproject <id> <path>` | Register an existing codebase without scaffolding or modifying it. `--write-config` drops a `crazy_project.yaml` marker. |
 | `add-context <id> <source>` | Ingest a file, directory, or archive (`zip`/`tar`/`tar.gz`/`tgz`/`gz`) into the project's context store. |
-| `activate <id>` | Make `<id>` the active project (updates the registry + the project-local `apps/<id>/state/*.json`). |
 | `migrate-project-runtime <id>` | Bring a pre-relocation project forward: non-destructively copy legacy root `state/`, `factory_state/projects/<id>/`, and `reports/` into the workbench, and materialize `config/factory.yaml` if missing. Leaves the old root folders in place. |
-| `status` | Show the active project: contract validation/authorization, proposal/approval, effective capabilities, current blocker. |
-| `next [id]` | Tell you exactly what to do next for a project (defaults to the active one). |
-| `advance` | Run one factory advance on the active project. |
+| `status [id] [--path DIR]` | Show one project: contract validation/authorization, proposal/approval, effective capabilities, current blocker. With no id/path, discover the project from the current workbench. |
+| `next [id] [--path DIR]` | Tell you exactly what to do next for a project. With no id/path, discover the project from the current workbench. |
+| `advance [id] [--path DIR] [--all]` | Run one factory advance for a targeted project, discovered workbench, or every registered project. |
 
 Owner-control commands (the normal way to drive the safety gates — no manual
-JSON editing). Each takes an optional `<id>`, defaulting to the active project:
+JSON editing). Each takes an optional `<id>` or `--path DIR`; without either,
+the command discovers the project from the current workbench:
 
 | Command | Purpose |
 |---------|---------|
@@ -195,9 +187,9 @@ A advance is a single planning-and-proposal pass. Stages run in order; each late
 stage only escalates if the matching owner switch is on.
 
 ```text
-crazy-admin advance
+crazy-admin advance <id>
   │
-  ├─ resolve active project (registry)         # no project → prints guidance, exits 0
+  ├─ resolve target project (id/path/cwd)      # no target → prints guidance, exits 0
   ├─ honor control flags (stop/pause/blocked)  # owner can halt a run
   │
   ├─ LOAD CONTEXT      context_loader           # aggregate supported context files
@@ -206,7 +198,7 @@ crazy-admin advance
   ├─ PLAN              Planner role             # next action     → NEXT_ACTION.md
   │                                             #   (both prompts include the context bundle)
   ├─ CONTRACT          contract_stage           # planned_task.json  (authorized: FALSE)
-  ├─ CODE (propose)    coder_proposal           # coder_proposal.json  (proposes only)
+  ├─ CODE (propose)    coder_proposal           # skipped unless task is authorized+valid
   ├─ APPLY (preview)   proposal_applier         # patch_plan.json  (preview unless approved+enabled)
   ├─ TEST BUILDER      test_builder             # test_plan.json
   ├─ VALIDATE          validation_runner        # runs checks ONLY if validation.allow_run
@@ -233,12 +225,12 @@ The factory escalates only when you act. Drive it with `crazy-admin` commands �
 `crazy-admin next` and it tells you the single next command.
 
 ```bash
-crazy-admin next                       # what should I do?
+crazy-admin next todo_app              # what should I do?
 crazy-admin authorize-task todo_app    # Step 1
-crazy-admin advance                       # Coder now proposes
+crazy-admin advance todo_app           # Coder now proposes
 crazy-admin approve-proposal todo_app  # Step 2
 crazy-admin enable-apply todo_app      # Step 3 (then validation, then commit)
-crazy-admin advance                       # applies within app/, docs/, tests/
+crazy-admin advance todo_app           # applies within app/, docs/, tests/
 ```
 
 ### Step 1 — Authorize the planned task
@@ -272,8 +264,8 @@ always confined to `app/`, `docs/`, `tests/`. Protected paths (root
 The control plane is still file-backed, so for debugging you *can* hand-edit
 `apps/<id>/factory_tasks/planned_task.json` (`"authorized": true`) or
 `approved_proposal.json` (`{"application_approved": true, "proposal_id": "…"}`),
-or flip the global switches in `config/factory.yaml`. The `crazy-admin` commands
-are the supported path; manual editing is a fallback only.
+or flip project-local switches in `apps/<id>/crazy_project.yaml`. The
+`crazy-admin` commands are the supported path; manual editing is a fallback only.
 
 ### What stays OFF no matter what
 `git.allow_auto_push`, `git.allow_auto_merge`, force pushes, history rewrites,
@@ -316,15 +308,15 @@ does one guarded beat and exits.
 
 `apps/` is gitignored — workbenches are runtime, created by
 `startproject`/`promote`, and each owns its full runtime tree. Use
-`bin/crazy-admin status` or `bin/factory-status` to inspect progress at any
-time.
+`bin/crazy-admin status <id>` or `bin/factory-status <id>` to inspect progress
+at any time.
 
 ---
 
 ## 8. Two ways to seed a project
 
-You can start a project from either direction; both end at a registered,
-activated workbench with an unauthorized planned task you then authorize.
+You can start a project from either direction; both end at a registered
+workbench with an unauthorized planned task you then authorize.
 
 1. **Direct** — `startproject` + `add-context`, as in the Quick start.
 2. **Seed-grown** — `context_growth.py start --seed examples/seeds/<x>.md

@@ -2,7 +2,11 @@
 
 ## Snapshot
 
-As of 2026-06-02, Crazy Factory is in documentation bootstrap. This package defines the operating context for later planning and implementation.
+As of 2026-06-04, Crazy Factory has moved beyond documentation bootstrap into a
+working local runtime. The repository now includes CLI entry points, Python
+orchestration scripts, tests, configuration, and project workbench support. The
+`factory/` package remains the operating context, governance layer, and durable
+memory for that runtime.
 
 ## Available Assets
 
@@ -16,21 +20,20 @@ As of 2026-06-02, Crazy Factory is in documentation bootstrap. This package defi
 - workflow guides
 - reusable templates
 - persistent context and memory records
+- Python CLI/runtime scripts
+- tests and manual flow scripts
+- project registry and per-workbench runtime layout
+- guarded owner-control switches for apply, validation, remediation, and commit
 
 ## Not Yet Available
 
-- implementation code
-- scripts
-- tests
-- executable artifacts
-- Ollama integration
-- scheduling
+- production-hardening for long unattended operation
 - MCP integration
 - oversight integrations
-- multi-model operation
-- multi-project operation
+- richer multi-model coordination
 
 ## Next State Transition
 
-The owner should review and approve the documentation operating system before implementation planning begins.
-
+The next state transition is to reconcile remaining bootstrap-era policy text
+with the current runtime, then harden the failing/default validation paths
+before broader unattended use.

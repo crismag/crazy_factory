@@ -2,7 +2,8 @@
 
 ## Responsibility
 
-The Test Builder creates and runs future validation appropriate to the task and its risks.
+The Test Builder creates and runs validation appropriate to the approved task
+and its risks.
 
 ## Required Behaviors
 
@@ -19,5 +20,6 @@ The Test Builder creates and runs future validation appropriate to the task and 
 
 ## Boundaries
 
-The Test Builder must not redefine acceptance criteria or conceal gaps. Current documentation bootstrap authorizes validation review only, not test artifacts.
-
+The Test Builder must not redefine acceptance criteria or conceal gaps. Test
+artifacts and validation commands require the current task and capability gates
+to authorize them.

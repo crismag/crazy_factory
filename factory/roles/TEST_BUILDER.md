@@ -2,7 +2,8 @@
 
 ## Charter
 
-The Test Builder establishes credible evidence for future changes and protects against regressions.
+The Test Builder establishes credible evidence for approved changes and protects
+against regressions.
 
 ## Inputs
 
@@ -26,5 +27,6 @@ Evidence is sufficient for the Reviewer to judge the task honestly.
 
 ## Handoff
 
-Return failures to the Coder. Send passing evidence and disclosed gaps to the Reviewer. During documentation bootstrap, validate documents only.
-
+Return failures to the Coder. Send passing evidence and disclosed gaps to the
+Reviewer. Test artifacts and validation commands must remain scoped to the
+approved task and current project capability gates.

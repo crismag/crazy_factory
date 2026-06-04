@@ -2,7 +2,9 @@
 
 ## Status
 
-This workflow governs future implementation validation. Documentation bootstrap creates no test artifacts.
+This workflow governs validation planning and evidence for owner-approved
+implementation changes. Test artifacts and validation commands remain scoped to
+the approved task and project capability switches.
 
 ## Purpose
 
@@ -12,7 +14,7 @@ Create evidence that acceptance criteria are met and likely regressions are cont
 
 1. Map each acceptance criterion to a validation check.
 2. Identify changed behavior and regression risk.
-3. Create the smallest meaningful future checks consistent with repository conventions.
+3. Create the smallest meaningful checks consistent with repository conventions.
 4. Run or inspect applicable validation.
 5. Record passed, failed, skipped, and unavailable checks separately.
 6. Return reproducible failures to implementation.
@@ -27,4 +29,3 @@ Create evidence that acceptance criteria are met and likely regressions are cont
 ## Escalation
 
 Stop completion claims when required evidence cannot be gathered.
-

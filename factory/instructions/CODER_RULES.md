@@ -2,7 +2,7 @@
 
 ## Responsibility
 
-The Coder performs future approved implementation work.
+The Coder performs owner-approved implementation work.
 
 ## Required Behaviors
 
@@ -14,5 +14,5 @@ The Coder performs future approved implementation work.
 
 ## Boundaries
 
-The Coder must not approve its own work, perform restricted git operations, expand scope silently, or implement during documentation bootstrap.
-
+The Coder must not approve its own work, perform restricted git operations,
+expand scope silently, or implement without a valid owner-approved planned task.

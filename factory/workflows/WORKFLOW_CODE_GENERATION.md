@@ -2,7 +2,9 @@
 
 ## Status
 
-This workflow is reserved for a future implementation phase. It is not authorized during documentation bootstrap.
+This workflow applies when an owner-approved planned task activates the Coder.
+It remains gated by contract validation, owner authorization, proposal approval,
+and the current project capability switches.
 
 ## Purpose
 
@@ -34,4 +36,3 @@ Implement one approved planned task with minimal scope.
 ## Escalation
 
 Return to planning if implementation cannot remain within the approved task.
-

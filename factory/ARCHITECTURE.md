@@ -2,7 +2,9 @@
 
 ## Status
 
-This document defines the conceptual architecture for future Crazy Factory planning. It intentionally avoids implementation details.
+This document defines the conceptual architecture for Crazy Factory planning and
+guarded execution. Runtime details live in `scripts/`, `bin/`, `config/`, and
+`docs/USAGE.md`; this file describes the intended system shape and boundaries.
 
 ## System Shape
 
@@ -39,13 +41,15 @@ Crazy Factory is a local-first autonomous development system organized around bo
 
 ## Mission State Architecture
 
-Bootstrap state snapshots live in `state/`:
+Project runtime state lives inside each workbench, typically under
+`<app_path>/state/`. Legacy root-level state may still exist for migration, but
+new project-specific state should remain project-local:
 
 | File | Purpose |
 | --- | --- |
-| `state/factory_state.json` | Global mode, active project, capability flags, failure counters, and recovery guidance |
-| `state/active_run.json` | Current phase, task, checkpoint, blocker, and immediate resume point |
-| `state/project_state.json` | Active project milestone, satisfaction status, checkpoint history pointer, and project recovery instructions |
+| `<app_path>/state/factory_state.json` | Mode, targeted project identity, capability-derived status, failure counters, and recovery guidance |
+| `<app_path>/state/active_run.json` | Current phase, task, checkpoint, blocker, and immediate resume point |
+| `<app_path>/state/project_state.json` | Project milestone, satisfaction status, checkpoint history pointer, and project recovery instructions |
 
 Each application also maintains a `MASTER_CHECKLIST.md`, milestones, checkpoint
 history, and satisfaction report. The checklist is the application-level source
@@ -66,4 +70,8 @@ The memory system preserves:
 
 ## Future Capability Boundaries
 
-Ollama, local models, cron scheduling, MCP integration, Codex oversight, Claude oversight, multi-model collaboration, and multi-project operation are roadmap items. Their contracts must be planned and approved before implementation.
+Ollama/local model access, cron-style mission invocation, project registries,
+and multi-project targeting now have initial runtime support. MCP integration,
+Codex/Claude oversight, richer multi-model collaboration, and production-grade
+unattended operation remain roadmap items whose contracts must be planned and
+approved before implementation.

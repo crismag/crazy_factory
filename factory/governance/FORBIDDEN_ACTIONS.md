@@ -16,9 +16,10 @@ The factory must never:
 - expand task scope silently
 - stop silently without recording status and a resume point
 
-## Current Bootstrap Prohibitions
+## Ungated Implementation Prohibitions
 
-During documentation bootstrap, do not generate:
+Without a valid owner-approved task and matching capability gates, do not
+generate:
 
 - implementation code
 - Python scripts

@@ -24,13 +24,16 @@ Allowed local git operations:
 
 Each operation must remain within task scope. A local commit must contain reviewed intended work only.
 
-Automatic checkpoint commits are a future capability. They must remain
-disabled until explicitly approved and implemented behind review and validation
-gates.
+Automatic checkpoint commits must remain disabled unless explicitly enabled by
+owner policy and reached through review and validation gates. They never imply
+push, merge, force-push, or history rewrite authority.
 
-## Future Implementation Actions
+## Implementation Actions
 
-Creating code, tests, or other implementation artifacts requires a future approved implementation phase and an approved planned task. These actions are not allowed during documentation bootstrap.
+Creating code, tests, or other implementation artifacts requires a valid,
+owner-approved planned task and must remain inside approved project workbench
+paths. Capability switches still default off and must be enabled explicitly
+before application, validation, remediation, or checkpoint commits occur.
 
 ## Interpretation
 
