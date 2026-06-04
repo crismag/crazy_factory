@@ -256,6 +256,18 @@ def main(project: dict[str, Any] | None = None) -> int:
         print(f"Crazy Factory advance {control_action}: {detail}")
         return 0
 
+    # Park on a terminal remediation_exhausted blocker: the fix budget for the
+    # current task is spent. Stop working rather than churning the same failure;
+    # the owner reviews and runs `revoke-task` to retire it and resume.
+    if project_state.get("current_blocker") == "remediation_exhausted":
+        print(
+            f"Crazy Factory advance parked: '{project_name}' is blocked by "
+            "remediation_exhausted (fix budget spent on the current task). "
+            "See VALIDATION_REPORT.md; run `crazy-admin revoke-task "
+            f"{project_name}` to retire the task and resume."
+        )
+        return 0
+
     max_lines = int(factory["max_lines_per_file"])
     contexts = read_markdown_directory(
         str(project["context_root"]),

@@ -312,6 +312,21 @@ def validate_patch_plan(
             reasons.append(
                 f"No content provided for {patch.action}: {patch.path}"
             )
+        # Deterministic syntax guardrail: never write Python that does not
+        # parse. Catches whole classes of broken generation (e.g. a JS-style
+        # `//` comment) before it lands and poisons every later validation.
+        if (
+            patch.action in {"create", "modify"}
+            and patch.path.endswith(".py")
+            and patch.content.strip()
+        ):
+            try:
+                compile(patch.content, patch.path or "<patch>", "exec")
+            except SyntaxError as exc:
+                reasons.append(
+                    f"Python syntax error in {patch.path}: {exc.msg} "
+                    f"(line {exc.lineno})"
+                )
         line_count = len(patch.content.splitlines())
         if line_count > max_lines:
             reasons.append(

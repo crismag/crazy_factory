@@ -131,6 +131,19 @@ def revoke_task(project: dict[str, Any], root: Path) -> None:
         task["authorized"] = False
         _write_task_json(project, PLANNED_TASK_FILE, task, root)
 
+    # Clear a stuck state so a parked project can resume on the next advance:
+    # revoking the task is the owner's "drop this and move on" signal.
+    state_dir = str(project["state_dir"])
+    state_file = f"{state_dir}/project_state.json"
+    if resolve_repo_path(state_file, root).is_file():
+        state = safe_load_json(state_file, root)
+        state["current_blocker"] = None
+        state["remediation_attempt"] = 0
+        state["failure_count"] = 0
+        safe_write_json(
+            state_file, state, repo_root=root, allowed_roots=[state_dir]
+        )
+
 
 # --- proposal approval ------------------------------------------------------
 

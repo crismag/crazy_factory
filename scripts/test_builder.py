@@ -329,13 +329,22 @@ def request_test_plan(
         stream=bool(ollama["stream"]),
     )
     instruction = (
-        "Return ONLY a single JSON object describing a validation test plan. "
-        "Use keys: test_plan_id, task_id, required_checks (array of shell "
-        "commands), manual_checks (array of strings), expected_outcome, "
-        "risk_notes. required_checks MUST be limited to safe, read-only "
-        "validation commands such as 'python3 -m pytest', 'pytest', "
-        "'ruff check', or 'mypy'. Never include git, network, install, or "
-        "destructive commands."
+        "Return ONLY a single JSON object describing a validation test plan "
+        "for THIS ONE task. Use keys: test_plan_id, task_id, required_checks "
+        "(array of shell commands), manual_checks (array of strings), "
+        "expected_outcome, risk_notes. required_checks MUST be limited to "
+        "safe, read-only validation commands such as 'python3 -m pytest', "
+        "'pytest', 'ruff check', or 'mypy'. Never include git, network, "
+        "install, or destructive commands.\n\n"
+        "SCOPE every check to ONLY the files this task creates or modifies "
+        "(listed under 'Work To Validate'). Run the specific test file(s) for "
+        "this task (e.g. 'python3 -m pytest tests/test_x.py'), NOT the whole "
+        "suite. If you lint or type-check, target only this task's files "
+        "(e.g. 'ruff check src/x.py') — NEVER the whole project, so an "
+        "unrelated or not-yet-written file cannot block this task. Prefer the "
+        "smallest set of checks that proves THIS task's increment works. "
+        "Whole-project checks belong only to an explicit final 'run all tests' "
+        "task, not to an incremental one."
     )
     proposal_summary = json.dumps(
         {

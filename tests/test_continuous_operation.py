@@ -115,6 +115,17 @@ class StallTests(unittest.TestCase):
         )
         self.assertTrue(signal.stalled)
 
+    def test_stall_on_remediation_exhausted(self) -> None:
+        # A spent fix budget is terminal: the loop must park, not churn.
+        signal = detect_stall(
+            factory_state={},
+            project_state={
+                "failure_count": 0,
+                "current_blocker": "remediation_exhausted",
+            },
+        )
+        self.assertTrue(signal.stalled)
+
     def test_stall_on_repeated_fallback(self) -> None:
         signal = detect_stall(
             factory_state={

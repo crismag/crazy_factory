@@ -224,6 +224,36 @@ class ValidateTests(unittest.TestCase):
         self.assertFalse(verdict.valid)
         self.assertTrue(any("content" in r.lower() for r in verdict.reasons))
 
+    def test_rejects_python_syntax_error(self) -> None:
+        # Deterministic syntax guardrail: a .py file that does not compile is
+        # rejected before it can land and poison later validation.
+        data = _valid_plan_dict()
+        data["files"] = [
+            {
+                "path": "apps/demo/app/x.py",
+                "action": "create",
+                "content": "// not python\nimport os\n",
+            }
+        ]
+        verdict = self._validate(parse_patch_plan(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertTrue(
+            any("syntax error" in r.lower() for r in verdict.reasons)
+        )
+
+    def test_accepts_valid_python(self) -> None:
+        data = _valid_plan_dict()
+        data["files"] = [
+            {
+                "path": "apps/demo/app/x.py",
+                "action": "create",
+                "content": "def f():\n    return 1\n",
+            }
+        ]
+        self.assertTrue(
+            self._validate(parse_patch_plan(json.dumps(data))).valid
+        )
+
     def test_rejects_secret_content(self) -> None:
         data = _valid_plan_dict()
         data["files"] = [

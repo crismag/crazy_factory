@@ -215,6 +215,32 @@ class AuthorizeTaskTests(unittest.TestCase):
             raw = pc.read_control("apps/app", root)
             self.assertFalse(raw["owner_controls"]["task_authorized"])
 
+    def test_revoke_clears_parked_state(self) -> None:
+        # Revoking a task is the owner's recovery from a parked
+        # (remediation_exhausted) project: the blocker and counters reset so the
+        # next advance can plan afresh.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _git_root(tmp)
+            project = _project(root)
+            (root / "apps/app/state").mkdir(parents=True, exist_ok=True)
+            safe_write_json(
+                "apps/app/state/project_state.json",
+                {
+                    "current_blocker": "remediation_exhausted",
+                    "remediation_attempt": 3,
+                    "failure_count": 5,
+                },
+                repo_root=root,
+                allowed_roots=["apps/app/state"],
+            )
+            oc.revoke_task(project, root)
+            state = json.loads(
+                (root / "apps/app/state/project_state.json").read_text()
+            )
+            self.assertIsNone(state["current_blocker"])
+            self.assertEqual(state["remediation_attempt"], 0)
+            self.assertEqual(state["failure_count"], 0)
+
 
 class ApproveProposalTests(unittest.TestCase):
     """approve-proposal records the approval safely."""
