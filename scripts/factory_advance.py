@@ -67,6 +67,7 @@ from remediation import (  # noqa: E402
     fix_approval_record,
     plan_remediation,
 )
+from recovery_router import run_recovery_router  # noqa: E402
 from completion import (  # noqa: E402
     CHECKLIST_FILENAME,
     checklist_focus,
@@ -764,6 +765,7 @@ def main(project: dict[str, Any] | None = None) -> int:
             if application_result.activated
             else []
         ),
+        application_written_files=list(application_result.applied_files),
         test_plan_status=test_plan_status_label(test_plan_result),
         test_plan_id=test_plan.test_plan_id if test_plan else None,
         validation_status=validation_status_label(validation_result),
@@ -827,10 +829,43 @@ def main(project: dict[str, Any] | None = None) -> int:
     except ValueError:
         report_display = report_path
     msg.report(f"Report written: {report_display}")
-    msg.report(
-        "Safety: planning + proposal + preview only; no commit/push/merge "
-        "attempted"
-    )
+    if application_result.applied:
+        msg.report(
+            "Safety: application writes stayed inside the approved workbench; "
+            "no commit/push/merge attempted"
+        )
+    else:
+        msg.report(
+            "Safety: no application edit, commit, push, or merge attempted"
+        )
+    if (
+        project_state.get("current_blocker") == "application_rejected"
+        and bool(
+            factory_config.get("validation", {}).get(
+                "allow_remediation", False
+            )
+        )
+    ):
+        decision, changed = run_recovery_router(
+            root=root,
+            project=project,
+            project_state=project_state,
+            active_run=active_run,
+        )
+        persist_state(
+            root=root,
+            state_dir=state_dir,
+            factory_state=factory_state,
+            active_run=active_run,
+            project_state=project_state,
+        )
+        msg.decision(
+            "recovery",
+            decision.decision,
+            reasons=[decision.reason],
+        )
+        if changed:
+            msg.detail("recovery changed artifacts", items=changed)
     return 0
 
 

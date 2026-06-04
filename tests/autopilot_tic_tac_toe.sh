@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
 #
 # Crazy Factory — hands-off "from zero to green" autopilot for tic-tac-toe.
+# FULLY RUNNABLE, MAX-VERBOSITY / DEBUG variant.
 #
 # WHAT THIS IS
-#   A thin OWNER-GATE driver. Crazy Factory's own local Ollama models do all the
-#   thinking and coding (no Claude, no external coding agent). This script only
-#   plays the owner — it issues the authorize / approve / enable commands the
-#   engine requires, so you can watch one tiny app self-drive from an empty
-#   folder to a green (tests-passing) build without hand-typing each gate.
+#   A thin OWNER-GATE driver you can run end-to-end: `bash tests/autopilot_tic_tac_toe.sh`.
+#   Crazy Factory's own local Ollama models do ALL the thinking and coding (no
+#   Claude, no external coding agent). This script only plays the owner — it
+#   issues the authorize / approve / enable commands the engine requires, so a
+#   tiny app self-drives from an empty folder to a green (tests-passing) build
+#   without you hand-typing each gate or re-running each line.
 #
-# WHAT IS DIFFERENT NOW (no hacks)
-#   Earlier versions had to hack around engine gaps. None of that is needed:
-#     - NO `sed` of the project config — `enable-apply` flips apply mode itself.
-#     - NO hand-seeded planned_task.json — the factory plans the task; the
-#       AI contract reviewer repairs safe gaps so the plan lands valid.
-#     - NO `activate` — there is no global "active project". Every command
-#       targets the project by id (here, `tic-tac-toe`); you could equally use
-#       `--path <dir>` or just run from inside the workbench.
-#     - If the first build fails its tests, the owner-enabled REMEDIATION loop
-#       re-engages the coder to fix it, bounded by a retry budget.
+#   The factory NEVER authorizes its own work. Autonomous mode is intentionally
+#   left OFF here: the script (the owner) issues every gate, beat by beat, and
+#   the deterministic safety floor still gates everything.
+#
+# WHAT IT EXERCISES (current flow)
+#   - ARCHITECTURE CONTRACT (architecture.json): the frozen tree + forbidden
+#     deps. The checklist is derived from required_files (in order); the patch
+#     gate + whole-project coherence gate + SELF_REJECTION detection enforce it.
+#   - The plan -> AI contract review (repairs safe gaps) -> coder -> apply ->
+#     validate -> (bounded) remediation loop, driven to completion.
+#   - MAX OBSERVABILITY: `-v 10` on every advance (phases, stages, decisions,
+#     rejection/error CHECKLISTS, debug, trace) + a full timestamped trace to a
+#     log file, so on any failure you see WHICH check failed and why.
 #
 # WHERE IT BUILDS
 #   Directly at the owner's target location, OUTSIDE the factory repo:
@@ -27,34 +32,60 @@
 #   <apps-base>/tic-tac-toe. Each project stays confined to its own folder;
 #   writes outside it are rejected by the engine.
 #
-# HOW TO USE
-#   Run the blocks top to bottom. Commands are plain and explicit (no shell
-#   variables). The local model is non-deterministic, so a few blocks say
-#   "re-run until ..." — just run that one line again if the status isn't there
-#   yet. Each block is safe to run on its own.
+# HOW TO READ THE OUTPUT
+#   [PHASE]    a run phase (contract / coder / application / validation)
+#   [STEP]     a stage outcome
+#   [DECISION] a decision point and why (e.g. contract.review -> repair)
+#   [REJECT]   something was rejected, with the full reason checklist
+#   [ERROR]    a failure, with the checklist of WHICH checks failed and why
+#   [WARN]     a pause/park (e.g. remediation_exhausted, self_rejection)
+#   Plain      the verbatim end-of-advance summary
+#
+# VERBOSITY CHEAT-SHEET
+#   crazy-admin -q advance <id>          # 0  silent
+#   crazy-admin advance <id>             # 4  default (decisions + rejections)
+#   crazy-admin --debug advance <id>     # 7  + debug
+#   crazy-admin -v 10 advance <id>       # 10 everything (this script)
+#   CRAZY_FACTORY_VERBOSITY=10 crazy-admin advance <id>   # same, via env
+
+set -u
 
 # ---------------------------------------------------------------------------
-# 0. Go to the factory repo (the engine lives here; the app builds elsewhere).
+# 0. Settings + a full, timestamped trace of EVERYTHING to a log file
+#    (independent of console verbosity) for later analysis.
 # ---------------------------------------------------------------------------
 cd /mnt/ai/workspaces/crazy_factory
 
+ID=tic-tac-toe
+APPS_BASE=/mnt/ai/workspaces/crazy_apps
+APP="$APPS_BASE/$ID"
+ADMIN="bin/crazy-admin"
+CHECKLIST="$APP/factory_tasks/MASTER_CHECKLIST.md"
+MAX_BEATS=16   # generous: ~3 beats/item + remediation + local-model variance
+
+export CRAZY_FACTORY_LOGFILE="$APPS_BASE/$ID.log"
+mkdir -p "$APPS_BASE"
+: > "$CRAZY_FACTORY_LOGFILE"
+echo "full trace -> $CRAZY_FACTORY_LOGFILE"
+
 # Confirm the local model server is up — generation needs it.
-curl -s -m 4 http://localhost:11434/api/tags >/dev/null && echo "ollama: UP" || echo "ollama: DOWN (start it; otherwise no real code is generated)"
+curl -s -m 4 http://localhost:11434/api/tags >/dev/null \
+  && echo "ollama: UP" \
+  || echo "ollama: DOWN (start it; otherwise no real code is generated)"
 
 # ---------------------------------------------------------------------------
 # 1. Create the project at the external target location.
 #    --apps-base persists the base to config/factory.yaml so the runtime
-#    (advance) honors the same location. The app path becomes
-#    /mnt/ai/workspaces/crazy_apps/tic-tac-toe. --force re-scaffolds cleanly if
-#    the id already exists. There is no "activate" step.
+#    (advance) honors the same location. --force re-scaffolds cleanly if the id
+#    already exists. There is no "activate" step — commands target by <id>.
 # ---------------------------------------------------------------------------
-bin/crazy-admin startproject tic-tac-toe --apps-base /mnt/ai/workspaces/crazy_apps --force
+$ADMIN startproject "$ID" --apps-base "$APPS_BASE" --force
 
 # ---------------------------------------------------------------------------
-# 2. Give the factory the goal. This is the project brief the architect and
-#    planner read (the only project context they treat as the task to build).
+# 2. Give the factory the goal — the brief the architect and planner read.
 # ---------------------------------------------------------------------------
-cat > /mnt/ai/workspaces/crazy_apps/tic-tac-toe/factory_context/PROJECT_GOAL.md <<'GOAL'
+mkdir -p "$APP/factory_context"
+cat > "$APP/factory_context/PROJECT_GOAL.md" <<'GOAL'
 # Project Goal
 
 Build a minimal, playable Python Tkinter Tic-Tac-Toe app.
@@ -75,59 +106,88 @@ How to verify:
 GOAL
 
 # ---------------------------------------------------------------------------
-# 3. Advance: the factory PLANS the next task (architect -> planner -> contract
-#    -> AI contract review). Re-run this one line until the contract decision is
-#    "valid" or "repair" (both mean the plan is authorizable). If it shows
-#    "needs_owner_review", read factory_tasks/CONTRACT_REVIEW.md and advance
-#    again. The factory never authorizes its own work.
+# 3. Declare the ARCHITECTURE CONTRACT: the canonical tree + forbidden deps the
+#    factory must obey. The checklist is derived from required_files (in this
+#    order). This is project data (lives in the workbench), not engine logic.
 # ---------------------------------------------------------------------------
-bin/crazy-admin advance tic-tac-toe
-
-# Optional: inspect what it decided to build first.
-bin/crazy-admin status tic-tac-toe
-
-# ---------------------------------------------------------------------------
-# 4. OWNER GATE 1 — authorize the task. This only succeeds for a valid contract;
-#    the factory cannot authorize its own work.
-# ---------------------------------------------------------------------------
-bin/crazy-admin authorize-task tic-tac-toe
-
-# ---------------------------------------------------------------------------
-# 5. Advance: the Coder model now PROPOSES the implementation (it does not write
-#    code yet; it can see the current workbench source to target real files).
-#    Re-run this one line until the output shows
-#    "Coder proposal verdict: valid" (local-model variance may need 1-3 tries).
-# ---------------------------------------------------------------------------
-bin/crazy-admin advance tic-tac-toe
+cat > "$APP/architecture.json" <<'JSON'
+{
+  "src_dirs": ["src"],
+  "test_dirs": ["tests"],
+  "extra_allowed": ["README.md"],
+  "forbidden_dirs": ["app", "ui", "gui"],
+  "forbidden_names": ["*.db", "*.sqlite"],
+  "forbidden_imports": ["numpy", "pygame", "requests", "PyQt5", "PySide6", "kivy"],
+  "required_files": ["src/tic_tac_toe.py", "tests/test_tic_tac_toe_logic.py"]
+}
+JSON
 
 # ---------------------------------------------------------------------------
-# 6. OWNER GATES 2-4 — approve the proposal, enable applying it, enable
-#    validation (running the tests), and enable remediation (let the factory fix
-#    its own failing tests, bounded). enable-apply also turns on apply mode, so
-#    no config edit is needed.
+# 4. OWNER GATES (set once) — let the loop apply approved code, run the tests,
+#    and fix its own failing tests (bounded). enable-apply also turns on apply
+#    mode, so no config edit is needed. NOTE: we do NOT enable-autonomous — the
+#    factory still cannot authorize/approve its own work; the loop below issues
+#    each authorize-task / approve-proposal as the owner.
 # ---------------------------------------------------------------------------
-bin/crazy-admin approve-proposal tic-tac-toe
-bin/crazy-admin enable-apply tic-tac-toe
-bin/crazy-admin enable-validation tic-tac-toe
-bin/crazy-admin enable-remediation tic-tac-toe
+$ADMIN enable-apply "$ID"
+$ADMIN enable-validation "$ID"
+$ADMIN enable-remediation "$ID"
 
 # ---------------------------------------------------------------------------
-# 7. Advance: the factory WRITES the generated files to the target location and
-#    RUNS the tests. Re-run this one line until validation reaches
-#    "Validation: passed". If a write applies broken code, the next advance is a
-#    REMEDIATION attempt ("Remediation attempt N/3 ...") that regenerates a fix,
-#    auto-approves it (owner-enabled), re-applies, and re-validates. Once green,
-#    the applied code is preserved (not regenerated) on later advances.
+# 5. Self-driving loop at MAX verbosity. Each beat advances exactly one stage:
+#      plan+review contract  ->  (owner authorizes)  ->  coder proposes
+#      ->  (owner approves)  ->  apply + validate  ->  remediate if red
+#    so after each advance we (the owner) try to authorize the freshly-valid
+#    contract and approve the freshly-valid proposal. Only the applicable gate
+#    succeeds on a given beat; the others no-op. We stop when the build is green
+#    AND every checklist item is done — or when the factory parks for review.
 # ---------------------------------------------------------------------------
-bin/crazy-admin advance tic-tac-toe
+done_reason="reached the beat budget without converging"
+for ((beat = 1; beat <= MAX_BEATS; beat++)); do
+  echo
+  echo "════════════════════ beat $beat/$MAX_BEATS ════════════════════"
+  out="$($ADMIN -v 10 advance "$ID" 2>&1)"
+  printf '%s\n' "$out"
+
+  # Owner gates — best-effort; the one matching this beat's state succeeds.
+  if $ADMIN authorize-task "$ID" >/dev/null 2>&1; then
+    echo "  ↳ owner gate: authorized the contract"
+  fi
+  if $ADMIN approve-proposal "$ID" >/dev/null 2>&1; then
+    echo "  ↳ owner gate: approved the proposal"
+  fi
+
+  # Parked for owner review? Stop and surface it.
+  if grep -qE "remediation_exhausted|self_rejection|needs_owner_review" <<<"$out"; then
+    done_reason="factory parked for owner review (see the trace)"
+    break
+  fi
+
+  # Green build AND no open checklist items left? Done.
+  if grep -q "Validation: passed" <<<"$out" \
+     && [ -f "$CHECKLIST" ] && ! grep -q '\[ \]' "$CHECKLIST"; then
+    done_reason="green build and checklist complete"
+    break
+  fi
+done
+echo
+echo "════════════════════ loop ended: $done_reason ════════════════════"
 
 # ---------------------------------------------------------------------------
-# 8. Inspect what the factory built and prove it works, run exactly at the
-#    owner's target location.
+# 6. Inspect progress, the checklist, and the last decisions/errors.
 # ---------------------------------------------------------------------------
-bin/crazy-admin status tic-tac-toe
-ls -R /mnt/ai/workspaces/crazy_apps/tic-tac-toe/src /mnt/ai/workspaces/crazy_apps/tic-tac-toe/tests
-cd /mnt/ai/workspaces/crazy_apps/tic-tac-toe
+$ADMIN status "$ID"
+echo "=== MASTER_CHECKLIST ==="
+[ -f "$CHECKLIST" ] && cat "$CHECKLIST" || echo "(no checklist yet)"
+echo "=== last decisions / rejections / errors in the trace ==="
+grep -E '\[DECISION\]|\[REJECT\]|\[ERROR\]|\[WARN\]' "$CRAZY_FACTORY_LOGFILE" | tail -30
+
+# ---------------------------------------------------------------------------
+# 7. Prove it works, run exactly at the owner's target location.
+# ---------------------------------------------------------------------------
+echo "=== built tree ==="
+ls -R "$APP/src" "$APP/tests" 2>/dev/null || echo "(src/tests not created yet)"
+cd "$APP"
 python3 -m pytest tests
 # Launch the window manually (needs a display):
 # python3 src/tic_tac_toe.py

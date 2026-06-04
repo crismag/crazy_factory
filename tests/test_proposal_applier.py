@@ -46,7 +46,10 @@ def _proposal_record() -> dict[str, object]:
     return {
         "proposal_id": "CP-001",
         "task_id": "DEMO-002",
-        "files_to_create": ["apps/demo/app/status.py"],
+        "files_to_create": [
+            "apps/demo/app/status.py",
+            "apps/demo/tests/test_status.py",
+        ],
         "files_to_modify": ["apps/demo/docs/README.md"],
         "files_to_delete": [],
         "validation": {"status": "valid", "reasons": []},
@@ -82,6 +85,15 @@ def _valid_plan_dict() -> dict[str, object]:
                 "path": "apps/demo/app/status.py",
                 "action": "create",
                 "content": "STATUS = 'ok'\n",
+            },
+            {
+                "path": "apps/demo/tests/test_status.py",
+                "action": "create",
+                "content": (
+                    "from apps.demo.app.status import STATUS\n\n"
+                    "def test_status():\n"
+                    "    assert STATUS == 'ok'\n"
+                ),
             }
         ],
         "notes": "",
@@ -133,7 +145,7 @@ class ParseTests(unittest.TestCase):
     def test_parse_valid_plan(self) -> None:
         plan = _valid_plan()
         self.assertEqual(plan.plan_id, "PP-001")
-        self.assertEqual(len(plan.files), 1)
+        self.assertEqual(len(plan.files), 2)
         self.assertEqual(plan.files[0].action, "create")
 
     def test_parse_rejects_non_json(self) -> None:
@@ -239,6 +251,49 @@ class ValidateTests(unittest.TestCase):
         self.assertFalse(verdict.valid)
         self.assertTrue(
             any("syntax error" in r.lower() for r in verdict.reasons)
+        )
+
+    def test_rejects_placeholder_python_before_apply(self) -> None:
+        data = _valid_plan_dict()
+        data["files"] = [
+            {
+                "path": "apps/demo/app/storage.py",
+                "action": "create",
+                "content": (
+                    "def save_data(data):\n"
+                    "    # Implement logic here\n"
+                    "    pass\n"
+                ),
+            },
+            {
+                "path": "apps/demo/tests/test_storage.py",
+                "action": "create",
+                "content": (
+                    "from apps.demo.app.storage import save_data\n\n"
+                    "def test_save_data_exists():\n"
+                    "    assert callable(save_data)\n"
+                ),
+            },
+        ]
+        verdict = self._validate(parse_patch_plan(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertTrue(
+            any("placeholder" in r.lower() for r in verdict.reasons)
+        )
+
+    def test_rejects_unused_imports_before_apply(self) -> None:
+        data = _valid_plan_dict()
+        data["files"] = [
+            {
+                "path": "apps/demo/tests/test_x.py",
+                "action": "create",
+                "content": "import pytest\n\n\ndef test_x():\n    assert True\n",
+            }
+        ]
+        verdict = self._validate(parse_patch_plan(json.dumps(data)))
+        self.assertFalse(verdict.valid)
+        self.assertTrue(
+            any("unused import" in r.lower() for r in verdict.reasons)
         )
 
     def test_accepts_valid_python(self) -> None:
@@ -707,6 +762,46 @@ class StateAndReportTests(unittest.TestCase):
         self.assertEqual(
             project_state["current_blocker"], "application_rejected"
         )
+
+    def test_validation_pass_does_not_mask_application_rejection(self) -> None:
+        from validation_runner import CheckResult, ValidationResult
+
+        factory_state: dict[str, object] = {"failure_count": 0}
+        active_run: dict[str, object] = {}
+        project_state: dict[str, object] = {
+            "current_task": "DEMO-002",
+            "failure_count": 0,
+        }
+        rejected = ApplicationResult(
+            None,
+            ApplicationVerdict(False, ["bad patch"]),
+            "ollama",
+            "d",
+            "apply",
+            activated=True,
+        )
+        passed = ValidationResult(
+            "coherence",
+            [CheckResult("python3 -m pytest tests", "passed", 0)],
+            "passed",
+            True,
+        )
+        update_success_state(
+            factory_state,
+            active_run,
+            project_state,
+            RoleResult("a", "x", "ollama", "m"),
+            RoleResult("p", "y", "ollama", "m"),
+            application_result=rejected,
+            validation_result=passed,
+        )
+        self.assertEqual(
+            project_state["current_blocker"], "application_rejected"
+        )
+        self.assertEqual(
+            active_run["current_blocker"], "application_rejected"
+        )
+        self.assertIn("application", str(active_run["resume_from"]))
 
     def test_patch_plan_to_dict_marks_applied(self) -> None:
         result = ApplicationResult(

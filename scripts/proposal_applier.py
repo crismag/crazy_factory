@@ -25,6 +25,8 @@ Hard boundaries:
 from __future__ import annotations
 
 import json
+import ast
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -74,6 +76,25 @@ FORBIDDEN_EXACT_PATHS: tuple[str, ...] = (
 )
 
 VALID_ACTIONS: frozenset[str] = frozenset({"create", "modify", "delete"})
+_PLACEHOLDER_PHRASES: tuple[str, ...] = (
+    "implement logic here",
+    "implementation goes here",
+    "implement data saving logic here",
+    "implement data loading logic here",
+    "todo: implement",
+    "not implemented",
+)
+_INCOMPLETE_NOTE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\bimplementation remains incomplete\b",
+        r"\bincomplete implementation\b",
+        r"\bnot fully implemented\b",
+        r"\bstill needs? to be implemented\b",
+        r"\bplaceholder implementation\b",
+        r"\btodo\b",
+    )
+)
 
 
 class PatchPlanParseError(ValueError):
@@ -374,12 +395,153 @@ def validate_patch_plan(
         ]
         reasons.extend(patch_contract_violations(contract_files, contract))
 
+    reasons.extend(patch_quality_violations(plan, proposal_record))
+
     return ApplicationVerdict(
         valid=not reasons,
         reasons=reasons,
         blocked_paths=blocked,
         warnings=warnings,
     )
+
+
+def _is_placeholder_body(body: list[ast.stmt]) -> bool:
+    """Return true for function bodies that do no real work."""
+    meaningful = [
+        node
+        for node in body
+        if not (
+            isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        )
+    ]
+    if not meaningful:
+        return True
+    if len(meaningful) != 1:
+        return False
+    node = meaningful[0]
+    if isinstance(node, ast.Pass):
+        return True
+    if (
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and node.value.value is Ellipsis
+    ):
+        return True
+    if isinstance(node, ast.Raise) and isinstance(
+        node.exc, ast.Call | ast.Name
+    ):
+        text = ast.unparse(node).lower() if hasattr(ast, "unparse") else ""
+        return "notimplemented" in text or "not implemented" in text
+    return False
+
+
+def _imported_names(tree: ast.AST) -> dict[str, int]:
+    """Map imported binding names to their source line."""
+    names: dict[str, int] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                names[alias.asname or alias.name.split(".")[0]] = node.lineno
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == "__future__":
+                continue
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                names[alias.asname or alias.name] = node.lineno
+    return names
+
+
+def _used_names(tree: ast.AST) -> set[str]:
+    """Return names used outside import statements."""
+    used: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        if isinstance(node, ast.Name):
+            used.add(node.id)
+    return used
+
+
+def _python_quality_violations(path: str, content: str) -> list[str]:
+    """Return deterministic Python quality rejection reasons."""
+    reasons: list[str] = []
+    lowered = content.lower()
+    for phrase in _PLACEHOLDER_PHRASES:
+        if phrase in lowered:
+            reasons.append(f"{path}: placeholder implementation text: {phrase}")
+    try:
+        tree = ast.parse(content)
+    except SyntaxError:
+        return reasons
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if _is_placeholder_body(list(node.body)):
+                reasons.append(
+                    f"{path}:{node.lineno}: placeholder function body in "
+                    f"{node.name}()"
+                )
+    imported = _imported_names(tree)
+    used = _used_names(tree)
+    for name, lineno in sorted(imported.items()):
+        if name not in used:
+            reasons.append(f"{path}:{lineno}: unused import {name!r}")
+    return reasons
+
+
+def patch_quality_violations(
+    plan: PatchPlan, proposal_record: object
+) -> list[str]:
+    """Return deterministic quality violations that must not be applied."""
+    reasons: list[str] = []
+    for pattern in _INCOMPLETE_NOTE_PATTERNS:
+        if pattern.search(plan.notes or ""):
+            reasons.append(
+                "Patch notes admit incomplete or placeholder implementation"
+            )
+            break
+    changed_paths = [
+        p.path
+        for p in plan.files
+        if p.action in {"create", "modify"} and p.path
+    ]
+    test_paths = [
+        p for p in changed_paths if p.startswith("tests/") or "/tests/" in p
+    ]
+    source_paths = [
+        p
+        for p in changed_paths
+        if p.endswith(".py")
+        and (p.startswith("src/") or p.startswith("app/") or "/src/" in p)
+    ]
+    declared = _declared_proposal_paths(proposal_record)
+    declared_tests = [
+        p for p in declared if p.startswith("tests/") or "/tests/" in p
+    ]
+    if source_paths and not (test_paths or declared_tests):
+        reasons.append(
+            "Implementation patch does not include or declare validation tests"
+        )
+    for patch in plan.files:
+        if patch.action not in {"create", "modify"}:
+            continue
+        stripped = patch.content.strip()
+        if (
+            (patch.path.startswith("tests/") or "/tests/" in patch.path)
+            and patch.path.endswith(".py")
+            and stripped
+            in {
+                "pass",
+                "import pytest",
+                "from pytest import raises",
+            }
+        ):
+            reasons.append(f"{patch.path}: empty or placeholder test file")
+        if patch.path.endswith(".py") and stripped:
+            reasons.extend(_python_quality_violations(patch.path, patch.content))
+    return sorted(set(reasons))
 
 
 def _declared_proposal_paths(proposal_record: object) -> set[str]:

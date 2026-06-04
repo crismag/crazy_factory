@@ -108,10 +108,9 @@ class WorkbenchScanTests(unittest.TestCase):
 
 
 class CommandsAndLoadTests(unittest.TestCase):
-    def test_coherence_commands_scope_to_existing_dirs(self) -> None:
+    def test_coherence_commands_scope_to_declared_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            (base / "src").mkdir()
             (base / "tests").mkdir()
             cmds = coherence_commands(str(base), _CONTRACT)
             self.assertTrue(any("compileall" in c for c in cmds))
@@ -121,9 +120,11 @@ class CommandsAndLoadTests(unittest.TestCase):
             self.assertTrue(any(c.startswith("ruff check") for c in cmds))
             self.assertTrue(all("src" in c or "tests" in c for c in cmds))
 
-    def test_coherence_commands_empty_when_no_dirs(self) -> None:
+    def test_coherence_commands_empty_without_declared_or_existing_dirs(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            self.assertEqual(coherence_commands(tmp, _CONTRACT), [])
+            self.assertEqual(coherence_commands(tmp, {}), [])
 
     def test_load_contract_present_absent_malformed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

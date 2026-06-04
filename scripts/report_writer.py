@@ -167,6 +167,7 @@ def _render_application_section(
     reasons: list[str] | None,
     blocked_paths: list[str] | None,
     files: list[str] | None,
+    written_files: list[str] | None = None,
 ) -> str:
     """Render the optional Proposal Application section of a session report.
 
@@ -177,6 +178,7 @@ def _render_application_section(
         reasons: Patch-plan rejection reasons, rendered when rejected.
         blocked_paths: Paths blocked by the boundary.
         files: Application artifact files written this advance.
+        written_files: Application workbench files created/modified/deleted.
 
     Returns:
         Markdown section text, or an empty string when ``status`` is ``None``.
@@ -199,6 +201,8 @@ def _render_application_section(
         + "".join(f"  - `{p}`\n" for p in (blocked_paths or []))
         + "- Application files:\n"
         + "".join(f"  - `{path}`\n" for path in (files or []))
+        + "- Workbench files written:\n"
+        + "".join(f"  - `{path}`\n" for path in (written_files or []))
     )
 
 
@@ -307,6 +311,7 @@ def append_dry_run_report(
     application_reasons: list[str] | None = None,
     application_blocked_paths: list[str] | None = None,
     application_files: list[str] | None = None,
+    application_written_files: list[str] | None = None,
     test_plan_status: str | None = None,
     test_plan_id: str | None = None,
     validation_status: str | None = None,
@@ -361,6 +366,7 @@ def append_dry_run_report(
         application_reasons: Patch-plan rejection reasons, if any.
         application_blocked_paths: Patch paths blocked by the boundary.
         application_files: Application artifact files written this advance.
+        application_written_files: Application workbench files written.
         test_plan_status: Test-plan verdict label, or ``None`` when the test
             builder did not run this advance.
         test_plan_id: Test-plan identifier, if any.
@@ -412,6 +418,7 @@ def append_dry_run_report(
         reasons=application_reasons,
         blocked_paths=application_blocked_paths,
         files=application_files,
+        written_files=application_written_files,
     )
     validation_section = _render_validation_section(
         test_plan_status=test_plan_status,
@@ -428,6 +435,23 @@ def append_dry_run_report(
         committed=checkpoint_committed,
         excluded=checkpoint_excluded,
     )
+    write_facts = (
+        "- Application workbench files modified: "
+        + (
+            ", ".join(f"`{path}`" for path in application_written_files)
+            if application_written_files
+            else "`none`"
+        )
+        + ".\n"
+    )
+    if application_applied:
+        activity_safety = (
+            "- Safety: application files were written inside the approved "
+            "workbench; no commit or push attempted.\n"
+        )
+    else:
+        activity_safety = "- Safety: no application edit, commit, or push attempted.\n"
+
     body = (
         f"# Factory Session Report\n\n"
         f"- Timestamp: `{stamp}`\n"
@@ -472,7 +496,7 @@ def append_dry_run_report(
         + "## Safety Record\n\n"
         + f"- Architect planning source: `{architect_source}`.\n"
         + f"- Planner planning source: `{planner_source}`.\n"
-        + "- No application code was modified.\n"
+        + write_facts
         + "- Task contract authorization is owner-only; the factory never "
         + "sets `authorized` itself.\n"
         + "- No git commit or push was attempted.\n"
@@ -484,7 +508,7 @@ def append_dry_run_report(
         f"- Architect planning source: `{architect_source}`\n"
         f"- Planner planning source: `{planner_source}`\n"
         f"- Last role completed: `{last_role_completed}`\n"
-        "- Safety: no application edit, commit, or push attempted.\n"
+        + activity_safety
     )
     daily_entry = (
         f"\n## {stamp}\n\n"

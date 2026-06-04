@@ -148,13 +148,6 @@ def _run_one_check(
         )
     except (FileNotFoundError, OSError) as exc:
         return CheckResult(command, "error", None, f"Could not run: {exc}")
-    # pytest exit code 5 = "no tests collected" — for an incremental build with
-    # no test files yet, that is not a failure (nothing to run), so the whole-
-    # project gate is not deadlocked before the first test lands.
-    if completed.returncode == 5 and "pytest" in argv:
-        return CheckResult(
-            command, "passed", 5, "exit code 5 (no tests collected yet)"
-        )
     status = "passed" if completed.returncode == 0 else "failed"
     detail = f"exit code {completed.returncode}"
     if completed.returncode != 0:

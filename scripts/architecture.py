@@ -263,12 +263,16 @@ def render_contract_brief(contract: dict[str, Any]) -> str:
 def coherence_commands(app_path: str, contract: dict[str, Any]) -> list[str]:
     """Build the deterministic whole-project validation commands.
 
-    Scoped to the contract's source/test dirs (those that exist), never narrow
-    to a single file. Commands run from the workbench (the validation cwd).
+    Scoped to the contract's declared source/test dirs, never narrow to a
+    single file. Commands run from the workbench (the validation cwd). Declared
+    dirs are included even before they exist so an empty scaffold cannot look
+    coherent.
     """
     base = Path(app_path)
-    src = [d for d in _list(contract, "src_dirs") if (base / d).is_dir()]
-    tests = [d for d in _list(contract, "test_dirs") if (base / d).is_dir()]
+    declared_src = _list(contract, "src_dirs")
+    declared_tests = _list(contract, "test_dirs")
+    src = declared_src or [d for d in ("src",) if (base / d).is_dir()]
+    tests = declared_tests or [d for d in ("tests",) if (base / d).is_dir()]
     dirs = src + tests
     if not dirs:
         return []

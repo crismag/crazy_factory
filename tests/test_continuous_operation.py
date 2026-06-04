@@ -105,7 +105,7 @@ class StallTests(unittest.TestCase):
         )
         self.assertTrue(signal.stalled)
 
-    def test_stall_on_persistent_blocker(self) -> None:
+    def test_recoverable_blocker_does_not_stall_immediately(self) -> None:
         signal = detect_stall(
             factory_state={},
             project_state={
@@ -113,7 +113,7 @@ class StallTests(unittest.TestCase):
                 "current_blocker": "validation_failed",
             },
         )
-        self.assertTrue(signal.stalled)
+        self.assertFalse(signal.stalled)
 
     def test_stall_on_remediation_exhausted(self) -> None:
         # A spent fix budget is terminal: the loop must park, not churn.
@@ -126,9 +126,7 @@ class StallTests(unittest.TestCase):
         )
         self.assertTrue(signal.stalled)
 
-    def test_stall_on_self_rejection(self) -> None:
-        # SELF_REJECTION (factory rejected its own work) is terminal: pause for
-        # upstream repair, never loop the coder.
+    def test_self_rejection_routes_to_recovery_before_stall(self) -> None:
         signal = detect_stall(
             factory_state={},
             project_state={
@@ -136,7 +134,7 @@ class StallTests(unittest.TestCase):
                 "current_blocker": "self_rejection",
             },
         )
-        self.assertTrue(signal.stalled)
+        self.assertFalse(signal.stalled)
 
     def test_stall_on_repeated_fallback(self) -> None:
         signal = detect_stall(
@@ -156,13 +154,13 @@ class RecoveryTests(unittest.TestCase):
     def test_build_plan_recommends_block(self) -> None:
         signal = detect_stall(
             factory_state={},
-            project_state={"current_blocker": "validation_failed"},
+            project_state={"current_blocker": "remediation_exhausted"},
         )
         plan = build_recovery_plan(
-            signal, {"current_blocker": "validation_failed"}
+            signal, {"current_blocker": "remediation_exhausted"}
         )
         self.assertTrue(plan.set_blocked)
-        self.assertTrue(any("VALIDATION" in a for a in plan.actions))
+        self.assertTrue(plan.actions)
 
     def test_run_recovery_writes_and_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -171,7 +169,7 @@ class RecoveryTests(unittest.TestCase):
             project_state = {
                 "current_task": "DEMO-002",
                 "failure_count": 5,
-                "current_blocker": "validation_failed",
+                "current_blocker": "remediation_exhausted",
             }
             signal = detect_stall(
                 factory_state={}, project_state=project_state

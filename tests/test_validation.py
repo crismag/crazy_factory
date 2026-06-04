@@ -420,6 +420,7 @@ class StateAndReportTests(unittest.TestCase):
         *,
         test_plan_result: TestPlanResult | None = None,
         validation_result: ValidationResult | None = None,
+        application_result: object | None = None,
     ) -> tuple[dict, dict]:
         factory_state: dict[str, object] = {"failure_count": 0}
         active_run: dict[str, object] = {}
@@ -433,10 +434,47 @@ class StateAndReportTests(unittest.TestCase):
             project_state,
             RoleResult("a", "x", "ollama", "m"),
             RoleResult("p", "y", "ollama", "m"),
+            application_result=application_result,
             test_plan_result=test_plan_result,
             validation_result=validation_result,
         )
         return active_run, project_state
+
+    def test_application_rejection_outranks_validation_failure(self) -> None:
+        # Root-cause precedence: when this beat's patch was rejected (nothing
+        # applied), a failing validation run on stale code is a symptom — the
+        # blocker must stay application_rejected so recovery (not validation
+        # remediation) handles it, and the failure must not be double-counted.
+        from proposal_applier import ApplicationResult, ApplicationVerdict
+        from validation_runner import CheckResult
+
+        rejected = ApplicationResult(
+            plan=None,
+            verdict=ApplicationVerdict(
+                False, ["patch declares no validation tests"]
+            ),
+            source="ollama",
+            detail="rejected",
+            mode="apply",
+            activated=True,
+            applied=False,
+        )
+        failed_validation = ValidationResult(
+            "TP", [CheckResult("pytest", "failed", 1)], "failed", True
+        )
+        active_run, project_state = self._update(
+            application_result=rejected,
+            validation_result=failed_validation,
+        )
+        self.assertEqual(
+            project_state["current_blocker"], "application_rejected"
+        )
+        self.assertEqual(active_run["current_blocker"], "application_rejected")
+        # last_validation_status is still recorded truthfully…
+        self.assertEqual(project_state["last_validation_status"], "failed")
+        # …but the symptom does not bump the counter a second time (the
+        # application rejection already counted once).
+        self.assertEqual(project_state["failure_count"], 1)
 
     def test_validation_failed_increments_failure(self) -> None:
         from validation_runner import CheckResult

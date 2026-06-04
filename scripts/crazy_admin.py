@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,7 +33,12 @@ sys.dont_write_bytecode = True
 
 import factory_advance  # noqa: E402
 import factory_messaging as msg  # noqa: E402
-from mission_state import initial_state  # noqa: E402
+from mission_state import (  # noqa: E402
+    initial_state,
+    load_state,
+    persist_state,
+    validate_state_project,
+)
 from project_paths import (  # noqa: E402
     assert_project_local,
     load_project_factory_config,
@@ -79,6 +85,7 @@ from project_registry import (  # noqa: E402
     state_path_for,
     workbench_exists,
 )
+from recovery_router import run_recovery_router  # noqa: E402
 from repo_tools import (  # noqa: E402
     find_repo_root,
     resolve_repo_path,
@@ -234,6 +241,7 @@ def startproject(
     root: Path,
     force: bool = False,
     reuse: bool = False,
+    clean_runtime: bool = False,
     paths: dict[str, str] | None = None,
     apps_base: str | None = None,
     target_location: str | None = None,
@@ -247,6 +255,7 @@ def startproject(
         root: Absolute repository root.
         force: Overwrite existing scaffold files.
         reuse: Allow re-registering an existing project id.
+        clean_runtime: Remove generated/runtime artifacts before scaffolding.
         paths: Optional workbench sub-folder overrides (the scaffold and the
             registry both use these so the layout is self-consistent).
         apps_base: Owner-configured apps base; persisted to the engine config so
@@ -283,6 +292,9 @@ def startproject(
     # Effective workbench folder names: built-in defaults overlaid by overrides.
     # The scaffold and the resolver must agree, so both read this map.
     wb = {**WORKBENCH_DEFAULTS, **overrides}
+
+    if clean_runtime and base.exists():
+        _clean_runtime_base(base, wb, project_id, root)
 
     _scaffold_write(
         base,
@@ -380,6 +392,109 @@ def startproject(
         "state_path": f"{app_path}/state",
         "repo_mode": repo_mode,
     }
+
+
+def _assert_under_base(base: Path, target: Path) -> None:
+    """Raise if ``target`` does not resolve inside ``base``."""
+    if target != base and base not in target.parents:
+        raise AdminError(f"Refusing to clean outside the app dir: {target}")
+
+
+def _remove_child(base: Path, relpath: str) -> bool:
+    """Remove one workbench child path if it exists."""
+    target = (base / relpath).resolve()
+    _assert_under_base(base, target)
+    if not target.exists() and not target.is_symlink():
+        return False
+    if target.is_dir() and not target.is_symlink():
+        shutil.rmtree(target)
+    else:
+        target.unlink()
+    return True
+
+
+def _ensure_gitkeep(base: Path, relpath: str) -> None:
+    """Create a runtime directory with a ``.gitkeep`` placeholder."""
+    target = (base / relpath).resolve()
+    _assert_under_base(base, target)
+    target.mkdir(parents=True, exist_ok=True)
+    (target / ".gitkeep").write_text("", encoding="utf-8")
+
+
+def _clean_runtime_base(
+    base: Path, wb: dict[str, str], project_id: str, root: Path
+) -> dict[str, Any]:
+    """Remove generated/runtime artifacts inside one workbench.
+
+    Owner-authored scaffold/docs are preserved. Generated source and tests are
+    intentionally removed so an autopilot run can prove it starts clean.
+    """
+    base = base.resolve()
+    removed: list[str] = []
+    for rel in (
+        "src",
+        "tests",
+        "data",
+        "__pycache__",
+        ".pytest_cache",
+        ".ruff_cache",
+        wb["tasks_dir"],
+        wb["reports_dir"],
+        wb["state_dir"],
+        wb["factory_state_dir"],
+        wb["context_dir"],
+    ):
+        if _remove_child(base, rel):
+            removed.append(rel)
+
+    # Restore minimal runtime directories expected by later stages.
+    _ensure_gitkeep(base, "tests")
+    _ensure_gitkeep(base, wb["tasks_dir"])
+    _ensure_gitkeep(base, wb["reports_dir"])
+    _ensure_gitkeep(base, wb["factory_state_dir"])
+    _ensure_gitkeep(base, f"{wb['context_dir']}/imports")
+    _ensure_gitkeep(base, f"{wb['context_dir']}/extracted")
+    (base / wb["context_dir"]).mkdir(parents=True, exist_ok=True)
+    (base / wb["context_dir"] / "catalog.yaml").write_text(
+        dump_catalog({"imports": {}, "files": {}}), encoding="utf-8"
+    )
+    for fname, body in initial_state(project_id).items():
+        path = (base / wb["state_dir"] / fname).resolve()
+        _assert_under_base(base, path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(body, indent=2) + "\n", encoding="utf-8")
+
+    template = load_engine_settings(root)["factory_config_template"]
+    cfg = (base / "config/factory.yaml").resolve()
+    _assert_under_base(base, cfg)
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(safe_read_text(template, root), encoding="utf-8")
+    return {"removed": removed}
+
+
+def resetproject(
+    project_id: str,
+    *,
+    root: Path,
+    clean_runtime: bool = False,
+) -> dict[str, Any]:
+    """Reset generated/runtime artifacts for a registered project."""
+    if not clean_runtime:
+        raise AdminError("resetproject currently requires --clean-runtime.")
+    registry = load_registry(root)
+    project = resolve_project(registry, project_id)
+    base = _abs_app_dir(str(project["app_path"]), root)
+    if not base.is_dir():
+        raise AdminError(f"Project workbench not found: {project['app_path']}")
+    entry = (registry.get("projects") or {}).get(project_id) or {}
+    overrides = entry.get("paths") if isinstance(entry, dict) else {}
+    wb = {
+        **WORKBENCH_DEFAULTS,
+        **(overrides if isinstance(overrides, dict) else {}),
+    }
+    summary = _clean_runtime_base(base, wb, project_id, root)
+    summary.update({"project_id": project_id, "app_path": str(project["app_path"])})
+    return summary
 
 
 def attachproject(
@@ -765,6 +880,11 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--force", action="store_true")
     sp.add_argument("--reuse", action="store_true")
     sp.add_argument(
+        "--clean-runtime",
+        action="store_true",
+        help="Remove generated/runtime artifacts before scaffolding.",
+    )
+    sp.add_argument(
         "--path",
         action="append",
         metavar="KEY=VALUE",
@@ -789,9 +909,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--write-config", action="store_true")
     mg = sub.add_parser("migrate-project-runtime")
     mg.add_argument("project_id")
+    rp = sub.add_parser("resetproject")
+    rp.add_argument("project_id")
+    rp.add_argument(
+        "--clean-runtime",
+        action="store_true",
+        help="Remove generated/runtime artifacts from the workbench.",
+    )
     ac = sub.add_parser("add-context")
     ac.add_argument("project_id")
     ac.add_argument("source")
+    rec = sub.add_parser("recover")
+    rec.add_argument("project_id", nargs="?", default=None)
+    rec.add_argument("--path", default=None)
     st = sub.add_parser("status")
     st.add_argument("project_id", nargs="?", default=None)
     st.add_argument("--path", default=None)
@@ -858,6 +988,7 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             root=root,
             force=args.force,
             reuse=args.reuse,
+            clean_runtime=args.clean_runtime,
             paths=parse_path_overrides(args.path, root),
             apps_base=args.apps_base,
             target_location=args.target_location,
@@ -893,6 +1024,21 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
     if args.command == "migrate-project-runtime":
         _print_migration(migrate_project_runtime(args.project_id, root=root))
         return 0
+    if args.command == "resetproject":
+        summary = resetproject(
+            args.project_id,
+            root=root,
+            clean_runtime=args.clean_runtime,
+        )
+        print(
+            f"Reset runtime for '{summary['project_id']}' at "
+            f"{summary['app_path']}."
+        )
+        removed = summary.get("removed") or []
+        print(f"Removed {len(removed)} runtime/generated path(s).")
+        for rel in removed:
+            print(f"  - {rel}")
+        return 0
     if args.command == "add-context":
         registry = load_registry(root)
         project = resolve_project(registry, args.project_id)
@@ -906,6 +1052,35 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
         )
         if result["skipped"]:
             print(f"Skipped (secret-like): {', '.join(result['skipped'])}")
+        return 0
+    if args.command == "recover":
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
+        state_dir = str(project["state_dir"])
+        factory_state, active_run, project_state = load_state(
+            root, state_dir, str(project["name"])
+        )
+        validate_state_project(str(project["name"]), factory_state, project_state)
+        decision, changed = run_recovery_router(
+            root=root,
+            project=project,
+            project_state=project_state,
+            active_run=active_run,
+        )
+        persist_state(
+            root=root,
+            state_dir=state_dir,
+            factory_state=factory_state,
+            active_run=active_run,
+            project_state=project_state,
+        )
+        print(
+            f"Recovery {decision.recovery_id}: {decision.decision} "
+            f"for {decision.trigger}."
+        )
+        print(f"Target stage: {decision.target_stage}")
+        print(f"Changed {len(changed)} artifact(s).")
+        for item in changed:
+            print(f"  - {item}")
         return 0
     if args.command == "status":
         project = _resolve_project_arg(root, args.project_id, path=args.path)

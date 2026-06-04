@@ -45,6 +45,18 @@ from repo_tools import resolve_repo_path, safe_load_json, safe_write_json
 from test_builder import TestPlanResult, test_plan_status_label
 from validation_runner import ValidationResult, validation_status_label
 
+_VALIDATION_PASS_PRESERVES_BLOCKERS: frozenset[str] = frozenset(
+    {
+        "application_rejected",
+        "coder_proposal_rejected",
+        "planning_contract_rejected",
+        "test_plan_rejected",
+        "self_rejection",
+        "needs_owner_decision",
+        "recovery_exhausted",
+    }
+)
+
 
 def initial_state(project_id: str) -> dict[str, dict[str, Any]]:
     """Return the three bootstrap state snapshots for a new project.
@@ -394,6 +406,23 @@ def _apply_validation_state(
     active_run["last_validation_status"] = status
 
     if status in {"failed", "blocked"}:
+        # Root-cause precedence: an upstream rejection recorded earlier this
+        # beat (application_rejected, coder/contract/test-plan rejection,
+        # self_rejection, …) outranks a downstream validation failure. When the
+        # patch was rejected nothing new was applied, so a failing/empty
+        # validation is a *symptom* of that rejection, not an independent fault.
+        # Preserve the upstream blocker so recovery handles the real cause,
+        # instead of flipping to validation_failed and luring remediation into
+        # chasing a phantom. (A genuinely applied patch clears the blocker to
+        # None in _apply_application_state, so this never masks real test/lint
+        # failures of applied code.) Remediation attempts keep their own
+        # accounting below.
+        upstream = project_state.get("current_blocker")
+        if upstream in _VALIDATION_PASS_PRESERVES_BLOCKERS and not (
+            remediation is not None and remediation.active
+        ):
+            active_run["current_blocker"] = upstream
+            return
         factory_state["last_failed_run"] = completed_at
         factory_state["failure_count"] = (
             int(factory_state.get("failure_count", 0)) + 1
@@ -427,6 +456,10 @@ def _apply_validation_state(
         active_run["resume_from"] = resume
     elif status == "passed":
         project_state["remediation_attempt"] = 0
+        current_blocker = project_state.get("current_blocker")
+        if current_blocker in _VALIDATION_PASS_PRESERVES_BLOCKERS:
+            active_run["current_blocker"] = current_blocker
+            return
         active_run["current_blocker"] = None
         project_state["current_blocker"] = None
         active_run["resume_from"] = (

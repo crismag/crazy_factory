@@ -70,20 +70,49 @@ def _is_sensitive(path: str | Path) -> bool:
 def _max_suffix_number(keys: Any, prefix: str) -> int:
     """Return the highest numeric suffix among ids sharing ``prefix``."""
     highest = 0
+    iterable: Any = ()
     if isinstance(keys, dict):
-        for key in keys:
-            text = str(key)
-            if text.startswith(prefix):
-                try:
-                    highest = max(highest, int(text[len(prefix) :]))
-                except ValueError:
-                    continue
+        iterable = keys.keys()
+    elif isinstance(keys, (set, list, tuple)):
+        iterable = keys
+    for key in iterable:
+        text = str(key)
+        if text.startswith(prefix):
+            try:
+                highest = max(highest, int(text[len(prefix) :]))
+            except ValueError:
+                continue
     return highest
 
 
 def _next_import_id(catalog: dict[str, Any]) -> str:
     """Return the next ``import_NNN`` id for the catalog."""
     return f"import_{_max_suffix_number(catalog.get('imports'), 'import_') + 1:03d}"
+
+
+def _existing_import_ids(root: Path, project: dict[str, Any]) -> set[str]:
+    """Return ``import_NNN`` ids already present on disk."""
+    ids: set[str] = set()
+    for key in ("context_imports_root", "context_extracted_root"):
+        try:
+            base = resolve_repo_path(str(project[key]), root)
+        except Exception:  # noqa: BLE001 - odd path means no disk ids here
+            continue
+        if not base.is_dir():
+            continue
+        for child in base.iterdir():
+            if child.is_dir() and child.name.startswith("import_"):
+                ids.add(child.name)
+    return ids
+
+
+def _next_import_id_for_project(
+    catalog: dict[str, Any], root: Path, project: dict[str, Any]
+) -> str:
+    """Return the next import id from catalog plus on-disk import folders."""
+    catalog_ids = set((catalog.get("imports") or {}).keys())
+    all_ids = catalog_ids | _existing_import_ids(root, project)
+    return f"import_{_max_suffix_number(all_ids, 'import_') + 1:03d}"
 
 
 def load_catalog(root: Path, project: dict[str, Any]) -> dict[str, Any]:
@@ -257,7 +286,7 @@ def add_context(
     src = Path(source)
     source_type = _classify_source(src)
     catalog = load_catalog(root, project)
-    import_id = _next_import_id(catalog)
+    import_id = _next_import_id_for_project(catalog, root, project)
     imports_root = str(project["context_imports_root"])
     extracted_root = str(project["context_extracted_root"])
 

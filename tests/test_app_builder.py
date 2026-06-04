@@ -131,6 +131,42 @@ class StartProjectTests(unittest.TestCase):
             with self.assertRaises(SeedError):
                 ca.startproject("../escape", "apps/x", root=root)
 
+    def test_clean_runtime_removes_stale_generated_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("widget", "apps/widget", root=root)
+            base = root / "apps/widget"
+            stale_files = [
+                "src/old.py",
+                "tests/test_old.py",
+                "data/tasks.json",
+                "context/imports/import_001/seed.md",
+                "factory_tasks/approved_proposal.json",
+                "factory_reports/session-old.md",
+                ".pytest_cache/CACHEDIR.TAG",
+                ".ruff_cache/CACHEDIR.TAG",
+            ]
+            for rel in stale_files:
+                path = base / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("stale\n", encoding="utf-8")
+
+            summary = ca.resetproject(
+                "widget", root=root, clean_runtime=True
+            )
+
+            self.assertEqual(summary["project_id"], "widget")
+            for rel in stale_files:
+                self.assertFalse((base / rel).exists(), rel)
+            self.assertTrue((base / "tests/.gitkeep").is_file())
+            self.assertTrue((base / "factory_tasks/.gitkeep").is_file())
+            self.assertTrue((base / "factory_reports/.gitkeep").is_file())
+            self.assertIn(
+                "imports:",
+                (base / "context/catalog.yaml").read_text(encoding="utf-8"),
+            )
+
 
 class AttachProjectTests(unittest.TestCase):
     """attachproject registers existing code without scaffolding it."""

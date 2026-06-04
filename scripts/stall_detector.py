@@ -26,16 +26,25 @@ class StallSignal:
     reasons: list[str] = field(default_factory=list)
 
 
-# Blockers that indicate repeated, unresolved trouble in a single phase.
-PERSISTENT_BLOCKERS: frozenset[str] = frozenset(
+# Blockers that should route through recovery before parking.
+RECOVERABLE_BLOCKERS: frozenset[str] = frozenset(
     {
         "planning_contract_rejected",
         "coder_proposal_rejected",
         "application_rejected",
         "validation_failed",
         "test_plan_rejected",
-        "remediation_exhausted",
         "self_rejection",
+    }
+)
+
+# Terminal blockers that indicate recovery already exhausted or needs owner
+# attention, so stall/recovery reporting should park instead of looping.
+PERSISTENT_BLOCKERS: frozenset[str] = frozenset(
+    {
+        "remediation_exhausted",
+        "recovery_exhausted",
+        "needs_owner_decision",
     }
 )
 
@@ -48,9 +57,9 @@ def detect_stall(
 ) -> StallSignal:
     """Detect whether the factory is stalled from persistent state.
 
-    Stall conditions: the failure counter exceeded its threshold, a persistent
-    phase blocker is set, or repeated reliance on deterministic fallbacks shows
-    the local model is unavailable.
+    Stall conditions: the failure counter exceeded its threshold, a terminal
+    persistent blocker is set, or repeated reliance on deterministic fallbacks
+    shows the local model is unavailable.
 
     Args:
         factory_state: Global state snapshot.

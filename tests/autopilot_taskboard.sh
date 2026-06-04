@@ -1,122 +1,193 @@
 #!/usr/bin/env bash
 #
-# Crazy Factory — hands-off "from zero to green" autopilot for a task-board app.
+# Crazy Factory - truthful zero-to-green autopilot for the task-board sample.
 #
-# WHAT THIS IS
-#   A thin OWNER-GATE driver. Crazy Factory's own local Ollama models do all the
-#   thinking and coding (no Claude, no external coding agent). This script only
-#   plays the owner — it issues the authorize / approve / enable commands the
-#   engine requires, so you can watch one small app self-drive from an empty
-#   folder to a green (tests-passing) build without hand-typing each gate.
-#
-#   It is the sibling of autopilot_tic_tac_toe.sh, and additionally demonstrates
-#   CONTEXT INGESTION: the owner-provided project seed
-#   (sample_contexts/task_board.md) is imported with `add-context` and folded
-#   into the project context the planner/coder read.
-#
-# WHAT IS DIFFERENT FROM OLD VERSIONS (no hacks)
-#     - NO `sed` of the project config — `enable-apply` flips apply mode itself.
-#     - NO hand-seeded planned_task.json — the factory plans the task; the AI
-#       contract reviewer repairs safe gaps so the plan lands valid.
-#     - NO `activate` — there is no global "active project". Every command
-#       targets the project by id (here, `task-board`); `--path <dir>` or running
-#       from inside the workbench work too.
-#     - PLAN BEFORE AUTHORIZE: you advance once to produce a contract, THEN
-#       authorize it. The factory never authorizes its own work.
-#     - If the first build fails its tests, the owner-enabled REMEDIATION loop
-#       re-engages the coder to fix it, bounded by a retry budget.
-#
-# WHERE IT BUILDS
-#   Directly at the owner's target location, OUTSIDE the factory repo:
-#       /mnt/ai/workspaces/crazy_apps/task-board
-#   Each project stays confined to its own folder; writes outside it are rejected.
-#
-# HOW TO USE
-#   Run the blocks top to bottom. Commands are plain and explicit (no shell
-#   variables). The local model is non-deterministic, so a few blocks say
-#   "re-run until ..." — just run that one line again if the status isn't there
-#   yet. Each block is safe to run on its own.
+# This script is intentionally strict. It exits 0 only when the generated
+# project is green by compile, pytest, ruff, and seed-level acceptance checks.
 
-# ---------------------------------------------------------------------------
-# 0. Go to the factory repo (the engine lives here; the app builds elsewhere).
-# ---------------------------------------------------------------------------
-cd /mnt/ai/workspaces/crazy_factory
+set -euo pipefail
 
-# Confirm the local model server is up — generation needs it.
-curl -s -m 4 http://localhost:11434/api/tags >/dev/null && echo "ollama: UP" || echo "ollama: DOWN (start it; otherwise no real code is generated)"
+PROJECT_ID="task-board"
+REPO="/mnt/ai/workspaces/crazy_factory"
+APPS_BASE="/mnt/ai/workspaces/crazy_apps"
+APP="${APPS_BASE}/${PROJECT_ID}"
+SEED="${APPS_BASE}/sample_contexts/task_board.md"
+ADMIN="${REPO}/bin/crazy-admin"
+MAX_PLAN_ATTEMPTS=5
+MAX_PROPOSAL_ATTEMPTS=5
+MAX_REMEDIATION_ATTEMPTS=6
 
-# ---------------------------------------------------------------------------
-# 1. Create the project at the external target location.
-#    --apps-base persists the base to config/factory.yaml so the runtime honors
-#    the same location. The app path becomes
-#    /mnt/ai/workspaces/crazy_apps/task-board. --force re-scaffolds cleanly if
-#    the id already exists. There is no "activate" step.
-# ---------------------------------------------------------------------------
-bin/crazy-admin startproject task-board --apps-base /mnt/ai/workspaces/crazy_apps --force
+cd "$REPO"
 
-# ---------------------------------------------------------------------------
-# 2. INGEST THE PROVIDED PROJECT SEED as project context. The owner already
-#    wrote the brief at sample_contexts/task_board.md (purpose, scope, expected
-#    tree, functional + testing requirements). `add-context` imports it, screens
-#    it for secrets, and folds the supported docs into the context the planner
-#    and coder read — so the build is driven by the ingested seed, not a
-#    hand-placed goal. (This is the headline thing task-board exercises:
-#    the iterative, context-driven build loop.)
-# ---------------------------------------------------------------------------
-bin/crazy-admin add-context task-board /mnt/ai/workspaces/crazy_apps/sample_contexts/task_board.md
+step() {
+  printf '\n[STEP] %s\n' "$1"
+}
 
-# If a later `advance` reports "no project goal", the seed can also be placed as
-# the explicit brief the planner treats as the task to build:
-#   cp /mnt/ai/workspaces/crazy_apps/sample_contexts/task_board.md \
-#      /mnt/ai/workspaces/crazy_apps/task-board/factory_context/PROJECT_GOAL.md
+fail() {
+  printf '\n[ERROR] %s\n' "$1" >&2
+  latest_reports
+  exit 1
+}
 
-# ---------------------------------------------------------------------------
-# 3. Advance: the factory PLANS the next task (architect -> planner -> contract
-#    -> AI contract review). Re-run this one line until the contract decision is
-#    "valid" or "repair" (both authorizable). If it shows "needs_owner_review",
-#    read factory_tasks/CONTRACT_REVIEW.md and advance again.
-# ---------------------------------------------------------------------------
-bin/crazy-admin advance task-board
+latest_reports() {
+  if [ -d "$APP/factory_reports" ]; then
+    local report
+    report="$(ls -t "$APP"/factory_reports/session-*.md 2>/dev/null | head -n 1 || true)"
+    [ -n "$report" ] && printf '[REPORT] latest session: %s\n' "$report" >&2
+  fi
+  [ -f "$APP/factory_tasks/VALIDATION_REPORT.md" ] \
+    && printf '[REPORT] validation: %s\n' "$APP/factory_tasks/VALIDATION_REPORT.md" >&2
+}
 
-# Optional: inspect what it decided to build first.
-bin/crazy-admin status task-board
+run_admin() {
+  "$ADMIN" "$@"
+}
 
-# ---------------------------------------------------------------------------
-# 4. OWNER GATE 1 — authorize the task. Only succeeds for a valid contract.
-# ---------------------------------------------------------------------------
-bin/crazy-admin authorize-task task-board
+require_ollama() {
+  curl -fsS -m 4 http://localhost:11434/api/tags >/dev/null \
+    || fail "Ollama is not reachable at http://localhost:11434."
+  printf '[OK] ollama: up\n'
+}
 
-# ---------------------------------------------------------------------------
-# 5. Advance: the Coder model PROPOSES the implementation (no code written yet;
-#    it can see the current workbench source to target real files). Re-run until
-#    the output shows "Coder proposal verdict: valid" (1-3 tries is normal).
-# ---------------------------------------------------------------------------
-bin/crazy-admin advance task-board
+verify_context_loaded() {
+  run_admin status "$PROJECT_ID" | tee "$APP/factory_reports/autopilot-status-context.txt"
+  grep -Eq 'Context:[[:space:]]+[1-9][0-9]* supported file\(s\), [1-9][0-9]* import\(s\)' \
+    "$APP/factory_reports/autopilot-status-context.txt" \
+    || fail "Context import did not produce a supported catalog entry."
+  [ -s "$APP/context/catalog.yaml" ] || fail "context/catalog.yaml is empty."
+  grep -q 'f0001:' "$APP/context/catalog.yaml" \
+    || fail "context/catalog.yaml contains no cataloged files."
+}
 
-# ---------------------------------------------------------------------------
-# 6. OWNER GATES 2-4 — approve the proposal, enable applying it (also turns on
-#    apply mode), enable validation (running the tests), and enable remediation
-#    (let the factory fix its own failing tests, bounded).
-# ---------------------------------------------------------------------------
-bin/crazy-admin approve-proposal task-board
-bin/crazy-admin enable-apply task-board
-bin/crazy-admin enable-validation task-board
-bin/crazy-admin enable-remediation task-board
+advance_until_authorizable() {
+  local attempt
+  for attempt in $(seq 1 "$MAX_PLAN_ATTEMPTS"); do
+    step "planning attempt ${attempt}/${MAX_PLAN_ATTEMPTS}"
+    run_admin advance "$PROJECT_ID"
+    if run_admin authorize-task "$PROJECT_ID"; then
+      printf '[OK] contract authorized\n'
+      return 0
+    fi
+  done
+  fail "Could not produce an authorizable contract."
+}
 
-# ---------------------------------------------------------------------------
-# 7. Advance: the factory WRITES the files and RUNS the tests. Re-run this one
-#    line until validation reaches "Validation: passed". If a write applies
-#    broken code, the next advance is a REMEDIATION attempt
-#    ("Remediation attempt N/3 ...") that regenerates a fix, auto-approves it
-#    (owner-enabled), re-applies, and re-validates. Once green, the applied code
-#    is preserved (not regenerated) on later advances.
-# ---------------------------------------------------------------------------
-bin/crazy-admin advance task-board
+advance_until_proposal_approved() {
+  local attempt
+  for attempt in $(seq 1 "$MAX_PROPOSAL_ATTEMPTS"); do
+    step "proposal attempt ${attempt}/${MAX_PROPOSAL_ATTEMPTS}"
+    run_admin advance "$PROJECT_ID"
+    if run_admin approve-proposal "$PROJECT_ID"; then
+      printf '[OK] proposal approved\n'
+      return 0
+    fi
+  done
+  fail "Could not produce an approvable proposal."
+}
 
-# ---------------------------------------------------------------------------
-# 8. Inspect what the factory built and prove it works, run at the target.
-# ---------------------------------------------------------------------------
-bin/crazy-admin status task-board
-ls -R /mnt/ai/workspaces/crazy_apps/task-board/src /mnt/ai/workspaces/crazy_apps/task-board/tests
-cd /mnt/ai/workspaces/crazy_apps/task-board
-python3 -m pytest tests
+hard_validation() {
+  (
+    cd "$APP"
+    python3 -m compileall -q src tests
+    python3 -m pytest tests
+    ruff check src tests
+    python3 - <<'PY'
+from __future__ import annotations
+
+import importlib
+import json
+from pathlib import Path
+
+required = [
+    "README.md",
+    "src/task_model.py",
+    "src/storage.py",
+    "src/task_board.py",
+    "tests/test_task_model.py",
+    "tests/test_storage.py",
+]
+missing = [path for path in required if not Path(path).is_file()]
+if missing:
+    raise SystemExit(f"missing required file(s): {missing}")
+
+storage = importlib.import_module("src.storage")
+
+data_path = Path("data/tasks.json")
+if data_path.exists():
+    data_path.unlink()
+if storage.load_data() != []:
+    raise SystemExit("missing tasks JSON must load as an empty list")
+
+payload = [{"id": 1, "title": "Write tests", "done": False}]
+storage.save_data(payload)
+if not data_path.is_file():
+    raise SystemExit("save_data did not create data/tasks.json")
+if storage.load_data() != payload:
+    raise SystemExit("save/load round trip failed")
+
+data_path.write_text("{not-json", encoding="utf-8")
+try:
+    corrupt_result = storage.load_data()
+except Exception as exc:  # noqa: BLE001 - acceptance reports all failures
+    raise SystemExit(f"corrupt JSON was not handled safely: {exc}") from exc
+if corrupt_result != []:
+    raise SystemExit("corrupt JSON should return an empty list")
+
+model = importlib.import_module("src.task_model")
+task = model.Task(1, "Seed task", False)
+if getattr(task, "id", None) != 1:
+    raise SystemExit("Task must expose id")
+if getattr(task, "title", None) != "Seed task":
+    raise SystemExit("Task must expose title")
+if getattr(task, "done", None) is not False:
+    raise SystemExit("Task must expose done status")
+
+ui = importlib.import_module("src.task_board")
+if not any(hasattr(ui, name) for name in ("TaskBoard", "TaskBoardApp", "main")):
+    raise SystemExit("task_board module lacks a UI entry point")
+
+json.dumps(storage.load_data())
+PY
+  )
+}
+
+advance_until_green() {
+  local attempt
+  for attempt in $(seq 1 "$MAX_REMEDIATION_ATTEMPTS"); do
+    step "apply/validate/remediate attempt ${attempt}/${MAX_REMEDIATION_ATTEMPTS}"
+    run_admin advance "$PROJECT_ID"
+    if hard_validation; then
+      printf '\n[SUCCESS] task-board is green.\n'
+      latest_reports
+      return 0
+    fi
+    printf '[WARN] validation still red; continuing while remediation budget remains.\n'
+  done
+  fail "Validation did not pass before remediation budget was exhausted."
+}
+
+step "preflight"
+require_ollama
+[ -f "$SEED" ] || fail "Missing task-board seed: $SEED"
+
+step "clean project scaffold"
+run_admin startproject "$PROJECT_ID" --apps-base "$APPS_BASE" --force --clean-runtime
+[ -d "$APP" ] || fail "Project workbench was not created: $APP"
+
+step "import owner seed"
+run_admin add-context "$PROJECT_ID" "$SEED"
+verify_context_loaded
+
+step "plan and authorize"
+advance_until_authorizable
+
+step "generate and approve proposal"
+advance_until_proposal_approved
+
+step "enable owner-approved write, validation, and remediation controls"
+run_admin enable-apply "$PROJECT_ID"
+run_admin enable-validation "$PROJECT_ID"
+run_admin enable-remediation "$PROJECT_ID"
+
+step "drive to green"
+advance_until_green

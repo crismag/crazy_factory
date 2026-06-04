@@ -191,6 +191,29 @@ class IngestionTests(unittest.TestCase):
             )
             self.assertEqual(len(catalog["files"]), 2)
 
+    def test_empty_catalog_with_stale_import_allocates_fresh_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = _git_root(tmp)
+            project = _project(root)
+            stale = root / "apps/app/context/imports/import_001"
+            stale.mkdir(parents=True)
+            (stale / "old.md").write_text("old", encoding="utf-8")
+            (root / "new.md").write_text("new", encoding="utf-8")
+
+            result = cm.add_context(
+                project=project,
+                source=str(root / "new.md"),
+                root=root,
+                now="T",
+            )
+
+            self.assertEqual(result["import_id"], "import_002")
+            self.assertTrue(
+                (root / "apps/app/context/imports/import_002/new.md").is_file()
+            )
+            catalog = cm.load_catalog(root, project)
+            self.assertIn("import_002", catalog["imports"])
+
     def test_missing_source_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = _git_root(tmp)
