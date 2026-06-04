@@ -26,10 +26,13 @@ from pathlib import Path
 from typing import Any
 
 from project_paths import resolve_paths
-from repo_tools import load_simple_yaml, safe_write_text
+from repo_tools import load_simple_yaml, resolve_repo_path, safe_write_text
 from settings import load_engine_settings
 
 REGISTRY_RELPATH = "config/projects.yaml"
+# A project carries its own identity/control inside its workbench. Same file
+# project_control manages; named here to avoid an import cycle.
+CONTROL_FILENAME = "crazy_project.yaml"
 REPO_MODES: tuple[str, ...] = ("embedded", "external")
 _ENTRY_KEYS: tuple[str, ...] = (
     "app_path",
@@ -65,11 +68,13 @@ def load_registry(root: Path) -> dict[str, Any]:
         Registry mapping with ``active_project`` and ``projects``.
     """
     data = load_simple_yaml(load_engine_settings(root)["registry_path"], root)
-    active = str(data.get("active_project") or "")
     projects = data.get("projects")
     if not isinstance(projects, dict):
         projects = {}
-    return {"active_project": active, "projects": projects}
+    # The registry is a pure id->path DIRECTORY for discovery and --all sweeps.
+    # There is no global "active project": selection is per invocation (id,
+    # path, or cwd) so projects are independently addressable and concurrent.
+    return {"projects": projects}
 
 
 def dump_registry(registry: dict[str, Any]) -> str:
@@ -81,12 +86,11 @@ def dump_registry(registry: dict[str, Any]) -> str:
     Returns:
         YAML text parseable by :func:`repo_tools.load_simple_yaml`.
     """
-    active = str(registry.get("active_project") or "")
     lines = [
-        "# Project registry. The factory never picks a project by default;",
-        "# select one with `crazy-admin activate <project_id>`. Apps may live",
-        "# under apps/<id> (embedded) or anywhere on disk (external).",
-        f'active_project: "{active}"',
+        "# Project registry: a pure id->path directory for discovery and",
+        "# `--all` sweeps. There is NO active project — every command targets a",
+        "# project by id, by --path, or by the workbench it runs inside. Apps",
+        "# may live under apps/<id> (embedded) or anywhere on disk (external).",
         "",
         "projects:",
     ]
@@ -172,26 +176,6 @@ def register_project(
     }
 
 
-def set_active(registry: dict[str, Any], project_id: str) -> None:
-    """Set the active project, validating it is registered.
-
-    Args:
-        registry: Registry mapping to update.
-        project_id: Project to activate.
-
-    Raises:
-        RegistryError: If the project is not registered.
-    """
-    if project_id not in (registry.get("projects") or {}):
-        raise RegistryError(f"Project is not registered: {project_id}")
-    registry["active_project"] = project_id
-
-
-def active_project_id(registry: dict[str, Any]) -> str:
-    """Return the active project id, or an empty string when none is set."""
-    return str(registry.get("active_project") or "")
-
-
 def resolve_project(
     registry: dict[str, Any], project_id: str
 ) -> dict[str, Any]:
@@ -214,6 +198,11 @@ def resolve_project(
     entry = (registry.get("projects") or {}).get(project_id)
     if not isinstance(entry, dict):
         raise RegistryError(f"Project is not registered: {project_id}")
+    return _build_project(project_id, entry)
+
+
+def _build_project(project_id: str, entry: dict[str, Any]) -> dict[str, Any]:
+    """Build the resolved project mapping from a registry-style entry."""
     app_path = str(entry["app_path"]).rstrip("/")
     # Legacy registry state_path (e.g. factory_state/projects/<id>); retained
     # only so migrate-project-runtime can find pre-relocation data.
@@ -245,6 +234,93 @@ def resolve_project(
         "context_extracted_root": f"{paths.context_dir}/extracted",
         "context_catalog_path": f"{paths.context_dir}/catalog.yaml",
     }
+
+
+def resolve_project_at(app_path: str, root: Path) -> dict[str, Any]:
+    """Resolve a project directly from its own ``crazy_project.yaml``.
+
+    This is registry-independent: a project carries its own identity inside its
+    workbench, so it can be targeted by path (or discovered from the cwd)
+    without any global selector. Missing optional fields fall back to sensible
+    defaults (``state_path`` derives, ``seed_file`` = ``docs/seed.md``).
+
+    Raises:
+        RegistryError: If the path has no readable ``crazy_project.yaml``.
+    """
+    app_path = str(app_path).rstrip("/")
+    control_rel = f"{app_path}/{CONTROL_FILENAME}"
+    if not resolve_repo_path(control_rel, root).is_file():
+        raise RegistryError(f"No {CONTROL_FILENAME} found at: {app_path}")
+    data = load_simple_yaml(control_rel, root)
+    proj_raw = data.get("project")
+    proj: dict[str, Any] = proj_raw if isinstance(proj_raw, dict) else {}
+    ov_raw = data.get("paths")
+    overrides: dict[str, Any] = ov_raw if isinstance(ov_raw, dict) else {}
+    project_id = str(proj.get("id") or Path(app_path).name)
+    is_abs = Path(app_path).is_absolute()
+    entry = {
+        "app_path": app_path,
+        "state_path": str(proj.get("state_path") or ""),
+        "repo_mode": str(
+            proj.get("mode") or ("external" if is_abs else "embedded")
+        ),
+        "seed_file": str(proj.get("seed_file") or "docs/seed.md"),
+        "paths": overrides,
+    }
+    return _build_project(project_id, entry)
+
+
+def find_workbench_from_cwd(cwd: Path, root: Path) -> str | None:
+    """Walk up from ``cwd`` to find a workbench (a dir with a control file).
+
+    Returns the workbench path (the dir containing ``crazy_project.yaml``), or
+    ``None`` when the cwd is not inside any project. The factory repo root
+    itself is never treated as a project workbench.
+    """
+    current = cwd.resolve()
+    for candidate in [current, *current.parents]:
+        if candidate == root.resolve():
+            return None
+        if (candidate / CONTROL_FILENAME).is_file():
+            return str(candidate)
+    return None
+
+
+def all_project_ids(registry: dict[str, Any]) -> list[str]:
+    """Return every registered project id (for a ``--all`` sweep)."""
+    projects = registry.get("projects")
+    return list(projects) if isinstance(projects, dict) else []
+
+
+def resolve_target(
+    registry: dict[str, Any],
+    root: Path,
+    *,
+    project_id: str | None = None,
+    path: str | None = None,
+    cwd: Path | None = None,
+) -> dict[str, Any]:
+    """Resolve which project a command acts on, by id, path, or cwd.
+
+    Precedence: an explicit ``project_id`` (registry lookup), else an explicit
+    ``path`` (the project's own control file), else discovery from ``cwd``.
+    There is no global "active project" — selection is always per invocation.
+
+    Raises:
+        RegistryError: If no project can be resolved from the inputs.
+    """
+    if project_id:
+        return resolve_project(registry, project_id)
+    if path:
+        return resolve_project_at(path, root)
+    if cwd is not None:
+        workbench = find_workbench_from_cwd(cwd, root)
+        if workbench:
+            return resolve_project_at(workbench, root)
+    raise RegistryError(
+        "No project specified. Name one (<id>), pass --path <dir>, or run "
+        "from inside a project workbench."
+    )
 
 
 def app_is_external(app_path: str, root: Path) -> bool:

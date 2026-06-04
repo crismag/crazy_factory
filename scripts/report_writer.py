@@ -19,9 +19,9 @@ from pathlib import Path
 from typing import Any
 
 from project_registry import (
-    active_project_id,
+    RegistryError,
     load_registry,
-    resolve_project,
+    resolve_target,
 )
 from repo_tools import (
     find_repo_root,
@@ -557,20 +557,21 @@ def append_control_event(
 
 
 def main() -> int:
-    """Print the active project's accumulated factory activity blog.
+    """Print a project's accumulated factory activity blog.
+
+    The project is discovered from the current working directory (run from
+    inside a workbench) — there is no global active project.
 
     Returns:
         Process exit code ``0`` after the report is printed.
     """
     root = find_repo_root()
-    registry = load_registry(root)
-    project_id = active_project_id(registry)
-    if not project_id:
-        print(
-            "No active project. Select one with `crazy-admin activate <id>`."
-        )
+    try:
+        project = resolve_target(load_registry(root), root, cwd=Path.cwd())
+    except RegistryError as exc:
+        print(f"No project: {exc}")
         return 0
-    report_root = resolve_project(registry, project_id)["report_root"]
+    report_root = project["report_root"]
     blog = f"{report_root}/ACTIVITY_BLOG.md"
     if not resolve_repo_path(blog, root).is_file():
         print(f"No activity blog yet at {blog}.")

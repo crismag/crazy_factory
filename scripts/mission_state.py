@@ -41,7 +41,7 @@ from coder_proposal import ProposalResult, coder_status_label
 from contract_stage import ContractResult
 from planning_roles import RoleResult
 from proposal_applier import ApplicationResult, application_status_label
-from repo_tools import safe_load_json, safe_write_json
+from repo_tools import resolve_repo_path, safe_load_json, safe_write_json
 from test_builder import TestPlanResult, test_plan_status_label
 from validation_runner import ValidationResult, validation_status_label
 
@@ -105,21 +105,35 @@ def initial_state(project_id: str) -> dict[str, dict[str, Any]]:
 
 
 def load_state(
-    root: Path, state_dir: str
+    root: Path, state_dir: str, project_name: str
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """Load global, active-run, and project state snapshots.
+
+    A project owns its run-state inside its own workbench. Any snapshot that
+    does not exist yet is bootstrapped from :func:`initial_state` for this
+    project — so a project self-initializes on its first advance and needs no
+    separate "activate" step (there is no global active project).
 
     Args:
         root: Absolute repository root.
         state_dir: Repository-relative state directory.
+        project_name: Project id used to seed missing snapshots.
 
     Returns:
         Factory state, active-run state, and project state mappings.
     """
+    bootstrap = initial_state(project_name)
+
+    def _load(name: str) -> dict[str, Any]:
+        rel = f"{str(state_dir).rstrip('/')}/{name}"
+        if resolve_repo_path(rel, root).is_file():
+            return safe_load_json(rel, root)
+        return bootstrap[name]
+
     return (
-        safe_load_json(Path(state_dir) / "factory_state.json", root),
-        safe_load_json(Path(state_dir) / "active_run.json", root),
-        safe_load_json(Path(state_dir) / "project_state.json", root),
+        _load("factory_state.json"),
+        _load("active_run.json"),
+        _load("project_state.json"),
     )
 
 

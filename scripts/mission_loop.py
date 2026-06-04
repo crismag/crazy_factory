@@ -38,10 +38,9 @@ from repo_tools import (  # noqa: E402
 )
 from project_registry import (  # noqa: E402
     RegistryError,
-    active_project_id,
     app_is_buildable,
     load_registry,
-    resolve_project,
+    resolve_target,
     workbench_exists,
 )
 from project_paths import load_project_factory_config  # noqa: E402
@@ -206,26 +205,25 @@ def render_mission_status_md(
     return "\n".join(lines)
 
 
-def main() -> int:
-    """Execute one guarded mission iteration.
+def main(project: dict[str, Any] | None = None) -> int:
+    """Execute one guarded mission iteration for one project.
+
+    Args:
+        project: Pre-resolved project mapping. When ``None`` the project is
+            discovered from the current working directory — there is no global
+            active project.
 
     Returns:
         Process exit code ``0``.
     """
     root = find_repo_root()
-    registry = load_registry(root)
-    project_name = active_project_id(registry)
-    if not project_name:
-        print(
-            "No active project selected. Choose an app to work on first "
-            "(crazy-admin startproject/attachproject, then activate)."
-        )
-        return 0
-    try:
-        project = resolve_project(registry, project_name)
-    except RegistryError as exc:
-        print(f"Active project '{project_name}' is not usable: {exc}")
-        return 0
+    if project is None:
+        try:
+            project = resolve_target(load_registry(root), root, cwd=Path.cwd())
+        except RegistryError as exc:
+            print(f"No project to run: {exc}")
+            return 0
+    project_name = str(project["name"])
     if not workbench_exists(project["app_path"], root):
         print(
             f"Workbench for '{project_name}' is missing "
@@ -244,7 +242,9 @@ def main() -> int:
     # own folder, resolved from app_path.
     factory_config = load_project_factory_config(project["app_path"], root)
     state_dir = str(project["state_dir"])
-    factory_state, _active_run, project_state = load_state(root, state_dir)
+    factory_state, _active_run, project_state = load_state(
+        root, state_dir, project_name
+    )
 
     stale_seconds = int(
         factory_config.get("mission", {}).get("lock_stale_seconds", 3600)
@@ -286,8 +286,8 @@ def main() -> int:
         )
 
         if action == "run":
-            factory_advance.main()
-            _f, _a, refreshed = load_state(root, state_dir)
+            factory_advance.main(project)
+            _f, _a, refreshed = load_state(root, state_dir, project_name)
             run_satisfaction(
                 root=root,
                 project=project,

@@ -58,7 +58,6 @@ from project_registry import (  # noqa: E402
     load_registry,
     register_project,
     save_registry,
-    set_active,
     state_path_for,
 )
 from repo_tools import (  # noqa: E402
@@ -422,7 +421,6 @@ def _register_project(project_id: str, root: Path) -> bool:
         seed_file="docs/seed.md",
         now=now,
     )
-    set_active(registry, project_id)
     save_registry(registry, root)
     return already
 
