@@ -70,4 +70,4 @@ paths:
     # Base for generated app workbenches. Default "apps" is in-repo. Set an
     # ABSOLUTE path (or CRAZY_FACTORY_APPS_BASE) to build apps outside the repo;
     # each project stays confined to <apps_base>/<id>.
-    apps_base: apps
+    apps_base: /mnt/ai/workspaces/crazy_apps

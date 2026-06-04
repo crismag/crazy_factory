@@ -41,8 +41,13 @@ from context_loader import (  # noqa: E402
     summarize_drops,
 )
 from project_control import (  # noqa: E402
+    ControlError,
     apply_project_controls,
     read_control,
+)
+from owner_controls import (  # noqa: E402
+    approve_proposal,
+    authorize_task,
 )
 from contract_stage import (  # noqa: E402
     contract_status_label,
@@ -60,6 +65,14 @@ from proposal_applier import (  # noqa: E402
 from remediation import (  # noqa: E402
     fix_approval_record,
     plan_remediation,
+)
+from completion import (  # noqa: E402
+    CHECKLIST_FILENAME,
+    checklist_focus,
+    initial_checklist_markdown,
+    mark_first_open_done,
+    open_items,
+    parse_checklist,
 )
 from test_builder import (  # noqa: E402
     run_test_builder_stage,
@@ -108,6 +121,41 @@ from project_registry import (  # noqa: E402
 )
 from advance_config import validate_dry_run_settings  # noqa: E402
 from settings import load_engine_settings  # noqa: E402
+
+
+def _read_text_or_empty(rel_path: str, root: Path) -> str:
+    """Read a workbench file directly (handles external paths + missing).
+
+    Unlike safe_read_text, this does not enforce repo-root confinement, so it
+    works for an external app's absolute paths; a missing file yields "".
+    """
+    try:
+        return Path(rel_path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def _retire_task_artifacts(task_root: str) -> None:
+    """Remove a completed task's contract/proposal artifacts.
+
+    Forces the next advance to plan the next open checklist item instead of
+    preserving the finished (authorized) contract. The owner re-authorizes each
+    fresh task unless autonomous mode pre-authorizes it.
+    """
+    for name in (
+        "planned_task.json",
+        "PLANNED_TASK.md",
+        "coder_proposal.json",
+        "CODER_PROPOSAL.md",
+        "approved_proposal.json",
+        "patch_plan.json",
+        "PATCH_PLAN.md",
+        "CONTRACT_REVIEW.md",
+    ):
+        try:
+            (Path(task_root) / name).unlink()
+        except OSError:
+            pass
 
 
 def _no_target_notice(detail: str) -> int:
@@ -232,6 +280,36 @@ def main(project: dict[str, Any] | None = None) -> int:
             f"Loaded {len(context_bundle.included)} context file(s) "
             f"({context_bundle.total_bytes} bytes) into planning."
         )
+
+    # Completion engine: a project needs a definition of done. Decompose the
+    # goal/context into MASTER_CHECKLIST.md once (when missing/empty), then
+    # surface the next OPEN item so planning targets it instead of "some small
+    # task". The checklist lives where satisfaction reads it.
+    task_root = str(project["task_root"])
+    checklist_rel = f"{task_root}/{CHECKLIST_FILENAME}"
+    goal_text = "\n\n".join([*contexts.values(), context_bundle.text])
+    checklist_md = _read_text_or_empty(checklist_rel, root)
+    if not parse_checklist(checklist_md):
+        checklist_md = initial_checklist_markdown(
+            goal_text,
+            models_config=models_config,
+            factory_config=factory_config,
+        )
+        safe_write_text(
+            checklist_rel,
+            checklist_md,
+            repo_root=root,
+            allowed_roots=[task_root],
+        )
+        print(
+            f"Decomposed goal into {len(parse_checklist(checklist_md))} "
+            f"checklist item(s) -> {CHECKLIST_FILENAME}"
+        )
+    focus = checklist_focus(checklist_md)
+    planning_context = (
+        f"{context_bundle.text}\n\n{focus}" if focus else context_bundle.text
+    )
+
     architect_result = request_architect_result(
         project_name=project_name,
         project=project,
@@ -240,10 +318,9 @@ def main(project: dict[str, Any] | None = None) -> int:
         models_config=models_config,
         max_lines=max_lines,
         tasks=tasks,
-        context_bundle=context_bundle.text,
+        context_bundle=planning_context,
     )
 
-    task_root = str(project["task_root"])
     task_expansion_path, next_action_path = planning_paths(root, project)
     safe_write_text(
         task_expansion_path,
@@ -260,7 +337,7 @@ def main(project: dict[str, Any] | None = None) -> int:
         max_lines=max_lines,
         tasks=tasks,
         architect_result=architect_result,
-        context_bundle=context_bundle.text,
+        context_bundle=planning_context,
     )
     safe_write_text(
         next_action_path,
@@ -282,6 +359,25 @@ def main(project: dict[str, Any] | None = None) -> int:
             planner_result=planner_result,
         )
     )
+
+    # Autonomous mode (owner-enabled, default OFF): the owner pre-delegates
+    # authorization for this checklist-driven build so the loop can march
+    # through items unattended. The deterministic safety floor still gates every
+    # contract; this only removes the per-item authorize/approve typing.
+    autonomous = bool(factory_config.get("autonomy", {}).get("enabled", False))
+    if (
+        autonomous
+        and contract_result.task is not None
+        and contract_result.verdict.valid
+        and not contract_result.preserved
+    ):
+        try:
+            authorize_task(project, root)
+            print(
+                "Autonomous: auto-authorized the planned task (owner-enabled)."
+            )
+        except ControlError:
+            pass
 
     # Remediation: if the prior advance left a validation_failed blocker and
     # the owner enabled remediation, re-engage the coder with the failing
@@ -337,6 +433,20 @@ def main(project: dict[str, Any] | None = None) -> int:
             "Remediation: auto-approved fix proposal "
             f"{coder_result.proposal.proposal_id} (owner-enabled)."
         )
+
+    # Autonomous mode: pre-approve a freshly valid proposal for the current task
+    # (the non-remediation path) so the same advance can apply + validate it.
+    if (
+        autonomous
+        and not remediation_plan.active
+        and coder_result.proposal is not None
+        and coder_result.verdict.valid
+    ):
+        try:
+            approve_proposal(project, root)
+            print("Autonomous: auto-approved the proposal (owner-enabled).")
+        except ControlError:
+            pass
 
     application_result, patch_plan_json, patch_plan_md, application_report = (
         run_application_stage(
@@ -410,6 +520,37 @@ def main(project: dict[str, Any] | None = None) -> int:
         active_run=active_run,
         project_state=project_state,
     )
+
+    # Completion tick: a FRESH build (new code applied, not a preserved no-op)
+    # that validates green completes the item it was working — mark it done so
+    # the next beat targets the next open item and the project converges. A
+    # preserved/green re-validation does no new work and must not over-tick.
+    if (
+        application_result.applied
+        and application_result.source != "preserved"
+        and validation_status_label(validation_result) == "passed"
+    ):
+        updated_checklist, completed_item = mark_first_open_done(
+            _read_text_or_empty(checklist_rel, root)
+        )
+        if completed_item is not None:
+            safe_write_text(
+                checklist_rel,
+                updated_checklist,
+                repo_root=root,
+                allowed_roots=[task_root],
+            )
+            print(f"Checklist: completed item -> {completed_item}")
+            # Retire the finished task so the next advance plans the NEXT open
+            # item. Without this the authorized contract is preserved and the
+            # loop never moves past the completed item. If nothing remains open,
+            # leave artifacts in place — the project is satisfied.
+            if open_items(parse_checklist(updated_checklist)):
+                _retire_task_artifacts(task_root)
+                print(
+                    "Retired completed task; next advance plans the next item."
+                )
+
     planning_files = [task_expansion_path, next_action_path]
     contract_status = contract_status_label(contract_result)
     contract_authorized = contract_result.preserved

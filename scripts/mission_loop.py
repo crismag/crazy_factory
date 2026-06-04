@@ -363,10 +363,12 @@ def _read_checklist(root: Path, project: dict[str, Any]) -> str:
     Returns:
         Checklist contents, or an empty string when it cannot be read.
     """
-    path = str(Path(str(project["task_root"])) / "MASTER_CHECKLIST.md")
+    # Read directly (not safe_read_text): task_root is absolute for an external
+    # app and would fail repo-root confinement; a missing file yields "".
+    path = Path(str(project["task_root"])) / "MASTER_CHECKLIST.md"
     try:
-        return safe_read_text(path, root)
-    except RepoSafetyError:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
         return ""
 
 

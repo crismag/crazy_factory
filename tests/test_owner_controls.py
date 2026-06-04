@@ -147,6 +147,12 @@ class ControlFileTests(unittest.TestCase):
         self.assertTrue(eff["proposal_application"]["allow_apply"])
         self.assertEqual(eff["proposal_application"]["mode"], "apply")
 
+    def test_autonomous_capability_bridges_to_autonomy_enabled(self) -> None:
+        eff = pc.apply_project_controls(
+            _FACTORY_CONFIG, {"capabilities": {"allow_autonomous": True}}
+        )
+        self.assertTrue(eff["autonomy"]["enabled"])
+
     def test_disable_apply_capability_restores_preview_only(self) -> None:
         eff = pc.apply_project_controls(
             _FACTORY_CONFIG, {"capabilities": {"allow_apply": False}}

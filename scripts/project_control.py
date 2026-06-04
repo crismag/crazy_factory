@@ -33,6 +33,7 @@ CAPABILITY_BRIDGE: dict[str, tuple[str, str]] = {
     "allow_delete": ("proposal_application", "allow_delete"),
     "allow_validation": ("validation", "allow_run"),
     "allow_remediation": ("validation", "allow_remediation"),
+    "allow_autonomous": ("autonomy", "enabled"),
     "allow_auto_commit": ("git", "allow_auto_commit"),
 }
 

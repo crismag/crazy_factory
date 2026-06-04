@@ -674,6 +674,7 @@ def _print_status(info: dict[str, Any]) -> None:
     print(
         f"  remediation: {str(caps.get('allow_remediation', False)).lower()}"
     )
+    print(f"  autonomous:  {str(caps.get('allow_autonomous', False)).lower()}")
     print(
         f"  auto_commit: {str(caps.get('allow_auto_commit', False)).lower()}"
     )
@@ -792,6 +793,8 @@ def main(argv: list[str] | None = None) -> int:
         "disable-validation",
         "enable-remediation",
         "disable-remediation",
+        "enable-autonomous",
+        "disable-autonomous",
         "enable-commit",
         "disable-commit",
     ):
@@ -911,6 +914,8 @@ _CAPABILITY_COMMANDS: dict[str, tuple[str, bool]] = {
     "disable-validation": ("allow_validation", False),
     "enable-remediation": ("allow_remediation", True),
     "disable-remediation": ("allow_remediation", False),
+    "enable-autonomous": ("allow_autonomous", True),
+    "disable-autonomous": ("allow_autonomous", False),
     "enable-commit": ("allow_auto_commit", True),
     "disable-commit": ("allow_auto_commit", False),
 }
