@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from architecture import load_contract, render_contract_brief
 from contract_stage import load_existing_contract
 from json_parsing import coerce_str, coerce_str_list, strip_code_fence
 from ollama_client import OllamaClient, OllamaConnectionError
@@ -1042,6 +1043,11 @@ def request_coder_proposal(
     )
     workbench_source = read_workbench_source(app_path)
     source_block = f"\n\n{workbench_source}\n" if workbench_source else ""
+    # Tell the coder the architecture contract so it proposes conforming files;
+    # the patch gate enforces it, but without this the coder proposes forbidden
+    # paths (app/, docs/) and gets rejected in a loop with no progress.
+    arch = load_contract(app_path)
+    arch_block = f"\n\n{render_contract_brief(arch)}\n" if arch else ""
     messages = [
         {"role": "system", "content": instruction},
         {
@@ -1049,6 +1055,7 @@ def request_coder_proposal(
             "content": (
                 f"{prompt_package.prompt}\n\n"
                 f"## Authorized Contract\n\n{contract_summary}\n"
+                f"{arch_block}"
                 f"{source_block}"
                 f"{remediation_block}"
             ),

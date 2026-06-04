@@ -36,6 +36,7 @@ from coder_proposal import (
     project_runtime_prefixes,
     resolve_workbench_path,
 )
+from architecture import load_contract, patch_contract_violations
 from contract_stage import load_existing_contract
 from json_parsing import coerce_str, coerce_str_list, strip_code_fence
 from ollama_client import OllamaClient, OllamaConnectionError
@@ -253,6 +254,7 @@ def validate_patch_plan(
     max_lines: int,
     allow_delete: bool = False,
     runtime_prefixes: tuple[str, ...] = (),
+    contract: dict[str, Any] | None = None,
 ) -> ApplicationVerdict:
     """Validate a patch plan against the Phase 5 safety rules.
 
@@ -360,6 +362,17 @@ def validate_patch_plan(
             f"Patch plan touches {len(plan.files)} files, over the limit of "
             f"{max_files}"
         )
+
+    # Architecture-contract gate: reject patches that break the canonical tree
+    # (forbidden dir/name, outside the allowed tree) or import a forbidden
+    # dependency, so incoherent architecture never lands.
+    if contract:
+        contract_files = [
+            (p.path, p.content)
+            for p in plan.files
+            if p.action in {"create", "modify"}
+        ]
+        reasons.extend(patch_contract_violations(contract_files, contract))
 
     return ApplicationVerdict(
         valid=not reasons,
@@ -578,6 +591,7 @@ def request_patch_plan(
     max_files: int,
     mode: str,
     allow_delete: bool = False,
+    contract: dict[str, Any] | None = None,
 ) -> ApplicationResult:
     """Ask the coder model for exact file contents and validate the plan.
 
@@ -683,6 +697,7 @@ def request_patch_plan(
         max_lines=max_lines,
         allow_delete=allow_delete,
         runtime_prefixes=project_runtime_prefixes(project),
+        contract=contract,
     )
     return ApplicationResult(
         plan, verdict, "ollama", f"Coder model `{model}`", mode, activated=True
@@ -877,6 +892,7 @@ def run_application_stage(
         max_files=max_files,
         mode=mode,
         allow_delete=allow_delete,
+        contract=load_contract(app_path),
     )
 
     if (

@@ -1,8 +1,16 @@
+# Model strategy while debugging the factory LOOP (not chasing genius code):
+# ONE fast, reliable worker model for the high-frequency roles (expansion,
+# planning, coding, test writing, repair) so failure analysis stays clean — and
+# a separate stronger model reserved for judgement roles (review, diagnosis,
+# checkpoint audit). Change worker models only after the loop is proven stable.
 models:
-  architect: "cogito:14b"
-  planner: "cogito:14b"
+  # Fast worker — runs most ticks.
+  architect: "qwen2.5-coder:14b"
+  planner: "qwen2.5-coder:14b"
   coder: "qwen2.5-coder:14b"
   test_builder: "qwen2.5-coder:14b"
+  # Stronger judgement model — architecture/contract review, failure diagnosis,
+  # checkpoint audit, continue/repair/rollback decisions.
   reviewer: "gemma4:latest"
   fast_helper: "deepseek-coder:latest"
   embeddings: "nomic-embed-text:latest"

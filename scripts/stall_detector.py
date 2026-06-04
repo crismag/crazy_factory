@@ -35,6 +35,7 @@ PERSISTENT_BLOCKERS: frozenset[str] = frozenset(
         "validation_failed",
         "test_plan_rejected",
         "remediation_exhausted",
+        "self_rejection",
     }
 )
 

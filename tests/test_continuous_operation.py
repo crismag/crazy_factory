@@ -126,6 +126,18 @@ class StallTests(unittest.TestCase):
         )
         self.assertTrue(signal.stalled)
 
+    def test_stall_on_self_rejection(self) -> None:
+        # SELF_REJECTION (factory rejected its own work) is terminal: pause for
+        # upstream repair, never loop the coder.
+        signal = detect_stall(
+            factory_state={},
+            project_state={
+                "failure_count": 0,
+                "current_blocker": "self_rejection",
+            },
+        )
+        self.assertTrue(signal.stalled)
+
     def test_stall_on_repeated_fallback(self) -> None:
         signal = detect_stall(
             factory_state={

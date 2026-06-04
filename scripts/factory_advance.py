@@ -79,8 +79,17 @@ from test_builder import (  # noqa: E402
     test_plan_status_label,
 )
 from validation_runner import (  # noqa: E402
+    CheckResult,
+    ValidationResult,
     run_validation_stage,
     validation_status_label,
+)
+from architecture import (  # noqa: E402
+    coherence_commands,
+    existing_violations,
+    is_contract_conflict,
+    load_contract,
+    render_contract_brief,
 )
 from git_guard import status  # noqa: E402
 from mission_state import (  # noqa: E402
@@ -256,15 +265,22 @@ def main(project: dict[str, Any] | None = None) -> int:
         print(f"Crazy Factory advance {control_action}: {detail}")
         return 0
 
-    # Park on a terminal remediation_exhausted blocker: the fix budget for the
-    # current task is spent. Stop working rather than churning the same failure;
-    # the owner reviews and runs `revoke-task` to retire it and resume.
-    if project_state.get("current_blocker") == "remediation_exhausted":
+    # Park on a terminal blocker rather than churning: a spent remediation
+    # budget, or a SELF_REJECTION (the factory's own gate rejected work it
+    # produced — a governance contradiction needing upstream repair, not more
+    # coding). The owner reviews and runs `revoke-task` to reset and resume.
+    parked_blocker = project_state.get("current_blocker")
+    if parked_blocker in ("remediation_exhausted", "self_rejection"):
+        reason = (
+            "remediation_exhausted (fix budget spent on the current task)"
+            if parked_blocker == "remediation_exhausted"
+            else "self_rejection (work violated the project's own architecture "
+            "contract — regenerate the task plan within the contract)"
+        )
         print(
             f"Crazy Factory advance parked: '{project_name}' is blocked by "
-            "remediation_exhausted (fix budget spent on the current task). "
-            "See VALIDATION_REPORT.md; run `crazy-admin revoke-task "
-            f"{project_name}` to retire the task and resume."
+            f"{reason}. See the latest report; run `crazy-admin revoke-task "
+            f"{project_name}` to reset and resume."
         )
         return 0
 
@@ -298,8 +314,17 @@ def main(project: dict[str, Any] | None = None) -> int:
     # surface the next OPEN item so planning targets it instead of "some small
     # task". The checklist lives where satisfaction reads it.
     task_root = str(project["task_root"])
+    app_path = str(project["app_path"])
     checklist_rel = f"{task_root}/{CHECKLIST_FILENAME}"
-    goal_text = "\n\n".join([*contexts.values(), context_bundle.text])
+    # The architecture contract is the single source of truth for legal work.
+    # It is injected UPSTREAM — into decomposition AND planning — so the
+    # checklist and tasks only ever propose legal work, instead of the gate
+    # rejecting work the factory itself produced (SELF_REJECTION).
+    arch_contract = load_contract(app_path)
+    arch_brief = render_contract_brief(arch_contract) if arch_contract else ""
+    goal_text = "\n\n".join(
+        [*contexts.values(), context_bundle.text, arch_brief]
+    )
     checklist_md = _read_text_or_empty(checklist_rel, root)
     if not parse_checklist(checklist_md):
         checklist_md = initial_checklist_markdown(
@@ -318,8 +343,8 @@ def main(project: dict[str, Any] | None = None) -> int:
             f"checklist item(s) -> {CHECKLIST_FILENAME}"
         )
     focus = checklist_focus(checklist_md)
-    planning_context = (
-        f"{context_bundle.text}\n\n{focus}" if focus else context_bundle.text
+    planning_context = "\n\n".join(
+        part for part in (context_bundle.text, arch_brief, focus) if part
     )
 
     architect_result = request_architect_result(
@@ -474,6 +499,17 @@ def main(project: dict[str, Any] | None = None) -> int:
         )
     )
 
+    # SELF_REJECTION: the factory produced work (activated) that its OWN gate
+    # rejected for violating the architecture contract. That is a governance
+    # contradiction, not a coder failure — do not loop the coder; pause for
+    # upstream correction (regenerate the task plan / adjust the contract).
+    self_rejection = bool(
+        arch_contract
+        and application_result.activated
+        and not application_result.applied
+        and is_contract_conflict(application_result.verdict.reasons)
+    )
+
     test_plan_result, test_plan_json, test_plan_md = run_test_builder_stage(
         project_name=project_name,
         root=root,
@@ -486,15 +522,51 @@ def main(project: dict[str, Any] | None = None) -> int:
     )
     validation_config = factory_config.get("validation", {})
     test_plan = test_plan_result.plan
+    # When the project declares an architecture contract, validation is the
+    # deterministic WHOLE-PROJECT coherence gate (compile + tests + lint over the
+    # canonical dirs), never the model's narrow per-file checks. A tick is only
+    # earned when the whole project still validates together. (arch_contract +
+    # app_path were resolved upstream with the planning context.)
+    if arch_contract:
+        checks = coherence_commands(app_path, arch_contract)
+        plan_valid = bool(checks)
+        plan_id = "coherence-gate"
+    else:
+        checks = test_plan.required_checks if test_plan else []
+        plan_valid = test_plan is not None and test_plan_result.verdict.valid
+        plan_id = test_plan.test_plan_id if test_plan else ""
     validation_result, validation_json, validation_md = run_validation_stage(
-        test_plan_id=test_plan.test_plan_id if test_plan else "",
-        required_checks=test_plan.required_checks if test_plan else [],
-        plan_valid=test_plan is not None and test_plan_result.verdict.valid,
+        test_plan_id=plan_id,
+        required_checks=checks,
+        plan_valid=plan_valid,
         root=root,
         project=project,
         allow_run=bool(validation_config.get("allow_run", False)),
         timeout_seconds=int(validation_config.get("timeout_seconds", 60)),
     )
+    # Contract scan: any forbidden file/import already on disk fails the gate
+    # outright, regardless of test results (defence in depth behind the patch
+    # gate, which should prevent these from landing in the first place).
+    if arch_contract:
+        violations = existing_violations(app_path, arch_contract)
+        if violations:
+            validation_result = ValidationResult(
+                test_plan_id=plan_id,
+                checks=[
+                    CheckResult(
+                        "architecture-contract",
+                        "failed",
+                        None,
+                        "; ".join(violations)[:400],
+                    )
+                ],
+                status="failed",
+                executed=True,
+            )
+            print(
+                "Coherence gate: contract violations -> "
+                + "; ".join(violations)[:300]
+            )
 
     coder_summary = (
         coder_result.proposal.summary if coder_result.proposal else ""
@@ -525,6 +597,22 @@ def main(project: dict[str, Any] | None = None) -> int:
         checkpoint_result=checkpoint_result,
         remediation=remediation_plan,
     )
+    if self_rejection:
+        # Override any generic blocker with the named governance failure and
+        # park (see the start-of-advance park check). This is the safety net;
+        # the upstream contract injection should make it rare.
+        project_state["current_blocker"] = "self_rejection"
+        active_run["current_blocker"] = "self_rejection"
+        print(
+            "SYSTEM_CONTRACT_CONFLICT (self_rejection): the factory proposed "
+            "work that violates its own architecture contract -> "
+            + "; ".join(application_result.verdict.reasons)[:300]
+        )
+        print(
+            "Pausing the build loop. This is not a coder failure; regenerate "
+            "the task plan within the contract (or adjust the contract), then "
+            f"`crazy-admin revoke-task {project_name}` to resume."
+        )
     persist_state(
         root=root,
         state_dir=state_dir,

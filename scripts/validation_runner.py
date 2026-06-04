@@ -31,11 +31,13 @@ ALLOWED_COMMANDS: tuple[tuple[str, ...], ...] = (
     ("python3", "-m", "ruff"),
     ("python3", "-m", "mypy"),
     ("python3", "-m", "unittest"),
+    ("python3", "-m", "compileall"),
     # `python` is as safe as `python3`; allowlisting it too avoids a spurious
     # plan rejection when the model writes `python -m pytest` instead.
     ("python", "--version"),
     ("python", "-m", "pytest"),
     ("python", "-m", "unittest"),
+    ("python", "-m", "compileall"),
     ("pytest",),
     ("ruff", "check"),
     ("ruff", "format"),
@@ -146,6 +148,13 @@ def _run_one_check(
         )
     except (FileNotFoundError, OSError) as exc:
         return CheckResult(command, "error", None, f"Could not run: {exc}")
+    # pytest exit code 5 = "no tests collected" — for an incremental build with
+    # no test files yet, that is not a failure (nothing to run), so the whole-
+    # project gate is not deadlocked before the first test lands.
+    if completed.returncode == 5 and "pytest" in argv:
+        return CheckResult(
+            command, "passed", 5, "exit code 5 (no tests collected yet)"
+        )
     status = "passed" if completed.returncode == 0 else "failed"
     detail = f"exit code {completed.returncode}"
     if completed.returncode != 0:
