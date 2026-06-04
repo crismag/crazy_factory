@@ -34,7 +34,7 @@ from project_paths import (  # noqa: E402
     RuntimePathError,
     assert_project_local,
 )
-from project_registry import resolve_project  # noqa: E402
+from project_registry import load_registry, resolve_project  # noqa: E402
 from report_writer import append_dry_run_report  # noqa: E402
 
 
@@ -111,23 +111,6 @@ class StartProjectRuntimeTests(unittest.TestCase):
             self.assertEqual(
                 json.loads((root / "state/factory_state.json").read_text()), {}
             )
-
-
-class ActivateRuntimeTests(unittest.TestCase):
-    """activate syncs run-state under the workbench, not root."""
-
-    def test_activate_leaves_root_state_untouched(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            _bootstrap_repo(root)
-            ca.startproject("widget", "apps/widget", root=root)
-            root_state_before = _snapshot(root / "state")
-            ca.activate("widget", root=root)
-            self.assertEqual(_snapshot(root / "state"), root_state_before)
-            ps = json.loads(
-                (root / "apps/widget/state/project_state.json").read_text()
-            )
-            self.assertEqual(ps["project"], "widget")
 
 
 class RuntimeGuardTests(unittest.TestCase):
@@ -219,8 +202,8 @@ class StatusRuntimeTests(unittest.TestCase):
             root = Path(tmp)
             _bootstrap_repo(root)
             ca.startproject("widget", "apps/widget", root=root)
-            ca.activate("widget", root=root)
-            info = ca.status(root)
+            project = resolve_project(load_registry(root), "widget")
+            info = ca.status(project, root)
             self.assertEqual(info["active_project"], "widget")
             self.assertEqual(info["state_path"], "apps/widget/state")
 

@@ -387,7 +387,6 @@ class CliTests(unittest.TestCase):
             root = Path(tmp)
             self._bootstrap(root)
             ca.startproject("todo", "apps/todo", root=root)
-            ca.activate("todo", root=root)
             _write_planned(
                 root,
                 {"task_root": "apps/todo/factory_tasks"},

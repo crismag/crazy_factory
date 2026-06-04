@@ -447,15 +447,14 @@ class PromoteTests(unittest.TestCase):
             with self.assertRaises(PromoteError):
                 promote("demo", root)
 
-    def test_config_registers_and_switches_active_project(self) -> None:
+    def test_config_registers_project(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             _promote_fixture(root)
             promote("demo", root)
             projects = (root / "config/projects.yaml").read_text()
-            # promote writes a registry entry in the App Builder schema and
-            # makes it active; factory.yaml is no longer the source of truth.
-            self.assertIn('active_project: "demo"', projects)
+            # promote writes a registry entry (id->path directory). There is no
+            # active project; selection is per invocation.
             self.assertIn("  demo:", projects)
             self.assertIn('app_path: "apps/demo"', projects)
             self.assertIn('repo_mode: "embedded"', projects)

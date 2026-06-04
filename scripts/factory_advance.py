@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 sys.dont_write_bytecode = True
 
@@ -100,29 +101,33 @@ from project_paths import (  # noqa: E402
 )
 from project_registry import (  # noqa: E402
     RegistryError,
-    active_project_id,
     app_is_buildable,
     load_registry,
-    resolve_project,
+    resolve_target,
     workbench_exists,
 )
 from advance_config import validate_dry_run_settings  # noqa: E402
 from settings import load_engine_settings  # noqa: E402
 
 
-def _no_active_project_notice() -> int:
-    """Print guidance when no app to work on is selected, and exit cleanly."""
-    print("No active project selected. Choose an app to work on first:")
+def _no_target_notice(detail: str) -> int:
+    """Print guidance when no project could be targeted, and exit cleanly."""
+    print(f"No project to advance: {detail}")
     print(
-        "  - crazy-admin startproject <id> [path]   (new app)\n"
-        "  - crazy-admin attachproject <id> <path>  (existing codebase)\n"
-        "  - crazy-admin activate <id>              (select it)"
+        "  - name one:   crazy-admin advance <id>\n"
+        "  - by path:    crazy-admin advance --path <dir>\n"
+        "  - from inside the project workbench (cwd), or use --all"
     )
     return 0
 
 
-def main() -> int:
+def main(project: dict[str, Any] | None = None) -> int:
     """Execute one planning-only Architect, Planner, and contract advance.
+
+    Args:
+        project: Pre-resolved project mapping to act on. When ``None`` (e.g.
+            the module is run directly), the project is discovered from the
+            current working directory — there is no global active project.
 
     Returns:
         Process exit code ``0`` after completion, pause, or stop.
@@ -131,15 +136,12 @@ def main() -> int:
     models_config = load_simple_yaml(
         load_engine_settings(root)["models_config"], root
     )
-    registry = load_registry(root)
-    project_name = active_project_id(registry)
-    if not project_name:
-        return _no_active_project_notice()
-    try:
-        project = resolve_project(registry, project_name)
-    except RegistryError as exc:
-        print(f"Active project '{project_name}' is not usable: {exc}")
-        return 0
+    if project is None:
+        try:
+            project = resolve_target(load_registry(root), root, cwd=Path.cwd())
+        except RegistryError as exc:
+            return _no_target_notice(str(exc))
+    project_name = str(project["name"])
     if not workbench_exists(project["app_path"], root):
         print(
             f"Workbench for '{project_name}' is missing "
@@ -178,7 +180,9 @@ def main() -> int:
     )
     factory = factory_config["factory"]
     state_dir = str(project["state_dir"])
-    factory_state, active_run, project_state = load_state(root, state_dir)
+    factory_state, active_run, project_state = load_state(
+        root, state_dir, project_name
+    )
     validate_state_project(project_name, factory_state, project_state)
 
     control_action = requested_control_action(factory_state)

@@ -39,13 +39,7 @@ from planning_roles import (  # noqa: E402
     request_architect_result,
     request_planner_result,
 )
-from advance_config import (  # noqa: E402
-    load_active_project,
-    load_configuration,
-    selected_active_project,
-    validate_dry_run_settings,
-    workbench_ready,
-)
+from advance_config import validate_dry_run_settings  # noqa: E402
 from ollama_client import OllamaConnectionError  # noqa: E402
 from repo_tools import read_markdown_directory, safe_write_text  # noqa: E402
 from report_writer import append_dry_run_report  # noqa: E402
@@ -83,46 +77,6 @@ class ValidationLoopSmokeTests(unittest.TestCase):
     def setUp(self) -> None:
         """Store the repository root used by read-only fixture checks."""
         self.repo_root = Path(__file__).resolve().parents[1]
-
-    def test_no_active_project_by_default(self) -> None:
-        """The shipped config selects no project; one must be chosen."""
-        factory_config, projects_config = load_configuration(self.repo_root)
-        self.assertEqual(
-            selected_active_project(
-                factory_config["factory"], projects_config
-            ),
-            "",
-        )
-
-    def test_active_project_resolution(self) -> None:
-        """Resolve a selected project and reject an unknown one."""
-        factory = {"active_project": "demo"}
-        projects = {
-            "active_project": "demo",
-            "projects": {"demo": {"task_root": "apps/demo/factory_tasks"}},
-        }
-        self.assertEqual(selected_active_project(factory, projects), "demo")
-        name, project = load_active_project(factory, projects)
-        self.assertEqual(name, "demo")
-        self.assertEqual(project["task_root"], "apps/demo/factory_tasks")
-        with self.assertRaises(RuntimeError):
-            load_active_project(
-                {"active_project": "ghost"},
-                {"active_project": "ghost", "projects": {}},
-            )
-
-    def test_workbench_ready_detects_missing_dirs(self) -> None:
-        """A project whose directories are absent is not workbench-ready."""
-        self.assertFalse(
-            workbench_ready(
-                {
-                    "context_root": "apps/ghost/factory_context",
-                    "task_root": "apps/ghost/factory_tasks",
-                    "report_root": "apps/ghost/factory_reports",
-                },
-                self.repo_root,
-            )
-        )
 
     def test_stop_takes_precedence_over_pause(self) -> None:
         """Prefer an explicit stop when both owner control flags are active."""

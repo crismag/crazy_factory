@@ -2,17 +2,18 @@
 """Crazy Factory admin CLI — the app builder usage flow.
 
 Models the Django ``startproject`` / ``manage.py`` pattern for a general AI
-software factory. An app to work on is created or attached explicitly,
-registered in ``config/projects.yaml``, and activated; the factory then builds
-the active project. Apps may live anywhere — under ``apps/<id>`` (embedded), a
-sibling folder, or a completely separate repository (external).
+software factory. An app to work on is created or attached explicitly and
+registered in ``config/projects.yaml`` (a pure id->path directory). There is no
+global active project: every command targets a project by ``<id>``, by
+``--path``, or by the workbench it runs inside (cwd), so projects are
+independently addressable and can run concurrently. Apps may live anywhere —
+under ``apps/<id>`` (embedded), a sibling folder, or a separate repo (external).
 
 Commands:
     crazy-admin startproject <id> [target_path]   scaffold a new app + register
     crazy-admin attachproject <id> <existing_path> register an existing codebase
-    crazy-admin activate <id>                      set the active project
-    crazy-admin status                             show the active project
-    crazy-admin advance                               run one build advance on it
+    crazy-admin status [<id>] [--path DIR]        show a project's status
+    crazy-admin advance [<id>] [--path DIR] [--all] run build advance(s)
 
 This CLI only writes the app scaffold (owner-driven), the per-project factory
 state, and the registry. It never applies code, commits, pushes, or merges.
@@ -66,23 +67,21 @@ from project_control import (  # noqa: E402
 )
 from project_registry import (  # noqa: E402
     RegistryError,
-    active_project_id,
+    all_project_ids,
     app_is_buildable,
     app_is_external,
     load_registry,
     register_project,
     resolve_project,
+    resolve_target,
     save_registry,
-    set_active,
     state_path_for,
     workbench_exists,
 )
 from repo_tools import (  # noqa: E402
     find_repo_root,
     resolve_repo_path,
-    safe_load_json,
     safe_read_text,
-    safe_write_json,
     safe_write_text,
 )
 from seed_context import SeedError, validate_project_id  # noqa: E402
@@ -437,50 +436,6 @@ def attachproject(
     }
 
 
-def activate(project_id: str, *, root: Path) -> None:
-    """Set the active project and repoint durable state at it.
-
-    Args:
-        project_id: Project to activate.
-        root: Absolute repository root.
-
-    Raises:
-        RegistryError: If the project is not registered.
-    """
-    registry = load_registry(root)
-    set_active(registry, project_id)
-    save_registry(registry, root)
-    project = resolve_project(registry, project_id)
-    # External app runtime lives outside the repo (a deferred increment); its
-    # project-local state cannot be written through the repo-confined helpers.
-    if app_is_buildable(project["app_path"], root):
-        _sync_state_active(project_id, project, root)
-
-
-def _sync_state_active(
-    project_id: str, project: dict[str, Any], root: Path
-) -> None:
-    """Keep the project-local ``<app>/state/*.json`` pointed at the project.
-
-    Materializes the bootstrap state first when missing (e.g. an attached
-    project), so the project always owns its run-state.
-    """
-    state_dir = str(project["state_dir"])
-    bootstrap = initial_state(project_id)
-    for name, key in (
-        ("factory_state.json", "active_project"),
-        ("active_run.json", "active_project"),
-        ("project_state.json", "project"),
-    ):
-        rel = f"{state_dir}/{name}"
-        if resolve_repo_path(rel, root).is_file():
-            state = safe_load_json(rel, root)
-        else:
-            state = bootstrap[name]
-        state[key] = project_id
-        safe_write_json(rel, state, repo_root=root, allowed_roots=[state_dir])
-
-
 def _copy_legacy_tree(
     src_rel: str,
     dest_rel: str,
@@ -631,38 +586,38 @@ def _print_migration(summary: dict[str, Any]) -> None:
         )
 
 
-def _resolve_project_arg(root: Path, project_id: str | None) -> dict[str, Any]:
-    """Resolve an explicit project id, or the active project when omitted.
+def _resolve_project_arg(
+    root: Path, project_id: str | None, *, path: str | None = None
+) -> dict[str, Any]:
+    """Resolve which project a command targets: by id, by --path, or by cwd.
+
+    There is no global active project. When neither an id nor a path is given,
+    the project is discovered from the current working directory.
 
     Raises:
-        AdminError: If no project is given and none is active.
-        RegistryError: If the named project is not registered.
+        RegistryError: If nothing resolves (also wrapped from the resolver).
     """
-    registry = load_registry(root)
-    pid = project_id or active_project_id(registry)
-    if not pid:
-        raise AdminError(
-            "No project specified and no active project. "
-            "Pass a <project_id> or run `crazy-admin activate <id>`."
-        )
-    return resolve_project(registry, pid)
+    return resolve_target(
+        load_registry(root),
+        root,
+        project_id=project_id,
+        path=path,
+        cwd=Path.cwd(),
+    )
 
 
-def status(root: Path) -> dict[str, Any]:
-    """Return a detailed owner-facing status for the active project.
+def status(project: dict[str, Any], root: Path) -> dict[str, Any]:
+    """Return a detailed owner-facing status for one resolved project.
 
     Args:
+        project: The resolved project mapping (by id, path, or cwd).
         root: Absolute repository root.
 
     Returns:
         A mapping describing paths, context, contract/proposal state, effective
         capabilities, and the current blocker.
     """
-    registry = load_registry(root)
-    pid = active_project_id(registry)
-    if not pid:
-        return {"active_project": "", "message": "No active project."}
-    project = resolve_project(registry, pid)
+    pid = str(project["name"])
     info: dict[str, Any] = {
         "active_project": pid,
         "app_path": project["app_path"],
@@ -809,16 +764,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("project_id")
     ap.add_argument("existing_path")
     ap.add_argument("--write-config", action="store_true")
-    av = sub.add_parser("activate")
-    av.add_argument("project_id")
     mg = sub.add_parser("migrate-project-runtime")
     mg.add_argument("project_id")
     ac = sub.add_parser("add-context")
     ac.add_argument("project_id")
     ac.add_argument("source")
-    sub.add_parser("status")
-    sub.add_parser("advance")
-    # Owner-control commands. project_id is optional → defaults to active.
+    st = sub.add_parser("status")
+    st.add_argument("project_id", nargs="?", default=None)
+    st.add_argument("--path", default=None)
+    adv = sub.add_parser("advance")
+    adv.add_argument("project_id", nargs="?", default=None)
+    adv.add_argument("--path", default=None)
+    adv.add_argument(
+        "--all", action="store_true", help="advance every registered project"
+    )
+    # Owner-control commands target a project by <id>, by --path, or by the
+    # workbench the command runs inside (cwd). There is no global active project.
     for name in (
         "next",
         "authorize-task",
@@ -836,6 +797,7 @@ def main(argv: list[str] | None = None) -> int:
     ):
         owner = sub.add_parser(name)
         owner.add_argument("project_id", nargs="?", default=None)
+        owner.add_argument("--path", default=None)
 
     args = parser.parse_args(argv)
     root = find_repo_root()
@@ -872,8 +834,8 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
         )
         print(f"State: {info['state_path']}")
         print(
-            "Next: edit docs/seed.md, then `crazy-admin activate "
-            f"{info['project_id']}`."
+            "Next: edit docs/seed.md, then "
+            f"`crazy-admin advance {info['project_id']}`."
         )
         return 0
     if args.command == "set-path":
@@ -894,10 +856,6 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             f"{info['app_path']}."
         )
         return 0
-    if args.command == "activate":
-        activate(args.project_id, root=root)
-        print(f"Active project is now: {args.project_id}")
-        return 0
     if args.command == "migrate-project-runtime":
         _print_migration(migrate_project_runtime(args.project_id, root=root))
         return 0
@@ -916,13 +874,34 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             print(f"Skipped (secret-like): {', '.join(result['skipped'])}")
         return 0
     if args.command == "status":
-        _print_status(status(root))
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
+        _print_status(status(project, root))
         return 0
     owner_result = _dispatch_owner(args, root)
     if owner_result is not None:
         return owner_result
-    # advance
-    return factory_advance.main()
+    return _dispatch_advance(args, root)
+
+
+def _dispatch_advance(args: argparse.Namespace, root: Path) -> int:
+    """Run a planning advance for one project or, with --all, every one."""
+    if getattr(args, "all", False):
+        registry = load_registry(root)
+        ids = all_project_ids(registry)
+        if not ids:
+            print("No registered projects to advance.")
+            return 0
+        for pid in ids:
+            print(f"\n=== advance: {pid} ===")
+            try:
+                project = resolve_project(registry, pid)
+            except RegistryError as exc:
+                print(f"Skipping '{pid}': {exc}")
+                continue
+            factory_advance.main(project)
+        return 0
+    project = _resolve_project_arg(root, args.project_id, path=args.path)
+    return factory_advance.main(project)
 
 
 _CAPABILITY_COMMANDS: dict[str, tuple[str, bool]] = {
@@ -941,7 +920,7 @@ def _dispatch_owner(args: argparse.Namespace, root: Path) -> int | None:
     """Dispatch an owner-control command; return ``None`` if not one."""
     cmd = args.command
     if cmd == "next":
-        project = _resolve_project_arg(root, args.project_id)
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
         print(
             describe_next(
                 project,
@@ -951,17 +930,17 @@ def _dispatch_owner(args: argparse.Namespace, root: Path) -> int | None:
         )
         return 0
     if cmd == "authorize-task":
-        project = _resolve_project_arg(root, args.project_id)
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
         authorize_task(project, root)
         print("Task authorized.\n\nNext:\n  bin/crazy-admin advance")
         return 0
     if cmd == "revoke-task":
-        project = _resolve_project_arg(root, args.project_id)
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
         revoke_task(project, root)
         print("Task authorization revoked.")
         return 0
     if cmd == "approve-proposal":
-        project = _resolve_project_arg(root, args.project_id)
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
         result = approve_proposal(project, root)
         pid = project["name"]
         print(
@@ -970,13 +949,13 @@ def _dispatch_owner(args: argparse.Namespace, root: Path) -> int | None:
         )
         return 0
     if cmd == "revoke-proposal":
-        project = _resolve_project_arg(root, args.project_id)
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
         revoke_proposal(project, root)
         print("Proposal approval cleared.")
         return 0
     if cmd in _CAPABILITY_COMMANDS:
         cap_key, value = _CAPABILITY_COMMANDS[cmd]
-        project = _resolve_project_arg(root, args.project_id)
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
         set_capability(project, root, cap_key, value)
         print(f"{cap_key} = {str(value).lower()} for {project['name']}.")
         return 0

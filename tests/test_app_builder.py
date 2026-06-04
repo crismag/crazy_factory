@@ -21,7 +21,6 @@ The eight capabilities under test:
 
 from __future__ import annotations
 
-import json
 import sys
 import tempfile
 import unittest
@@ -36,12 +35,13 @@ import crazy_admin as ca  # noqa: E402
 import factory_advance  # noqa: E402
 from project_registry import (  # noqa: E402
     RegistryError,
-    active_project_id,
     app_is_external,
     dump_registry,
     load_registry,
     register_project,
     resolve_project,
+    resolve_project_at,
+    resolve_target,
     workbench_exists,
 )
 from seed_context import SeedError  # noqa: E402
@@ -164,36 +164,46 @@ class AttachProjectTests(unittest.TestCase):
                 ca.attachproject("ghost", "/nope/not/here", root=root)
 
 
-class ActivateTests(unittest.TestCase):
-    """Activation requires a registered project and syncs durable state."""
+class TargetResolutionTests(unittest.TestCase):
+    """A project is targeted by id, by path, or by cwd — no global active."""
 
-    def test_activate_unregistered_fails(self) -> None:
+    def test_resolve_unregistered_id_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _bootstrap_repo(root)
             with self.assertRaises(RegistryError):
-                ca.activate("nope", root=root)
+                resolve_target(load_registry(root), root, project_id="nope")
 
-    def test_activate_sets_active_and_syncs_state(self) -> None:
+    def test_resolve_by_id_and_by_path_agree(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _bootstrap_repo(root)
             ca.startproject("widget", "apps/widget", root=root)
-            ca.activate("widget", root=root)
-            self.assertEqual(active_project_id(load_registry(root)), "widget")
-            # Run-state is project-local under the workbench, not root state/.
-            fs = json.loads(
-                (root / "apps/widget/state/factory_state.json").read_text()
+            by_id = resolve_target(
+                load_registry(root), root, project_id="widget"
             )
-            ps = json.loads(
-                (root / "apps/widget/state/project_state.json").read_text()
-            )
-            self.assertEqual(fs["active_project"], "widget")
-            self.assertEqual(ps["project"], "widget")
-            # Root state/ is untouched (engine root stays clean).
-            self.assertEqual(
-                json.loads((root / "state/factory_state.json").read_text()), {}
-            )
+            # Registry-independent: read the project's own crazy_project.yaml.
+            by_path = resolve_project_at("apps/widget", root)
+            self.assertEqual(by_id["name"], "widget")
+            self.assertEqual(by_path["name"], "widget")
+            self.assertEqual(by_id["app_path"], by_path["app_path"])
+
+    def test_resolve_from_cwd_walks_up_to_workbench(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("widget", "apps/widget", root=root)
+            sub = root / "apps/widget/src"
+            sub.mkdir(parents=True, exist_ok=True)
+            project = resolve_target(load_registry(root), root, cwd=sub)
+            self.assertEqual(project["name"], "widget")
+
+    def test_no_target_raises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            with self.assertRaises(RegistryError):
+                resolve_target(load_registry(root), root, cwd=root)
 
 
 class ResolveAndRoundtripTests(unittest.TestCase):
@@ -216,7 +226,7 @@ class ResolveAndRoundtripTests(unittest.TestCase):
             self.assertTrue(workbench_exists(project["app_path"], root))
 
     def test_registry_dump_load_roundtrip(self) -> None:
-        registry: dict = {"active_project": "a", "projects": {}}
+        registry: dict = {"projects": {}}
         register_project(
             registry,
             project_id="a",
@@ -241,21 +251,28 @@ class ResolveAndRoundtripTests(unittest.TestCase):
             (root / "config").mkdir()
             (root / "config/projects.yaml").write_text(text, encoding="utf-8")
             reloaded = load_registry(root)
-        self.assertEqual(reloaded["active_project"], "a")
         self.assertEqual(reloaded["projects"]["b"]["app_path"], "/abs/b")
         self.assertEqual(reloaded["projects"]["a"]["repo_mode"], "embedded")
 
 
 class FactoryAdvanceResolutionTests(unittest.TestCase):
-    """factory_advance resolves via the registry with no default project."""
+    """factory_advance acts on an explicitly targeted project (no active)."""
 
-    def _run_main(self, root: Path) -> tuple[int, str]:
+    def _run_main(
+        self, root: Path, project_id: str | None = None
+    ) -> tuple[int, str]:
         out = StringIO()
+        project = (
+            resolve_project(load_registry(root), project_id)
+            if project_id
+            else None
+        )
         with (
             patch("factory_advance.find_repo_root", return_value=root),
+            patch("factory_advance.Path.cwd", return_value=root),
             patch("sys.stdout", out),
         ):
-            code = factory_advance.main()
+            code = factory_advance.main(project)
         return code, out.getvalue()
 
     def _min_configs(self, root: Path) -> None:
@@ -271,14 +288,14 @@ class FactoryAdvanceResolutionTests(unittest.TestCase):
             "models:\n  planner: cogito:14b\n", encoding="utf-8"
         )
 
-    def test_no_active_project_exits_cleanly(self) -> None:
+    def test_no_target_exits_cleanly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             _bootstrap_repo(root)
             self._min_configs(root)
             code, text = self._run_main(root)
             self.assertEqual(code, 0)
-            self.assertIn("No active project", text)
+            self.assertIn("No project to advance", text)
 
     def test_unapproved_external_project_is_guarded(self) -> None:
         # An external app NOT under the configured apps base registers, but the
@@ -291,8 +308,7 @@ class FactoryAdvanceResolutionTests(unittest.TestCase):
             _bootstrap_repo(root)
             self._min_configs(root)
             ca.startproject("myapp", str(Path(ext) / "a"), root=root)
-            ca.activate("myapp", root=root)
-            code, text = self._run_main(root)
+            code, text = self._run_main(root, "myapp")
             self.assertEqual(code, 0)
             self.assertIn("TARGET_PATH_UNSUPPORTED", text)
 
