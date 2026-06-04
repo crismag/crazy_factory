@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import factory_messaging as msg
 from repo_tools import (
     RepoSafetyError,
     load_simple_yaml,
@@ -147,9 +148,11 @@ def load_project_factory_config(app_path: str, root: Path) -> dict:
     if project_config_exists(app_path, root):
         return load_simple_yaml(paths.factory_config_path, root)
     template = load_engine_settings(root)["factory_config_template"]
-    print(
-        f"WARNING: no project config at {paths.factory_config_path}; "
-        f"using the default template ({template}). Run "
-        "`crazy-admin migrate-project-runtime <id>` to materialize it."
+    msg.wprint(
+        f"No project config at {paths.factory_config_path}; falling back to "
+        f"the default template ({template}). This project runs on engine "
+        f"defaults, not its own settings — limits and model choices may differ "
+        f"from what you configured. Run `crazy-admin migrate-project-runtime "
+        f"<id>` to materialize a project-local config."
     )
     return load_simple_yaml(template, root)

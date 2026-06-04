@@ -21,6 +21,7 @@ from completion import (  # noqa: E402
     checklist_focus,
     initial_checklist_markdown,
     is_complete,
+    items_from_required_files,
     mark_first_open_done,
     next_open_item,
     parse_checklist,
@@ -107,6 +108,32 @@ class DecomposeTests(unittest.TestCase):
         # No configs and no bullets -> a generic definition of done.
         items = build_checklist_items("prose with no bullets")
         self.assertEqual(len(items), 1)
+
+    def test_required_files_drive_deterministic_checklist(self) -> None:
+        # When the contract declares required_files, decomposition is
+        # deterministic + foundation-first and never calls the model.
+        files = [
+            "src/task_model.py",
+            "tests/test_task_model.py",
+            "src/storage.py",
+        ]
+        items = items_from_required_files(files)
+        self.assertEqual(len(items), 3)
+        self.assertIn("src/task_model.py", items[0])
+        self.assertIn("Implement", items[0])  # source -> implement
+        self.assertIn("Write", items[1])  # test file -> write tests
+        # build_checklist_items prefers required_files over any AI call.
+        with patch(
+            "completion.OllamaClient.chat",
+            side_effect=AssertionError("must not call model when files given"),
+        ):
+            built = build_checklist_items(
+                "goal",
+                models_config=_MODELS,
+                factory_config=_FACTORY,
+                required_files=files,
+            )
+        self.assertEqual(built, items)
 
     def test_initial_markdown_is_all_open(self) -> None:
         md = initial_checklist_markdown(

@@ -32,6 +32,7 @@ from typing import Any
 
 sys.dont_write_bytecode = True
 
+import factory_messaging as msg  # noqa: E402
 from coder_proposal import (  # noqa: E402
     coder_status_label,
     run_coder_stage,
@@ -169,8 +170,9 @@ def _retire_task_artifacts(task_root: str) -> None:
 
 def _no_target_notice(detail: str) -> int:
     """Print guidance when no project could be targeted, and exit cleanly."""
-    print(f"No project to advance: {detail}")
-    print(
+    msg.wprint(f"No project to advance: {detail}. Nothing was built.")
+    msg.nprint(
+        "Target a project one of these ways:\n"
         "  - name one:   crazy-admin advance <id>\n"
         "  - by path:    crazy-admin advance --path <dir>\n"
         "  - from inside the project workbench (cwd), or use --all"
@@ -200,20 +202,22 @@ def main(project: dict[str, Any] | None = None) -> int:
             return _no_target_notice(str(exc))
     project_name = str(project["name"])
     if not workbench_exists(project["app_path"], root):
-        print(
-            f"Workbench for '{project_name}' is missing "
-            f"({project['app_path']}). Create or re-attach it before a advance."
+        msg.eprint(
+            f"Cannot advance '{project_name}': its workbench is missing at "
+            f"{project['app_path']}. Nothing was built. Create or re-attach it "
+            f"with `crazy-admin attachproject {project_name} <path>`."
         )
         return 0
     if not app_is_buildable(project["app_path"], root):
         # An app may live under the repo (embedded) or under the owner-
         # configured external apps base. Anywhere else is not an approved build
         # location, so the factory refuses rather than writing there.
-        print(
-            f"TARGET_PATH_UNSUPPORTED: project '{project_name}' is at an "
-            f"unapproved location ({project['app_path']}). Configure "
-            "paths.engine.apps_base (or CRAZY_FACTORY_APPS_BASE) to cover it, "
-            "or use an embedded app under apps/."
+        msg.eprint(
+            f"TARGET_PATH_UNSUPPORTED: refusing to advance '{project_name}' at "
+            f"the unapproved location {project['app_path']}. The factory only "
+            f"writes inside approved roots. Fix: set paths.engine.apps_base "
+            f"(or CRAZY_FACTORY_APPS_BASE) to cover it, or move the app under "
+            f"apps/."
         )
         return 0
     # Fail loudly if any runtime path is not inside the project folder — the
@@ -262,7 +266,7 @@ def main(project: dict[str, Any] | None = None) -> int:
             detail=detail,
             repo_root=root,
         )
-        print(f"Crazy Factory advance {control_action}: {detail}")
+        msg.info(f"Crazy Factory advance {control_action}: {detail}")
         return 0
 
     # Park on a terminal blocker rather than churning: a spent remediation
@@ -277,10 +281,10 @@ def main(project: dict[str, Any] | None = None) -> int:
             else "self_rejection (work violated the project's own architecture "
             "contract — regenerate the task plan within the contract)"
         )
-        print(
-            f"Crazy Factory advance parked: '{project_name}' is blocked by "
-            f"{reason}. See the latest report; run `crazy-admin revoke-task "
-            f"{project_name}` to reset and resume."
+        msg.warn(
+            f"advance parked: '{project_name}' is blocked by {reason}. See the "
+            f"latest report; run `crazy-admin revoke-task {project_name}` to "
+            "reset and resume."
         )
         return 0
 
@@ -302,9 +306,9 @@ def main(project: dict[str, Any] | None = None) -> int:
     )
     drop_note = summarize_drops(context_bundle)
     if drop_note:
-        print(drop_note)
+        msg.info(drop_note)
     if context_bundle.included:
-        print(
+        msg.info(
             f"Loaded {len(context_bundle.included)} context file(s) "
             f"({context_bundle.total_bytes} bytes) into planning."
         )
@@ -327,10 +331,16 @@ def main(project: dict[str, Any] | None = None) -> int:
     )
     checklist_md = _read_text_or_empty(checklist_rel, root)
     if not parse_checklist(checklist_md):
+        required_files = (
+            arch_contract.get("required_files") if arch_contract else None
+        )
         checklist_md = initial_checklist_markdown(
             goal_text,
             models_config=models_config,
             factory_config=factory_config,
+            required_files=required_files
+            if isinstance(required_files, list)
+            else None,
         )
         safe_write_text(
             checklist_rel,
@@ -338,7 +348,7 @@ def main(project: dict[str, Any] | None = None) -> int:
             repo_root=root,
             allowed_roots=[task_root],
         )
-        print(
+        msg.info(
             f"Decomposed goal into {len(parse_checklist(checklist_md))} "
             f"checklist item(s) -> {CHECKLIST_FILENAME}"
         )
@@ -396,6 +406,16 @@ def main(project: dict[str, Any] | None = None) -> int:
             planner_result=planner_result,
         )
     )
+    msg.phase(
+        f"Contract — planning and reviewing the next task for '{project_name}'"
+    )
+    msg.decision(
+        "contract.review",
+        contract_status_label(contract_result),
+        reasons=contract_result.verdict.reasons,
+    )
+    if not contract_result.verdict.valid:
+        msg.rejection("contract", contract_result.verdict.reasons)
 
     # Autonomous mode (owner-enabled, default OFF): the owner pre-delegates
     # authorization for this checklist-driven build so the loop can march
@@ -410,7 +430,7 @@ def main(project: dict[str, Any] | None = None) -> int:
     ):
         try:
             authorize_task(project, root)
-            print(
+            msg.info(
                 "Autonomous: auto-authorized the planned task (owner-enabled)."
             )
         except ControlError:
@@ -432,10 +452,11 @@ def main(project: dict[str, Any] | None = None) -> int:
         factory_config, project_state, prior_validation_report
     )
     if remediation_plan.active:
-        print(
-            f"Remediation attempt {remediation_plan.attempt}/"
-            f"{remediation_plan.max_attempts}: re-engaging the coder to fix "
-            "the failed validation."
+        msg.decision(
+            "remediation",
+            f"attempt {remediation_plan.attempt}/"
+            f"{remediation_plan.max_attempts}",
+            reasons=["re-engaging the coder to fix the failed validation"],
         )
 
     max_files = int(factory["max_files_per_run"])
@@ -450,6 +471,15 @@ def main(project: dict[str, Any] | None = None) -> int:
         contract_json_path=contract_json_path,
         remediation_context=remediation_plan.context,
     )
+    if coder_result.activated:
+        msg.phase(f"Coder — proposing a code patch for '{project_name}'")
+        msg.decision(
+            "coder.proposal",
+            coder_status_label(coder_result),
+            reasons=coder_result.verdict.reasons,
+        )
+        if not coder_result.verdict.valid:
+            msg.rejection("coder proposal", coder_result.verdict.reasons)
 
     # Owner-enabled remediation pre-approves the fix proposal for THIS task so
     # the same advance can apply + re-validate it. Gated by remediation_plan
@@ -466,7 +496,7 @@ def main(project: dict[str, Any] | None = None) -> int:
             repo_root=root,
             allowed_roots=[task_root],
         )
-        print(
+        msg.info(
             "Remediation: auto-approved fix proposal "
             f"{coder_result.proposal.proposal_id} (owner-enabled)."
         )
@@ -481,7 +511,7 @@ def main(project: dict[str, Any] | None = None) -> int:
     ):
         try:
             approve_proposal(project, root)
-            print("Autonomous: auto-approved the proposal (owner-enabled).")
+            msg.info("Autonomous: auto-approved the proposal (owner-enabled).")
         except ControlError:
             pass
 
@@ -498,6 +528,21 @@ def main(project: dict[str, Any] | None = None) -> int:
             proposal_json_path=proposal_json_path,
         )
     )
+    if application_result.activated:
+        msg.phase(
+            f"Application — writing the approved patch into '{project_name}'"
+        )
+        msg.stage(
+            "application",
+            application_status_label(application_result),
+            detail=application_result.detail,
+        )
+        if (
+            not application_result.applied
+            and application_result.verdict.reasons
+        ):
+            # WHAT was rejected, not just that it was — the rejection checklist.
+            msg.rejection("application", application_result.verdict.reasons)
 
     # SELF_REJECTION: the factory produced work (activated) that its OWN gate
     # rejected for violating the architecture contract. That is a governance
@@ -563,10 +608,28 @@ def main(project: dict[str, Any] | None = None) -> int:
                 status="failed",
                 executed=True,
             )
-            print(
-                "Coherence gate: contract violations -> "
-                + "; ".join(violations)[:300]
+            msg.detail(
+                "coherence gate: contract violations on disk",
+                items=violations,
             )
+
+    # Surface validation outcome + WHICH checks failed and why (the error
+    # checklist), so a failure is diagnosable, not just "validation failed".
+    _val_status = validation_status_label(validation_result)
+    msg.phase(
+        f"Validation — checking the whole '{project_name}' project is "
+        f"coherent (compile, tests, lint)"
+    )
+    msg.stage("validation", _val_status)
+    if _val_status in ("failed", "blocked"):
+        msg.error(
+            "validation did not pass",
+            checklist=[
+                f"{c.command}: {c.status} — {c.detail}"
+                for c in validation_result.checks
+                if c.status in ("failed", "error", "blocked")
+            ],
+        )
 
     coder_summary = (
         coder_result.proposal.summary if coder_result.proposal else ""
@@ -603,15 +666,12 @@ def main(project: dict[str, Any] | None = None) -> int:
         # the upstream contract injection should make it rare.
         project_state["current_blocker"] = "self_rejection"
         active_run["current_blocker"] = "self_rejection"
-        print(
+        msg.error(
             "SYSTEM_CONTRACT_CONFLICT (self_rejection): the factory proposed "
-            "work that violates its own architecture contract -> "
-            + "; ".join(application_result.verdict.reasons)[:300]
-        )
-        print(
-            "Pausing the build loop. This is not a coder failure; regenerate "
-            "the task plan within the contract (or adjust the contract), then "
-            f"`crazy-admin revoke-task {project_name}` to resume."
+            "work that violates its own architecture contract. Not a coder "
+            "failure — regenerate the task plan within the contract (or adjust "
+            f"the contract), then `crazy-admin revoke-task {project_name}`.",
+            checklist=application_result.verdict.reasons,
         )
     persist_state(
         root=root,
@@ -640,15 +700,15 @@ def main(project: dict[str, Any] | None = None) -> int:
                 repo_root=root,
                 allowed_roots=[task_root],
             )
-            print(f"Checklist: completed item -> {completed_item}")
+            msg.info(f"checklist: completed item -> {completed_item}")
             # Retire the finished task so the next advance plans the NEXT open
             # item. Without this the authorized contract is preserved and the
             # loop never moves past the completed item. If nothing remains open,
             # leave artifacts in place — the project is satisfied.
             if open_items(parse_checklist(updated_checklist)):
                 _retire_task_artifacts(task_root)
-                print(
-                    "Retired completed task; next advance plans the next item."
+                msg.info(
+                    "retired completed task; next advance plans the next item."
                 )
 
     planning_files = [task_expansion_path, next_action_path]
@@ -730,40 +790,44 @@ def main(project: dict[str, Any] | None = None) -> int:
         else ("false (owner approval required)")
     )
     application_status = application_status_label(application_result)
-    print(
+    # Verbatim run summary, gated by verbosity (silent at 0) and teed to the
+    # log file. Exact text is preserved for downstream tooling.
+    msg.report(
         "Crazy Factory Phase 7 planning + proposal + application + "
         "validation + checkpoint dry run complete"
     )
-    print(f"Active project: {project_name}")
-    print(f"Context files read: {len(contexts)}")
-    print(f"Task files read: {len(tasks)}")
-    print(f"Architect planning source: {architect_result.source}")
-    print(f"Planner planning source: {planner_result.source}")
-    print(f"Contract source: {contract_result.source}")
-    print(f"Contract validation: {contract_status}")
-    print(f"Contract authorized: {authorized_text}")
-    print(f"Coder activated: {str(coder_result.activated).lower()}")
-    print(f"Coder proposal verdict: {coder_status}")
-    print(f"Application mode: {application_result.mode}")
-    print(f"Application status: {application_status}")
-    print(f"Application applied: {str(application_result.applied).lower()}")
-    print(
+    msg.report(f"Active project: {project_name}")
+    msg.report(f"Context files read: {len(contexts)}")
+    msg.report(f"Task files read: {len(tasks)}")
+    msg.report(f"Architect planning source: {architect_result.source}")
+    msg.report(f"Planner planning source: {planner_result.source}")
+    msg.report(f"Contract source: {contract_result.source}")
+    msg.report(f"Contract validation: {contract_status}")
+    msg.report(f"Contract authorized: {authorized_text}")
+    msg.report(f"Coder activated: {str(coder_result.activated).lower()}")
+    msg.report(f"Coder proposal verdict: {coder_status}")
+    msg.report(f"Application mode: {application_result.mode}")
+    msg.report(f"Application status: {application_status}")
+    msg.report(
+        f"Application applied: {str(application_result.applied).lower()}"
+    )
+    msg.report(
         f"Test plan: {test_plan_status_label(test_plan_result)} | "
         f"Validation: {validation_status_label(validation_result)} "
         f"(executed: {str(validation_result.executed).lower()})"
     )
-    print(
+    msg.report(
         f"Checkpoint: {checkpoint_status_label(checkpoint_result)} "
         f"(committed: {str(checkpoint_result.committed).lower()})"
     )
-    print("Last role completed: reporter")
+    msg.report("Last role completed: reporter")
     # report_path may live outside the repo (external app workbench).
     try:
         report_display = report_path.relative_to(root)
     except ValueError:
         report_display = report_path
-    print(f"Report written: {report_display}")
-    print(
+    msg.report(f"Report written: {report_display}")
+    msg.report(
         "Safety: planning + proposal + preview only; no commit/push/merge "
         "attempted"
     )

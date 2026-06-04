@@ -26,6 +26,7 @@ from pathlib import Path  # noqa: E402
 from typing import Any  # noqa: E402
 
 import factory_advance  # noqa: E402
+import factory_messaging as msg  # noqa: E402
 from flags import active_flags, control_decision  # noqa: E402
 from mission_state import load_state  # noqa: E402
 from recovery_manager import run_recovery  # noqa: E402
@@ -221,21 +222,27 @@ def main(project: dict[str, Any] | None = None) -> int:
         try:
             project = resolve_target(load_registry(root), root, cwd=Path.cwd())
         except RegistryError as exc:
-            print(f"No project to run: {exc}")
+            msg.eprint(
+                f"No project to run this mission beat: {exc}. Target one with "
+                f"`crazy-admin advance <id>`, run from inside a project "
+                f"workbench, or register one with `crazy-admin startproject`."
+            )
             return 0
     project_name = str(project["name"])
     if not workbench_exists(project["app_path"], root):
-        print(
-            f"Workbench for '{project_name}' is missing "
-            f"({project['app_path']}). Create or re-attach it first."
+        msg.eprint(
+            f"Cannot run '{project_name}': its workbench is missing at "
+            f"{project['app_path']}. The mission beat is skipped. Create or "
+            f"re-attach it with `crazy-admin attachproject {project_name} "
+            f"<path>`."
         )
         return 0
     if not app_is_buildable(project["app_path"], root):
-        print(
-            f"TARGET_PATH_UNSUPPORTED: project '{project_name}' is at an "
-            f"unapproved location ({project['app_path']}). Configure "
-            "paths.engine.apps_base to cover it, or use an embedded app "
-            "under apps/."
+        msg.eprint(
+            f"TARGET_PATH_UNSUPPORTED: refusing to run '{project_name}' at the "
+            f"unapproved location {project['app_path']}. The factory only "
+            f"builds inside approved roots. Fix: set paths.engine.apps_base to "
+            f"cover it, or move the app under apps/."
         )
         return 0
     # The project owns its config, run-state, lock, and flags — all under its
@@ -265,8 +272,12 @@ def main(project: dict[str, Any] | None = None) -> int:
             state_dir,
             report_root=str(project["report_root"]),
         )
-        print("Crazy Factory mission iteration: action=locked")
-        print("Another mission run is in progress; skipping this beat.")
+        msg.wprint(
+            f"Mission beat for '{project_name}' skipped (action=locked): "
+            f"another mission run already holds the lock. This is normal when "
+            f"beats overlap; the next beat will proceed once it finishes "
+            f"(lock goes stale after {stale_seconds}s)."
+        )
         return 0
 
     try:
@@ -309,13 +320,13 @@ def main(project: dict[str, Any] | None = None) -> int:
     finally:
         release_lock(root, state_dir)
 
-    print(f"Crazy Factory mission iteration: action={action}")
-    print(f"Active project: {project_name}")
-    print(
-        f"Active flags: {', '.join(active_flags(root, state_dir)) or 'none'}"
+    flags = ", ".join(active_flags(root, state_dir)) or "none"
+    msg.iprint(
+        f"Mission beat complete for '{project_name}': action={action}, "
+        f"control flags={flags}."
     )
-    print(
-        f"Mission status written: {project['report_root']}/MISSION_STATUS.md"
+    msg.nprint(
+        f"Full iteration report: {project['report_root']}/MISSION_STATUS.md"
     )
     return 0
 

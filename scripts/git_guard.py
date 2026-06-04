@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import subprocess
 
+import factory_messaging as msg
 from repo_tools import find_repo_root
 
 
@@ -85,13 +86,11 @@ def main() -> int:
     Returns:
         Process exit code ``0`` after the summary is printed.
     """
-    print("Crazy Factory status")
-    print("====================")
-    print(status())
-    print()
-    print(
-        "Bootstrap policy: git inspection only; "
-        "commits and pushes are disabled."
+    msg.section_print("Crazy Factory repository status (read-only)")
+    msg.cprint(status())
+    msg.nprint(
+        "Bootstrap policy: this command inspects git only — the factory never "
+        "commits or pushes on its own. Commit/push is the owner's to run."
     )
     return 0
 

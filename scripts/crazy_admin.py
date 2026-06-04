@@ -31,6 +31,7 @@ from typing import Any
 sys.dont_write_bytecode = True
 
 import factory_advance  # noqa: E402
+import factory_messaging as msg  # noqa: E402
 from mission_state import initial_state  # noqa: E402
 from project_paths import (  # noqa: E402
     assert_project_local,
@@ -678,7 +679,8 @@ def _print_status(info: dict[str, Any]) -> None:
     print(
         f"  auto_commit: {str(caps.get('allow_auto_commit', False)).lower()}"
     )
-    print(f"\nCurrent blocker:\n  {info.get('current_blocker')}")
+    blocker = info.get("current_blocker")
+    print(f"\nCurrent blocker:\n  {blocker or '(none — not blocked)'}")
     print(f"\nNext:\n  bin/crazy-admin next {info['active_project']}")
 
 
@@ -736,6 +738,26 @@ def main(argv: list[str] | None = None) -> int:
         Process exit code: ``0`` on success, ``2`` on a user error.
     """
     parser = argparse.ArgumentParser(prog="crazy-admin")
+    # Global verbosity controls (place before the subcommand, e.g.
+    # `crazy-admin --debug advance <id>`). Also via CRAZY_FACTORY_VERBOSITY.
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        type=int,
+        default=None,
+        metavar="N",
+        help="console verbosity 0 (silent) .. 10+ (everything)",
+    )
+    parser.add_argument(
+        "-q", "--quiet", action="store_true", help="silence the console (0)"
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_const",
+        const=msg.L_DEBUG,
+        default=None,
+        help="debug logging (verbosity 7); use -v 10 for everything",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     sp = sub.add_parser("startproject")
     sp.add_argument("project_id")
@@ -803,6 +825,13 @@ def main(argv: list[str] | None = None) -> int:
         owner.add_argument("--path", default=None)
 
     args = parser.parse_args(argv)
+    # Resolve verbosity: --quiet < --verbose < --debug, else env/default.
+    if args.quiet:
+        msg.set_verbosity(0)
+    elif args.debug is not None:
+        msg.set_verbosity(args.debug)
+    elif args.verbose is not None:
+        msg.set_verbosity(args.verbose)
     root = find_repo_root()
     try:
         return _dispatch(args, root)
@@ -814,7 +843,9 @@ def main(argv: list[str] | None = None) -> int:
         ArchiveError,
         ControlError,
     ) as exc:
-        print(f"crazy-admin error: {exc}", file=sys.stderr)
+        msg.eprint(
+            f"crazy-admin {getattr(args, 'command', '?')} failed: {exc}"
+        )
         return 2
 
 
@@ -892,14 +923,23 @@ def _dispatch_advance(args: argparse.Namespace, root: Path) -> int:
         registry = load_registry(root)
         ids = all_project_ids(registry)
         if not ids:
-            print("No registered projects to advance.")
+            msg.wprint(
+                "No registered projects to advance. Register one first with "
+                "`crazy-admin startproject <id>` or `attachproject`."
+            )
             return 0
+        msg.iprint(
+            f"Advancing all {len(ids)} registered project(s): {', '.join(ids)}"
+        )
         for pid in ids:
-            print(f"\n=== advance: {pid} ===")
+            msg.section_print(f"advance: {pid}")
             try:
                 project = resolve_project(registry, pid)
             except RegistryError as exc:
-                print(f"Skipping '{pid}': {exc}")
+                msg.wprint(
+                    f"Skipping '{pid}': {exc}. Continuing with the remaining "
+                    f"project(s)."
+                )
                 continue
             factory_advance.main(project)
         return 0
@@ -920,6 +960,20 @@ _CAPABILITY_COMMANDS: dict[str, tuple[str, bool]] = {
     "disable-commit": ("allow_auto_commit", False),
 }
 
+# What each capability lets the factory do once enabled — so the owner sees the
+# consequence of the switch they just flipped, not just its name.
+_CAPABILITY_IMPACT: dict[str, str] = {
+    "allow_apply": "write proposed code patches into the workbench",
+    "allow_delete": "delete files within the workbench",
+    "allow_validation": "run validation commands (tests, linters, type checks)",
+    "allow_remediation": "attempt automated fixes when validation fails",
+    "allow_autonomous": (
+        "self-authorize and self-approve its own work "
+        "(still gated by the deterministic safety floor)"
+    ),
+    "allow_auto_commit": "commit applied changes to git",
+}
+
 
 def _dispatch_owner(args: argparse.Namespace, root: Path) -> int | None:
     """Dispatch an owner-control command; return ``None`` if not one."""
@@ -936,33 +990,60 @@ def _dispatch_owner(args: argparse.Namespace, root: Path) -> int | None:
         return 0
     if cmd == "authorize-task":
         project = _resolve_project_arg(root, args.project_id, path=args.path)
+        pid = project["name"]
         authorize_task(project, root)
-        print("Task authorized.\n\nNext:\n  bin/crazy-admin advance")
+        msg.sprint(
+            f"Contract authorized for '{pid}' — the factory may now build "
+            f"this task on the next advance."
+        )
+        msg.nprint(f"Next: bin/crazy-admin advance {pid}")
         return 0
     if cmd == "revoke-task":
         project = _resolve_project_arg(root, args.project_id, path=args.path)
+        pid = project["name"]
         revoke_task(project, root)
-        print("Task authorization revoked.")
+        msg.sprint(
+            f"Contract authorization revoked for '{pid}' — the factory will "
+            f"re-plan instead of building the current contract."
+        )
         return 0
     if cmd == "approve-proposal":
         project = _resolve_project_arg(root, args.project_id, path=args.path)
         result = approve_proposal(project, root)
         pid = project["name"]
-        print(
-            f"Proposal approved: {result['proposal_id']}\n\nNext:\n"
-            f"  bin/crazy-admin enable-apply {pid}\n  bin/crazy-admin advance"
+        msg.sprint(
+            f"Proposal {result['proposal_id']} approved for '{pid}' — its "
+            f"patch is cleared to be applied to the workbench."
+        )
+        msg.nprint(
+            f"Next: bin/crazy-admin enable-apply {pid} "
+            f"(allow writes), then bin/crazy-admin advance {pid}"
         )
         return 0
     if cmd == "revoke-proposal":
         project = _resolve_project_arg(root, args.project_id, path=args.path)
+        pid = project["name"]
         revoke_proposal(project, root)
-        print("Proposal approval cleared.")
+        msg.sprint(
+            f"Proposal approval cleared for '{pid}' — its patch will not be "
+            f"applied until you approve it again."
+        )
         return 0
     if cmd in _CAPABILITY_COMMANDS:
         cap_key, value = _CAPABILITY_COMMANDS[cmd]
         project = _resolve_project_arg(root, args.project_id, path=args.path)
+        pid = project["name"]
         set_capability(project, root, cap_key, value)
-        print(f"{cap_key} = {str(value).lower()} for {project['name']}.")
+        impact = _CAPABILITY_IMPACT.get(cap_key, "change factory behavior")
+        if value:
+            msg.sprint(
+                f"Enabled {cap_key} for '{pid}' — the factory may now {impact}."
+            )
+        else:
+            msg.sprint(
+                f"Disabled {cap_key} for '{pid}' — the factory may no longer "
+                f"{impact}."
+            )
         return 0
     return None
 

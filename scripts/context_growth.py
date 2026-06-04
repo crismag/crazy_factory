@@ -46,6 +46,7 @@ from context_ledger import (  # noqa: E402
     next_artifact_id,
     save_ledger,
 )
+import factory_messaging as msg  # noqa: E402
 from json_parsing import coerce_str, strip_code_fence  # noqa: E402
 from ollama_client import OllamaClient, OllamaConnectionError  # noqa: E402
 from mission_state import initial_state  # noqa: E402
@@ -675,20 +676,24 @@ def main(argv: list[str] | None = None) -> int:
                 project_id=args.project_id,
                 root=root,
             )
-            print(f"Seeded project '{args.project_id}'.")
-            print(f"Artifacts: {len(ledger['artifacts'])} (000_seed)")
+            msg.sprint(
+                f"Seeded project '{args.project_id}' with "
+                f"{len(ledger['artifacts'])} artifact(s) (000_seed). Grow its "
+                f"context with `context-growth grow {args.project_id}`."
+            )
             return 0
         if args.command == "promote":
             summary = promote(args.project_id, root)
-            print(f"Promoted '{summary['project_id']}' to the build pipeline.")
-            print(f"Active project is now: {summary['project_id']}")
-            print(
-                f"Contract: {summary['contract_path']} "
-                f"(task {summary['task_id']}, authorized: false)"
+            pid = summary["project_id"]
+            msg.sprint(
+                f"Promoted '{pid}' to the build pipeline — its first contract "
+                f"is staged (task {summary['task_id']}, authorized: false). No "
+                f"coder/apply/commit was triggered."
             )
-            print(
-                "Next: review the contract and set authorized: true to "
-                "build. No coder/apply/commit was triggered."
+            msg.nprint(
+                f"Next: review the contract at {summary['contract_path']}, "
+                f"then `crazy-admin authorize-task {pid}` and "
+                f"`crazy-admin advance {pid}` to build it."
             )
             return 0
         artifact_type, path, ledger = grow(
@@ -697,17 +702,15 @@ def main(argv: list[str] | None = None) -> int:
             factory_config=factory_config,
             models_config=models_config,
         )
-        print(
-            f"Grew artifact #{ledger['current_cycle']}: "
-            f"{artifact_type} -> {path}"
-        )
-        print(
-            "Safety: context only; no application write, apply, commit, or "
-            "push."
+        msg.sprint(
+            f"Grew '{args.project_id}' context (cycle "
+            f"#{ledger['current_cycle']}): added {artifact_type} -> {path}. "
+            f"Safety: context only — no application write, apply, commit, or "
+            f"push."
         )
         return 0
     except (RuntimeError, ValueError) as exc:
-        print(f"context_growth error: {exc}", file=sys.stderr)
+        msg.eprint(f"context-growth {args.command} failed: {exc}")
         return 2
 
 

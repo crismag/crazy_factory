@@ -143,7 +143,9 @@ class ConflictAndBriefTests(unittest.TestCase):
             is_contract_conflict(["app/x.py: forbidden directory 'app/'"])
         )
         self.assertTrue(
-            is_contract_conflict(["src/x.py: forbidden dependency: sqlalchemy"])
+            is_contract_conflict(
+                ["src/x.py: forbidden dependency: sqlalchemy"]
+            )
         )
         # A non-contract rejection (e.g. plain syntax/limit) is not a conflict.
         self.assertFalse(is_contract_conflict(["over the file limit of 5"]))

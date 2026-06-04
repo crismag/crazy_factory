@@ -271,6 +271,7 @@ class FactoryAdvanceResolutionTests(unittest.TestCase):
             patch("factory_advance.find_repo_root", return_value=root),
             patch("factory_advance.Path.cwd", return_value=root),
             patch("sys.stdout", out),
+            patch("sys.stderr", out),
         ):
             code = factory_advance.main(project)
         return code, out.getvalue()

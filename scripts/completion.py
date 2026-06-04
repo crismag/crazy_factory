@@ -200,17 +200,58 @@ def _request_ai_checklist(
     return None
 
 
+def _is_test_file(path: str) -> bool:
+    """Whether a path is a test file (under a tests dir or named test_*)."""
+    name = path.rsplit("/", 1)[-1]
+    return (
+        name.startswith("test_")
+        or name.endswith("_test.py")
+        or "tests/" in f"/{path}"
+    )
+
+
+def items_from_required_files(required_files: list[str]) -> list[str]:
+    """Derive a concrete, file-targeted checklist from the contract's files.
+
+    Deterministic and foundation-first (the contract lists files in build
+    order), so decomposition no longer varies run-to-run between concrete,
+    well-ordered items and vague mis-ordered themes — the dominant cause of
+    non-convergence. One item per canonical file; each is gated by the whole-
+    project coherence check.
+    """
+    items: list[str] = []
+    for path in required_files:
+        if _is_test_file(path):
+            items.append(
+                f"Write {path} with unit tests for the module it covers; "
+                "every test must pass."
+            )
+        else:
+            items.append(
+                f"Implement {path} with the functionality the project goal "
+                "assigns to it, keeping the whole project compiling, "
+                "lint-clean, and passing all tests."
+            )
+    return items
+
+
 def build_checklist_items(
     context_text: str,
     *,
     models_config: dict[str, Any] | None = None,
     factory_config: dict[str, Any] | None = None,
+    required_files: list[str] | None = None,
     retries: int = 2,
 ) -> list[str]:
-    """Decompose the goal into requirement strings (AI-first, then fallback).
+    """Decompose the goal into requirement strings.
 
+    When the architecture contract declares ``required_files``, the checklist is
+    derived from them DETERMINISTICALLY (concrete + foundation-first, no model
+    call). Otherwise fall back to AI decomposition, then bullet synthesis.
     Always returns at least one item so the project has a definition of done.
     """
+    if required_files:
+        return items_from_required_files(required_files)
     ai = (
         _request_ai_checklist(
             context_text,
@@ -232,12 +273,14 @@ def initial_checklist_markdown(
     *,
     models_config: dict[str, Any] | None = None,
     factory_config: dict[str, Any] | None = None,
+    required_files: list[str] | None = None,
 ) -> str:
     """Build a fresh ``MASTER_CHECKLIST.md`` body from the goal/context."""
     texts = build_checklist_items(
         context_text,
         models_config=models_config,
         factory_config=factory_config,
+        required_files=required_files,
     )
     return render_checklist([ChecklistItem(text, False) for text in texts])
 

@@ -14,6 +14,7 @@ Example:
 
 from __future__ import annotations
 
+import factory_messaging as msg
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -569,13 +570,15 @@ def main() -> int:
     try:
         project = resolve_target(load_registry(root), root, cwd=Path.cwd())
     except RegistryError as exc:
-        print(f"No project: {exc}")
+        msg.wprint(f"No project: {exc}")
         return 0
     report_root = project["report_root"]
     blog = f"{report_root}/ACTIVITY_BLOG.md"
     if not resolve_repo_path(blog, root).is_file():
-        print(f"No activity blog yet at {blog}.")
+        msg.nprint(f"No activity blog yet at {blog}.")
         return 0
+    # Raw print: the blog content is the payload the user asked to read, not a
+    # factory message — keep it verbatim and unprefixed.
     print(safe_read_text(blog, root).rstrip())
     return 0
 
