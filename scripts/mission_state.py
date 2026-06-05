@@ -504,6 +504,7 @@ def _apply_application_state(
     if application_result.verdict.valid:
         active_run["current_blocker"] = None
         project_state["current_blocker"] = None
+        project_state["last_application_reasons"] = []
         verb = "applied" if application_result.applied else "previewed"
         active_run["resume_from"] = (
             f"Patch plan {verb}; review PATCH_PLAN.md and "
@@ -517,6 +518,11 @@ def _apply_application_state(
     )
     project_state["failure_count"] = (
         int(project_state.get("failure_count", 0)) + 1
+    )
+    # 9E EVID-1: persist the rejection reasons to STATE so the DiagnosisPacket
+    # can carry them to the next beat even after recovery retires patch_plan.json.
+    project_state["last_application_reasons"] = list(
+        application_result.verdict.reasons
     )
     active_run["current_blocker"] = "application_rejected"
     project_state["current_blocker"] = "application_rejected"

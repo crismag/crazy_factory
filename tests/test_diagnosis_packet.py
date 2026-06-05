@@ -188,6 +188,28 @@ class BuildPacketTests(unittest.TestCase):
             # Serializable.
             json.dumps(packet_to_dict(a))
 
+    def test_patch_rejections_fall_back_to_state(self) -> None:
+        # 9E EVID-1: recovery retired patch_plan.json, but the rejection reasons
+        # persisted in state must still reach the packet.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = _scaffold(root)
+            (Path(str(project["task_root"])) / "patch_plan.json").unlink()
+            p = build_packet(
+                project=project,
+                root=root,
+                project_state={
+                    "last_application_reasons": [
+                        "src/x.py:1: unused import 'Optional'"
+                    ]
+                },
+                now=_NOW,
+            )
+            self.assertEqual(
+                p.patch_rejections,
+                ["src/x.py:1: unused import 'Optional'"],
+            )
+
     def test_missing_artifacts_degrade_gracefully(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -255,7 +255,12 @@ def build_packet(
         failing_checks=failing,
         contract_rejections=_reasons(contract),
         proposal_rejections=_reasons(proposal),
-        patch_rejections=_reasons(patch),
+        # 9E EVID-1: fall back to state when recovery has retired patch_plan.json
+        # — the persisted reasons keep the prior failure visible to the next beat.
+        patch_rejections=(
+            _reasons(patch)
+            or _str_list(project_state.get("last_application_reasons"))
+        ),
         failure_count=int(project_state.get("failure_count", 0) or 0),
         remediation_attempt=int(
             project_state.get("remediation_attempt", 0) or 0
