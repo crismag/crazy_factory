@@ -27,12 +27,19 @@ Example:
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 sys.dont_write_bytecode = True
 
 import factory_messaging as msg  # noqa: E402
+from diagnosis_packet import (  # noqa: E402
+    build_packet,
+    coder_slice,
+    patch_plan_slice,
+    write_packet,
+)
 from coder_proposal import (  # noqa: E402
     coder_status_label,
     run_coder_stage,
@@ -477,6 +484,26 @@ def main(project: dict[str, Any] | None = None) -> int:
             reasons=["re-engaging the coder to fix the failed validation"],
         )
 
+    # 9D: build the situational packet from the PRIOR beat's artifacts (exact
+    # failures, rejections, acceptance criteria, workbench reality) and feed
+    # each generator its role slice, so a retry targets the real gap instead of
+    # repeating a thin/rejected attempt. Best-effort: a build failure must not
+    # break the advance.
+    coder_situational = ""
+    patch_situational = ""
+    try:
+        packet = build_packet(
+            project=project,
+            root=root,
+            project_state=project_state,
+            now=datetime.now(timezone.utc).isoformat(),
+        )
+        coder_situational = coder_slice(packet)
+        patch_situational = patch_plan_slice(packet)
+        write_packet(packet, root, project)
+    except Exception as exc:  # pragma: no cover - evidence is best-effort
+        msg.warn(f"situational packet unavailable this beat: {exc}")
+
     max_files = int(factory["max_files_per_run"])
     coder_result, proposal_json_path, proposal_md_path = run_coder_stage(
         app_path=str(project["app_path"]),
@@ -488,6 +515,7 @@ def main(project: dict[str, Any] | None = None) -> int:
         max_files=max_files,
         contract_json_path=contract_json_path,
         remediation_context=remediation_plan.context,
+        situational=coder_situational,
     )
     if coder_result.activated:
         msg.phase(f"Coder — proposing a code patch for '{project_name}'")
@@ -544,6 +572,7 @@ def main(project: dict[str, Any] | None = None) -> int:
             max_files=max_files,
             contract_json_path=contract_json_path,
             proposal_json_path=proposal_json_path,
+            situational=patch_situational,
         )
     )
     if application_result.activated:

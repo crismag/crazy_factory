@@ -978,6 +978,7 @@ def request_coder_proposal(
     max_lines: int,
     max_files: int,
     remediation_context: str = "",
+    situational: str = "",
 ) -> ProposalResult:
     """Ask the coder model for a proposal and validate it.
 
@@ -1049,6 +1050,14 @@ def request_coder_proposal(
     # paths (app/, docs/) and gets rejected in a loop with no progress.
     arch = load_contract(app_path)
     arch_block = f"\n\n{render_contract_brief(arch)}\n" if arch else ""
+    # 9D: curated ground truth (acceptance criteria + exact prior failures and
+    # rejection reasons) so a retry does not repeat the previous mistake.
+    situational_block = (
+        f"\n\n## What Happened Last Time (ground truth — do not repeat)\n\n"
+        f"{situational.strip()}\n"
+        if situational
+        else ""
+    )
     messages = [
         {"role": "system", "content": instruction},
         {
@@ -1057,6 +1066,7 @@ def request_coder_proposal(
                 f"{prompt_package.prompt}\n\n"
                 f"## Authorized Contract\n\n{contract_summary}\n"
                 f"{arch_block}"
+                f"{situational_block}"
                 f"{source_block}"
                 f"{remediation_block}"
             ),
@@ -1170,6 +1180,7 @@ def run_coder_stage(
     max_files: int,
     contract_json_path: str,
     remediation_context: str = "",
+    situational: str = "",
 ) -> tuple[ProposalResult, str, str]:
     """Activate the Coder only for an authorized, valid contract.
 
@@ -1258,6 +1269,7 @@ def run_coder_stage(
         max_lines=max_lines,
         max_files=max_files,
         remediation_context=remediation_context,
+        situational=situational,
     )
     safe_write_json(
         proposal_json_path,

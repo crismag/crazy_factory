@@ -913,7 +913,10 @@ class PatchPlanPromptTests(unittest.TestCase):
     """9D.0: the code prompt must carry the success definition + quality bar."""
 
     def _capture_messages(
-        self, *, task_contract: dict[str, object] | None
+        self,
+        *,
+        task_contract: dict[str, object] | None,
+        situational: str = "",
     ) -> list[dict[str, str]]:
         captured: dict[str, object] = {}
 
@@ -949,8 +952,18 @@ class PatchPlanPromptTests(unittest.TestCase):
                 max_files=5,
                 mode="preview_only",
                 task_contract=task_contract,
+                situational=situational,
             )
         return captured["messages"]  # type: ignore[return-value]
+
+    def test_situational_ground_truth_reaches_patch_prompt(self) -> None:
+        # 9D.2: the curated packet slice is injected into the code prompt.
+        messages = self._capture_messages(
+            task_contract={"acceptance_criteria": ["AC"]},
+            situational="GROUNDTRUTH-MARK: previous patch was a stub",
+        )
+        self.assertIn("GROUNDTRUTH-MARK", messages[1]["content"])
+        self.assertIn("What Happened Last Time", messages[1]["content"])
 
     def test_prompt_includes_acceptance_definition_and_quality_bar(
         self,

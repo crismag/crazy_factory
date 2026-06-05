@@ -528,6 +528,35 @@ class RequestTests(unittest.TestCase):
         self.assertIn("QUALITY BAR", system)
         self.assertIn("NotImplementedError", system)
 
+    def test_situational_ground_truth_reaches_coder_prompt(self) -> None:
+        """9D.2: the curated packet slice is injected into the coder prompt."""
+        captured: dict[str, object] = {}
+
+        def _chat(model: object, messages: object, **_: object) -> dict:
+            captured["messages"] = messages
+            raise OllamaConnectionError("captured")
+
+        with (
+            patch(
+                "coder_proposal.build_prompt_package",
+                return_value=PromptPackage("coder", "demo_app", "P", []),
+            ),
+            patch("coder_proposal.OllamaClient.chat", side_effect=_chat),
+        ):
+            request_coder_proposal(
+                app_path="apps/demo_app",
+                project=self._project(),
+                contract_record=_authorized_contract_dict(),
+                factory_config=self._factory_config(),
+                models_config={"models": {"coder": "qwen2.5-coder:14b"}},
+                max_lines=20,
+                max_files=5,
+                situational="GROUNDTRUTH-MARK: prior proposal rejected",
+            )
+        user = captured["messages"][1]["content"]  # type: ignore[index]
+        self.assertIn("GROUNDTRUTH-MARK", user)
+        self.assertIn("What Happened Last Time", user)
+
 
 class StageTests(unittest.TestCase):
     """Verify the activation gate and artifact writing."""

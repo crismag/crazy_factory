@@ -759,6 +759,7 @@ def request_patch_plan(
     allow_delete: bool = False,
     contract: dict[str, Any] | None = None,
     task_contract: dict[str, Any] | None = None,
+    situational: str = "",
 ) -> ApplicationResult:
     """Ask the coder model for exact file contents and validate the plan.
 
@@ -829,6 +830,14 @@ def request_patch_plan(
         },
         indent=2,
     )
+    # 9D: curated ground truth (acceptance criteria, current file reality, exact
+    # prior failures/rejections) so the generated code targets the real gaps.
+    situational_block = (
+        f"\n## What Happened Last Time (ground truth — do not repeat)\n\n"
+        f"{situational.strip()}\n"
+        if situational
+        else ""
+    )
     messages = [
         {"role": "system", "content": instruction},
         {
@@ -836,6 +845,7 @@ def request_patch_plan(
             "content": (
                 f"{prompt_package.prompt}\n\n"
                 f"## Approved Proposal\n\n{proposal_summary}\n"
+                f"{situational_block}"
             ),
         },
     ]
@@ -958,6 +968,7 @@ def run_application_stage(
     max_files: int,
     contract_json_path: str,
     proposal_json_path: str,
+    situational: str = "",
 ) -> tuple[ApplicationResult, str, str, str]:
     """Run the proposal application stage under the full approval gate.
 
@@ -1072,6 +1083,7 @@ def run_application_stage(
         allow_delete=allow_delete,
         contract=load_contract(app_path),
         task_contract=contract_record,
+        situational=situational,
     )
 
     if (
