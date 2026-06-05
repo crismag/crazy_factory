@@ -1142,6 +1142,32 @@ class RulesDriftTests(unittest.TestCase):
         )
 
 
+class KeepTheWorkTests(unittest.TestCase):
+    """9E.8 PP3: rejected work is persisted (content), not discarded."""
+
+    def test_patch_content_is_persisted_and_recoverable(self) -> None:
+        plan = PatchPlan(
+            "PP-1",
+            "T-1",
+            "CP-1",
+            [PatchFile("src/x.py", "create", "VALUE = 1\n")],
+            "",
+        )
+        result = ApplicationResult(
+            plan,
+            ApplicationVerdict(False, ["src/x.py:1: unused import"], [], []),
+            "ollama",
+            "d",
+            "apply",
+            activated=True,
+        )
+        record = patch_plan_to_dict(result)
+        self.assertEqual(record["files"][0]["content"], "VALUE = 1\n")
+        # round-trips: a fix task can recover the exact content
+        recovered = parse_patch_plan(json.dumps(record))
+        self.assertEqual(recovered.files[0].content, "VALUE = 1\n")
+
+
 class AutofixApplyTests(unittest.TestCase):
     """9E.S1: an auto-fixable lint nit is repaired, not rejected (empty-app fix)."""
 

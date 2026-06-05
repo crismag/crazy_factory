@@ -657,6 +657,10 @@ def patch_plan_to_dict(result: ApplicationResult) -> dict[str, Any]:
                 "path": patch.path,
                 "action": patch.action,
                 "line_count": len(patch.content.splitlines()),
+                # 9E.8 PP3 (keep-the-work): persist content so rejected work is
+                # recoverable for a fix task and renderable in PATCH_PLAN.md,
+                # instead of being discarded.
+                "content": patch.content,
             }
             for patch in (plan.files if plan else [])
         ],
