@@ -470,6 +470,64 @@ class StageTests(unittest.TestCase):
         )
         return result, plan_json
 
+    def test_completeness_review_blocks_apply_when_no_test(self) -> None:
+        # 9D Layer 2: with the gate enabled, a valid plan that ships no test for
+        # criteria is downgraded to rejected (floor) and never applied.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = self._setup(root)
+            (
+                root / "apps/demo/factory_tasks/approved_proposal.json"
+            ).write_text(
+                json.dumps(
+                    {"proposal_id": "CP-001", "application_approved": True}
+                ),
+                encoding="utf-8",
+            )
+            plan = parse_patch_plan(
+                json.dumps(
+                    {
+                        "plan_id": "PP-1",
+                        "task_id": "DEMO-002",
+                        "proposal_id": "CP-001",
+                        "files": [
+                            {
+                                "path": "apps/demo/app/storage.py",
+                                "action": "create",
+                                "content": "def save():\n    return 1\n",
+                            }
+                        ],
+                        "notes": "",
+                    }
+                )
+            )
+            fake = ApplicationResult(
+                plan,
+                ApplicationVerdict(True, [], [], []),
+                "ollama",
+                "m",
+                "apply",
+                activated=True,
+            )
+            with patch(
+                "proposal_applier.request_patch_plan", return_value=fake
+            ):
+                result, _ = self._run(
+                    root,
+                    project,
+                    {
+                        "mode": "apply",
+                        "allow_apply": True,
+                        "completeness_review": True,
+                    },
+                )
+            self.assertTrue(result.activated)
+            self.assertFalse(result.applied)
+            self.assertFalse(result.verdict.valid)
+            self.assertIn("Completeness review", result.detail)
+            # The source file must not have been written.
+            self.assertFalse((root / "apps/demo/app/storage.py").exists())
+
     def test_skips_without_approval(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

@@ -39,6 +39,7 @@ from coder_proposal import (
     resolve_workbench_path,
 )
 from architecture import load_contract, patch_contract_violations
+from completeness_review import review_completeness
 from contract_stage import load_existing_contract
 from json_parsing import coerce_str, coerce_str_list, strip_code_fence
 from ollama_client import OllamaClient, OllamaConnectionError
@@ -1085,6 +1086,44 @@ def run_application_stage(
         task_contract=contract_record,
         situational=situational,
     )
+
+    # 9D Layer 2 (owner-gated, default OFF): a pre-apply completeness review.
+    # The deterministic floor + placeholder gate already passed; this judges
+    # whether the patch actually satisfies the task's acceptance criteria before
+    # it is written. A blocking verdict downgrades the result to rejected so the
+    # apply is skipped and the existing application_rejected → recovery path
+    # (already attempt-bounded) handles it.
+    if (
+        bool(
+            (factory_config.get("proposal_application") or {}).get(
+                "completeness_review", False
+            )
+        )
+        and result.verdict.valid
+        and result.plan is not None
+    ):
+        review = review_completeness(
+            acceptance_criteria=[
+                str(c)
+                for c in (
+                    (contract_record or {}).get("acceptance_criteria") or []
+                )
+            ],
+            patch_files=[(f.path, f.content) for f in result.plan.files],
+            models_config=models_config,
+            factory_config=factory_config,
+        )
+        if review.blocking:
+            result = ApplicationResult(
+                result.plan,
+                ApplicationVerdict(False, review.reasons, [], []),
+                result.source,
+                "Completeness review requires revision before apply: "
+                + "; ".join(review.reasons),
+                mode,
+                activated=True,
+                applied=False,
+            )
 
     if (
         mode == "apply"
