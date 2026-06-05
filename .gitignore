@@ -12,3 +12,6 @@ factory_state/projects/
 # Application workbenches are runtime, created by promote; not committed.
 apps/*
 !apps/.gitkeep
+
+# Per-run autopilot trace/summary logs (9D.7); runtime, never committed.
+logs/

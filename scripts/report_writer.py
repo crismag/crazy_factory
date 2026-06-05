@@ -450,7 +450,9 @@ def append_dry_run_report(
             "workbench; no commit or push attempted.\n"
         )
     else:
-        activity_safety = "- Safety: no application edit, commit, or push attempted.\n"
+        activity_safety = (
+            "- Safety: no application edit, commit, or push attempted.\n"
+        )
 
     body = (
         f"# Factory Session Report\n\n"
@@ -507,8 +509,7 @@ def append_dry_run_report(
         f"- Result: created `{app_report_path}`\n"
         f"- Architect planning source: `{architect_source}`\n"
         f"- Planner planning source: `{planner_source}`\n"
-        f"- Last role completed: `{last_role_completed}`\n"
-        + activity_safety
+        f"- Last role completed: `{last_role_completed}`\n" + activity_safety
     )
     daily_entry = (
         f"\n## {stamp}\n\n"

@@ -42,7 +42,7 @@ from contract_stage import load_existing_contract
 from json_parsing import coerce_str, coerce_str_list, strip_code_fence
 from ollama_client import OllamaClient, OllamaConnectionError
 from project_paths import resolve_paths
-from prompt_builder import build_prompt_package
+from prompt_builder import QUALITY_BAR, build_prompt_package
 from repo_tools import resolve_repo_path, safe_write_json, safe_write_text
 from task_contract import is_contract_actionable
 
@@ -1028,6 +1028,7 @@ def request_coder_proposal(
         "reference secrets, credentials, tokens, private keys, or destructive/"
         "git operations (push, merge, reset, rm -rf, sudo); a .env.example "
         "placeholder is fine. Do not propose changes outside the workbench."
+        + QUALITY_BAR
     )
     contract_summary = json.dumps(
         {

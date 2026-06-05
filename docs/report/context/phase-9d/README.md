@@ -30,6 +30,7 @@ LLM = imagination and synthesis      Factory = evidence, enforcement, truth
 7. [06_reporting_and_logs.md](06_reporting_and_logs.md) — Slice 8 / 9D.6 + 9D.7
 8. [07_acceptance_target.md](07_acceptance_target.md) — 9D.8 (definition of done)
 9. [08_sequencing_invariants.md](08_sequencing_invariants.md) — work order, module reconciliation, safety
+10. [EXECUTION_PLAN.md](EXECUTION_PLAN.md) — **lead-architect review**: readiness assessment, dependency audit, state/recovery/gate reviews, risk register, stop-safe phases, success metrics
 
 ## Current-code map (what each slice touches)
 

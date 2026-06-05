@@ -21,7 +21,9 @@ from recovery_router import (  # noqa: E402
 def _project(root: Path) -> dict[str, object]:
     task_root = root / "apps/demo/factory_tasks"
     task_root.mkdir(parents=True)
-    (root / "apps/demo/crazy_project.yaml").parent.mkdir(parents=True, exist_ok=True)
+    (root / "apps/demo/crazy_project.yaml").parent.mkdir(
+        parents=True, exist_ok=True
+    )
     (root / "apps/demo/crazy_project.yaml").write_text(
         "project:\n  id: demo\n", encoding="utf-8"
     )
@@ -38,7 +40,9 @@ def _write_json(path: Path, data: dict) -> None:
 
 
 class RecoveryRouterTests(unittest.TestCase):
-    def test_missing_tests_revises_proposal_and_retires_artifacts(self) -> None:
+    def test_missing_tests_revises_proposal_and_retires_artifacts(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / ".git").mkdir()
@@ -121,7 +125,9 @@ class RecoveryRouterTests(unittest.TestCase):
                 {
                     "validation": {
                         "status": "rejected",
-                        "reasons": ["tests/test_x.py:1: unused import 'pytest'"],
+                        "reasons": [
+                            "tests/test_x.py:1: unused import 'pytest'"
+                        ],
                     }
                 },
             )

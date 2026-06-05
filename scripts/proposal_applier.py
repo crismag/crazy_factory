@@ -42,7 +42,7 @@ from architecture import load_contract, patch_contract_violations
 from contract_stage import load_existing_contract
 from json_parsing import coerce_str, coerce_str_list, strip_code_fence
 from ollama_client import OllamaClient, OllamaConnectionError
-from prompt_builder import build_prompt_package
+from prompt_builder import QUALITY_BAR, build_prompt_package
 from repo_tools import (
     RepoSafetyError,
     resolve_repo_path,
@@ -471,7 +471,9 @@ def _python_quality_violations(path: str, content: str) -> list[str]:
     lowered = content.lower()
     for phrase in _PLACEHOLDER_PHRASES:
         if phrase in lowered:
-            reasons.append(f"{path}: placeholder implementation text: {phrase}")
+            reasons.append(
+                f"{path}: placeholder implementation text: {phrase}"
+            )
     try:
         tree = ast.parse(content)
     except SyntaxError:
@@ -540,7 +542,9 @@ def patch_quality_violations(
         ):
             reasons.append(f"{patch.path}: empty or placeholder test file")
         if patch.path.endswith(".py") and stripped:
-            reasons.extend(_python_quality_violations(patch.path, patch.content))
+            reasons.extend(
+                _python_quality_violations(patch.path, patch.content)
+            )
     return sorted(set(reasons))
 
 
@@ -754,6 +758,7 @@ def request_patch_plan(
     mode: str,
     allow_delete: bool = False,
     contract: dict[str, Any] | None = None,
+    task_contract: dict[str, Any] | None = None,
 ) -> ApplicationResult:
     """Ask the coder model for exact file contents and validate the plan.
 
@@ -799,11 +804,22 @@ def request_patch_plan(
         "factory_reports/, factory_tasks/, factory_context/, context/), .git/, "
         f"or paths outside the project. Touch at most {max_files} files and "
         f"keep each file under {max_lines} lines. Never reference secrets."
+        + QUALITY_BAR
     )
+    # The code generator must SEE the definition of success — objective, scope,
+    # and acceptance criteria from the authorized task contract — not just the
+    # file list. Without this it writes plausible-but-thin code that satisfies no
+    # criterion. (`contract` is the architecture contract for path validation;
+    # `task_contract` is the planned-task record with the success definition.)
+    tc = task_contract or {}
     proposal_summary = json.dumps(
         {
             "proposal_id": proposal_record.get("proposal_id"),
             "task_id": proposal_record.get("task_id"),
+            "objective": tc.get("objective"),
+            "scope": tc.get("scope"),
+            "acceptance_criteria": tc.get("acceptance_criteria"),
+            "validation_expectations": tc.get("validation_plan"),
             "files_to_create": proposal_record.get("files_to_create"),
             "files_to_modify": proposal_record.get("files_to_modify"),
             "files_to_delete": proposal_record.get("files_to_delete"),
@@ -1055,6 +1071,7 @@ def run_application_stage(
         mode=mode,
         allow_delete=allow_delete,
         contract=load_contract(app_path),
+        task_contract=contract_record,
     )
 
     if (

@@ -128,7 +128,10 @@ def plan_recovery(
 ) -> RecoveryDecision:
     """Plan deterministic recovery for the latest project blocker."""
     trigger = str(project_state.get("current_blocker") or "")
-    if not trigger and project_state.get("last_application_status") == "rejected":
+    if (
+        not trigger
+        and project_state.get("last_application_status") == "rejected"
+    ):
         trigger = APPLICATION_REJECTED
     attempt = _attempt(project_state, trigger)
     reasons = _latest_application_reasons(root, project, project_state)
@@ -188,7 +191,10 @@ def plan_recovery(
             max_attempts=max_attempts,
         )
 
-    if trigger == APPLICATION_REJECTED and "python syntax error" in reason_blob:
+    if (
+        trigger == APPLICATION_REJECTED
+        and "python syntax error" in reason_blob
+    ):
         return RecoveryDecision(
             recovery_id=recovery_id,
             trigger=trigger,
@@ -329,7 +335,9 @@ def render_recovery_md(decision: RecoveryDecision) -> str:
     return "\n".join(lines)
 
 
-def _retire_task_artifact(root: Path, project: dict[str, Any], name: str) -> bool:
+def _retire_task_artifact(
+    root: Path, project: dict[str, Any], name: str
+) -> bool:
     """Delete one factory_tasks artifact by file name."""
     rel = _task_path(project, name)
     target = resolve_repo_path(rel, root)
@@ -342,7 +350,9 @@ def _retire_task_artifact(root: Path, project: dict[str, Any], name: str) -> boo
     return False
 
 
-def _record_attempt(project_state: dict[str, Any], decision: RecoveryDecision) -> None:
+def _record_attempt(
+    project_state: dict[str, Any], decision: RecoveryDecision
+) -> None:
     attempts = project_state.get("recovery_attempts")
     if not isinstance(attempts, dict):
         attempts = {}
@@ -376,7 +386,11 @@ def apply_recovery(
                     changed.append(action.path)
 
     _record_attempt(project_state, decision)
-    if decision.decision in {"revise_proposal", "regenerate_patch", "replan_task"}:
+    if decision.decision in {
+        "revise_proposal",
+        "regenerate_patch",
+        "replan_task",
+    }:
         project_state["current_blocker"] = None
         active_run["current_blocker"] = None
         active_run["resume_from"] = (

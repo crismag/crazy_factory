@@ -500,6 +500,34 @@ class RequestTests(unittest.TestCase):
         self.assertIsNotNone(result.proposal)
         self.assertTrue(result.verdict.valid, result.verdict.reasons)
 
+    def test_coder_prompt_carries_quality_bar(self) -> None:
+        """9D.0.2: the coder instruction includes the anti-stub quality bar."""
+        captured: dict[str, object] = {}
+
+        def _chat(model: object, messages: object, **_: object) -> dict:
+            captured["messages"] = messages
+            raise OllamaConnectionError("captured")
+
+        with (
+            patch(
+                "coder_proposal.build_prompt_package",
+                return_value=PromptPackage("coder", "demo_app", "P", []),
+            ),
+            patch("coder_proposal.OllamaClient.chat", side_effect=_chat),
+        ):
+            request_coder_proposal(
+                app_path="apps/demo_app",
+                project=self._project(),
+                contract_record=_authorized_contract_dict(),
+                factory_config=self._factory_config(),
+                models_config={"models": {"coder": "qwen2.5-coder:14b"}},
+                max_lines=20,
+                max_files=5,
+            )
+        system = captured["messages"][0]["content"]  # type: ignore[index]
+        self.assertIn("QUALITY BAR", system)
+        self.assertIn("NotImplementedError", system)
+
 
 class StageTests(unittest.TestCase):
     """Verify the activation gate and artifact writing."""

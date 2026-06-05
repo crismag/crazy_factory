@@ -43,8 +43,14 @@
 #    log file (independent of console verbosity) for later analysis.
 # ---------------------------------------------------------------------------
 cd /mnt/ai/workspaces/crazy_factory
-export CRAZY_FACTORY_LOGFILE=/mnt/ai/workspaces/crazy_apps/task-board-debug.log
-echo "full trace -> $CRAZY_FACTORY_LOGFILE"
+# 9D.7: fresh per-run log dir (not a single append-only file) + `latest` symlink,
+# so grepping the trace never surfaces a previous run's stale failures.
+RUN_TS="$(date +%Y%m%dT%H%M%S)"
+LOG_DIR="logs/autopilot/task-board/$RUN_TS"
+mkdir -p "$LOG_DIR"
+ln -sfn "$RUN_TS" "logs/autopilot/task-board/latest"
+export CRAZY_FACTORY_LOGFILE="$LOG_DIR/debug.log"
+echo "full trace -> $CRAZY_FACTORY_LOGFILE  (latest -> logs/autopilot/task-board/latest)"
 
 # Confirm the local model server is up — generation needs it.
 curl -s -m 4 http://localhost:11434/api/tags >/dev/null && echo "ollama: UP" || echo "ollama: DOWN (start it; otherwise no real code is generated)"

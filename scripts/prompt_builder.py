@@ -37,6 +37,25 @@ APP_BUILD_CONSTRAINTS = (
     "credentials, or touch files outside the project folder."
 )
 
+# Operational quality bar appended to the code-generating prompts (coder
+# proposal + patch plan). The deterministic gates (placeholder detection,
+# required-file/acceptance checks) ENFORCE these; the prompt ASKS for them so the
+# model produces complete work up front instead of being rejected after the fact.
+QUALITY_BAR = (
+    "\n\nQUALITY BAR — your output is rejected if it violates any of these:\n"
+    "- Implement EVERY acceptance criterion fully; no partial or happy-path-only "
+    "work.\n"
+    "- Every required behavior must have a corresponding test that actually "
+    "exercises it (not a trivially-passing test).\n"
+    "- NO placeholder bodies: no bare `pass`, no `...`, no `TODO`, no "
+    "`raise NotImplementedError`, no 'implement here' comments, no empty tests.\n"
+    "- No unused imports; no tests that assert nothing or always pass.\n"
+    "- Do NOT add notes claiming the implementation is incomplete or to-be-done.\n"
+    "- If you genuinely cannot satisfy a criterion, state that explicitly in "
+    "`notes` rather than emitting a stub — an honest gap is recoverable; a hidden "
+    "stub is not."
+)
+
 ROLE_INSTRUCTIONS = {
     "architect": "factory/instructions/ARCHITECT_RULES.md",
     "planner": "factory/instructions/PLANNER_RULES.md",

@@ -493,7 +493,9 @@ def resetproject(
         **(overrides if isinstance(overrides, dict) else {}),
     }
     summary = _clean_runtime_base(base, wb, project_id, root)
-    summary.update({"project_id": project_id, "app_path": str(project["app_path"])})
+    summary.update(
+        {"project_id": project_id, "app_path": str(project["app_path"])}
+    )
     return summary
 
 
@@ -1059,7 +1061,9 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
         factory_state, active_run, project_state = load_state(
             root, state_dir, str(project["name"])
         )
-        validate_state_project(str(project["name"]), factory_state, project_state)
+        validate_state_project(
+            str(project["name"]), factory_state, project_state
+        )
         decision, changed = run_recovery_router(
             root=root,
             project=project,

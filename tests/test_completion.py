@@ -183,5 +183,27 @@ class SatisfactionIntegrationTests(unittest.TestCase):
         self.assertTrue(v.satisfied, v.reasons)
 
 
+class FocusFileTokenTests(unittest.TestCase):
+    """9D.5: the retirement gate extracts the focus item's target file."""
+
+    def test_picks_first_open_item_file(self) -> None:
+        import factory_advance as fa
+
+        md = (
+            "# Master Checklist\n\n"
+            "- [x] Write tests/test_task_model.py with unit tests; "
+            "every test must pass.\n"
+            "- [ ] Implement src/storage.py with the functionality the "
+            "project goal assigns to it.\n"
+        )
+        self.assertEqual(fa._focus_file_token(md), "src/storage.py")
+
+    def test_none_when_no_open_file_item(self) -> None:
+        import factory_advance as fa
+
+        self.assertIsNone(fa._focus_file_token("- [x] all done\n"))
+        self.assertIsNone(fa._focus_file_token("- [ ] write the docs\n"))
+
+
 if __name__ == "__main__":
     unittest.main()

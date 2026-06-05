@@ -94,7 +94,7 @@ def _valid_plan_dict() -> dict[str, object]:
                     "def test_status():\n"
                     "    assert STATUS == 'ok'\n"
                 ),
-            }
+            },
         ],
         "notes": "",
     }
@@ -798,9 +798,7 @@ class StateAndReportTests(unittest.TestCase):
         self.assertEqual(
             project_state["current_blocker"], "application_rejected"
         )
-        self.assertEqual(
-            active_run["current_blocker"], "application_rejected"
-        )
+        self.assertEqual(active_run["current_blocker"], "application_rejected")
         self.assertIn("application", str(active_run["resume_from"]))
 
     def test_patch_plan_to_dict_marks_applied(self) -> None:
@@ -864,6 +862,137 @@ class StateAndReportTests(unittest.TestCase):
             self.assertIn("Proposal Application", report)
             self.assertIn("preview_only", report)
             self.assertIn("factory/x.py", report)
+
+    def test_report_truthfully_lists_written_files(self) -> None:
+        # 9D.6: after an apply the Safety Record must list the written files and
+        # must NOT claim no application code was modified.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "reports").mkdir()
+            (root / "apps/demo/factory_reports").mkdir(parents=True)
+            (root / "reports/ACTIVITY_BLOG.md").write_text(
+                "# Activity Blog\n", encoding="utf-8"
+            )
+            (root / "reports/DAILY_REPORT.md").write_text(
+                "# Daily Report\n", encoding="utf-8"
+            )
+            report_path = append_dry_run_report(
+                project_name="demo",
+                project_report_root="apps/demo/factory_reports",
+                mode="apply",
+                context_files=["c.md"],
+                task_files=["t.md"],
+                git_status="clean",
+                factory_state={"last_failed_run": None},
+                active_run={"resume_from": "review"},
+                project_state={
+                    "current_task": "DEMO",
+                    "current_milestone": "M",
+                    "last_completed_checkpoint": None,
+                    "failure_count": 0,
+                    "current_blocker": None,
+                },
+                architect_source="ollama",
+                architect_detail="m",
+                planner_source="ollama",
+                planner_detail="m",
+                last_role_completed="reporter",
+                planning_files=["TASK_EXPANSION.md", "NEXT_ACTION.md"],
+                application_status="applied",
+                application_mode="apply",
+                application_applied=True,
+                application_written_files=["apps/demo/src/storage.py"],
+                repo_root=root,
+            )
+            report = report_path.read_text(encoding="utf-8")
+            self.assertIn("apps/demo/src/storage.py", report)
+            self.assertNotIn("No application code was modified", report)
+
+
+class PatchPlanPromptTests(unittest.TestCase):
+    """9D.0: the code prompt must carry the success definition + quality bar."""
+
+    def _capture_messages(
+        self, *, task_contract: dict[str, object] | None
+    ) -> list[dict[str, str]]:
+        captured: dict[str, object] = {}
+
+        def _chat(model: object, messages: object, **_: object) -> dict:
+            captured["messages"] = messages
+            # Stop right after the prompt is built; we only inspect the request.
+            raise OllamaConnectionError("captured")
+
+        with (
+            patch(
+                "proposal_applier.build_prompt_package",
+                return_value=PromptPackage("coder", "demo", "P", []),
+            ),
+            patch("proposal_applier.OllamaClient.chat", side_effect=_chat),
+        ):
+            request_patch_plan(
+                app_path="apps/demo",
+                project={
+                    "name": "demo",
+                    "root": "apps/demo",
+                    "context_root": "apps/demo/factory_context",
+                },
+                proposal_record=_proposal_record(),
+                factory_config={
+                    "ollama": {
+                        "base_url": "http://localhost:11434",
+                        "timeout_seconds": 1,
+                        "stream": False,
+                    }
+                },
+                models_config={"models": {"coder": "qwen2.5-coder:14b"}},
+                max_lines=20,
+                max_files=5,
+                mode="preview_only",
+                task_contract=task_contract,
+            )
+        return captured["messages"]  # type: ignore[return-value]
+
+    def test_prompt_includes_acceptance_definition_and_quality_bar(
+        self,
+    ) -> None:
+        messages = self._capture_messages(
+            task_contract={
+                "objective": "OBJ-MARKER",
+                "scope": ["scope-one"],
+                "acceptance_criteria": ["AC-ROUNDTRIP-MARKER"],
+                "validation_plan": ["python3 -m pytest tests"],
+            }
+        )
+        system = messages[0]["content"]
+        user = messages[1]["content"]
+        # The success definition reaches the code generator…
+        self.assertIn("acceptance_criteria", user)
+        self.assertIn("AC-ROUNDTRIP-MARKER", user)
+        self.assertIn("OBJ-MARKER", user)
+        # …and the explicit anti-stub quality bar is present.
+        self.assertIn("QUALITY BAR", system)
+        self.assertIn("placeholder", system.lower())
+
+    def test_prompt_without_contract_still_builds(self) -> None:
+        # No task contract → keys present but null; no crash, quality bar stays.
+        messages = self._capture_messages(task_contract=None)
+        self.assertIn("acceptance_criteria", messages[1]["content"])
+        self.assertIn("QUALITY BAR", messages[0]["content"])
+
+
+class RulesDriftTests(unittest.TestCase):
+    """9D.0.3: role rules must match current factory policy."""
+
+    def test_test_builder_rules_match_coherence_gate(self) -> None:
+        rules = (
+            Path(__file__).resolve().parents[1]
+            / "factory/instructions/TEST_BUILDER_RULES.md"
+        ).read_text(encoding="utf-8")
+        normalized = " ".join(rules.split())  # collapse wrap whitespace
+        self.assertNotIn("Never validate the whole project", normalized)
+        self.assertIn(
+            "whole-project coherence gates remain mandatory", normalized
+        )
 
 
 if __name__ == "__main__":

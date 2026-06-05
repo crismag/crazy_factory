@@ -152,9 +152,7 @@ class StartProjectTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("stale\n", encoding="utf-8")
 
-            summary = ca.resetproject(
-                "widget", root=root, clean_runtime=True
-            )
+            summary = ca.resetproject("widget", root=root, clean_runtime=True)
 
             self.assertEqual(summary["project_id"], "widget")
             for rel in stale_files:

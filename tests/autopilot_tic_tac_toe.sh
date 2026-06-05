@@ -63,10 +63,15 @@ ADMIN="bin/crazy-admin"
 CHECKLIST="$APP/factory_tasks/MASTER_CHECKLIST.md"
 MAX_BEATS=16   # generous: ~3 beats/item + remediation + local-model variance
 
-export CRAZY_FACTORY_LOGFILE="$APPS_BASE/$ID.log"
-mkdir -p "$APPS_BASE"
-: > "$CRAZY_FACTORY_LOGFILE"
-echo "full trace -> $CRAZY_FACTORY_LOGFILE"
+# 9D.7: fresh per-run log dir (never append across unrelated runs) + a `latest`
+# symlink, so a grep of the trace can never surface a previous run's failures.
+RUN_TS="$(date +%Y%m%dT%H%M%S)"
+LOG_DIR="logs/autopilot/$ID/$RUN_TS"
+mkdir -p "$LOG_DIR"
+ln -sfn "$RUN_TS" "logs/autopilot/$ID/latest"
+export CRAZY_FACTORY_LOGFILE="$LOG_DIR/debug.log"
+SUMMARY="$LOG_DIR/summary.md"
+echo "full trace -> $CRAZY_FACTORY_LOGFILE  (latest -> logs/autopilot/$ID/latest)"
 
 # Confirm the local model server is up — generation needs it.
 curl -s -m 4 http://localhost:11434/api/tags >/dev/null \
@@ -172,6 +177,19 @@ for ((beat = 1; beat <= MAX_BEATS; beat++)); do
 done
 echo
 echo "════════════════════ loop ended: $done_reason ════════════════════"
+
+# 9D.7: shareable per-run summary (the honest outcome, not "app built").
+{
+  echo "# Autopilot run summary — $ID @ $RUN_TS"
+  echo
+  echo "- Outcome: $done_reason"
+  echo "- Beats run: up to $MAX_BEATS"
+  echo "- Trace: $CRAZY_FACTORY_LOGFILE"
+  echo
+  echo "## Checklist"
+  [ -f "$CHECKLIST" ] && cat "$CHECKLIST" || echo "(no checklist yet)"
+} > "$SUMMARY"
+echo "run summary -> $SUMMARY"
 
 # ---------------------------------------------------------------------------
 # 6. Inspect progress, the checklist, and the last decisions/errors.

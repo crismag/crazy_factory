@@ -91,6 +91,7 @@ from architecture import (  # noqa: E402
     existing_violations,
     is_contract_conflict,
     load_contract,
+    missing_required,
     render_contract_brief,
 )
 from git_guard import status  # noqa: E402
@@ -167,6 +168,22 @@ def _retire_task_artifacts(task_root: str) -> None:
             (Path(task_root) / name).unlink()
         except OSError:
             pass
+
+
+def _focus_file_token(checklist_md: str) -> str | None:
+    """Extract the target file path from the first open checklist item.
+
+    Items derived from ``required_files`` read "Implement <path> …" / "Write
+    <path> …", so the first path-like token names the file the item delivers.
+    Returns ``None`` when there is no open item or no path token.
+    """
+    items = open_items(parse_checklist(checklist_md))
+    if not items:
+        return None
+    for token in items[0].text.split():
+        if "/" in token:
+            return token.strip(".,;:`")
+    return None
 
 
 def _no_target_notice(detail: str) -> int:
@@ -691,9 +708,28 @@ def main(project: dict[str, Any] | None = None) -> int:
         and application_result.source != "preserved"
         and validation_status_label(validation_result) == "passed"
     ):
-        updated_checklist, completed_item = mark_first_open_done(
-            _read_text_or_empty(checklist_rel, root)
+        # 9D.5: do not retire an item whose declared required file still does
+        # not exist. Whole-project coherence can pass without the item's file
+        # having been created (the project was already coherent), which would
+        # tick "done" while the deliverable is missing. Gate only on declared
+        # required files so AI/synth checklists are unaffected.
+        checklist_now = _read_text_or_empty(checklist_rel, root)
+        focus_file = _focus_file_token(checklist_now)
+        still_missing = set(
+            missing_required(app_path, arch_contract) if arch_contract else []
         )
+        if focus_file is not None and focus_file in still_missing:
+            msg.warn(
+                f"Not retiring the current item: its required file "
+                f"'{focus_file}' does not exist yet, even though whole-project "
+                f"validation passed. The applied patch did not create it; the "
+                f"item stays open."
+            )
+            updated_checklist, completed_item = checklist_now, None
+        else:
+            updated_checklist, completed_item = mark_first_open_done(
+                checklist_now
+            )
         if completed_item is not None:
             safe_write_text(
                 checklist_rel,
@@ -838,13 +874,8 @@ def main(project: dict[str, Any] | None = None) -> int:
         msg.report(
             "Safety: no application edit, commit, push, or merge attempted"
         )
-    if (
-        project_state.get("current_blocker") == "application_rejected"
-        and bool(
-            factory_config.get("validation", {}).get(
-                "allow_remediation", False
-            )
-        )
+    if project_state.get("current_blocker") == "application_rejected" and bool(
+        factory_config.get("validation", {}).get("allow_remediation", False)
     ):
         decision, changed = run_recovery_router(
             root=root,
