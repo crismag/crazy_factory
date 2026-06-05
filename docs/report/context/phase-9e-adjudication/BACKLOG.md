@@ -30,6 +30,9 @@ to its detailed plan doc. Run every implemented slice through the gate: `ruff` +
 | **9E.7-L3 / 9E.9 ARC1-2** — architect produces architecture, not code | DONE (`3952f6b`) | planning_roles.py |
 | **9E.8 PP3** — keep-the-work (persist patch content) | DONE (`8834911`) | proposal_applier.py |
 | **9E.8 PP4/PP5** — rich PATCH_PLAN render (content/severity/disposition/stubs) | DONE (`0556c0e`) | proposal_applier.py |
+| **9E.ST9** — enforce file-contract interfaces at acceptance | DONE (`a6b3e87`) | acceptance_check.py |
+| **9E.S2** — adjudication decision core (disposition model) | DONE (`696a0d5`) — standalone; **not yet wired into live apply/recovery** | adjudicator.py |
+| **9E.S1/S2** — skill catalog + scope-down; adjudicator skill allow-list | DONE (`ae05158`) | skill_library.py / adjudicator.py |
 | **9E.S1b** — recovery-executes-fixes | SUPERSEDED by 9E.S1 (lint auto-fixed pre-apply, no longer reaches recovery); residual deferred to the adjudicator (9E.S2) per the no-heuristics principle | — |
 
 ## QUEUED — execution order
