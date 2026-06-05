@@ -40,6 +40,10 @@ from diagnosis_packet import (  # noqa: E402
     patch_plan_slice,
     write_packet,
 )
+from requirement_expander import (  # noqa: E402
+    load_or_expand,
+    render_focus_with_spec,
+)
 from coder_proposal import (  # noqa: E402
     coder_status_label,
     run_coder_stage,
@@ -378,6 +382,33 @@ def main(project: dict[str, Any] | None = None) -> int:
             f"checklist item(s) -> {CHECKLIST_FILENAME}"
         )
     focus = checklist_focus(checklist_md)
+    # 9D Layer 1: enrich the focus with a seed-derived, frozen per-file behavior
+    # contract so planner/contract/coder/patch-plan all see concrete behaviors
+    # instead of a generic "implement <file>". The deterministic checklist
+    # (order/count) is unchanged; only this beat's focus gets richer. Best-
+    # effort: any failure degrades to the generic focus.
+    focus_file = _focus_file_token(checklist_md)
+    if focus_file:
+        try:
+            spec = load_or_expand(
+                focus_file=focus_file,
+                seed_context=goal_text,
+                architecture_brief=arch_brief,
+                project=project,
+                root=root,
+                models_config=models_config,
+                factory_config=factory_config,
+            )
+            focus = render_focus_with_spec(focus, spec)
+            if spec.source == "ollama":
+                msg.detail(
+                    f"expanded file contract for {focus_file} "
+                    f"({len(spec.required_behaviors)} behaviors)"
+                )
+        except Exception as exc:  # pragma: no cover - expansion is best-effort
+            msg.warn(
+                f"requirement expansion unavailable for {focus_file}: {exc}"
+            )
     planning_context = "\n\n".join(
         part for part in (context_bundle.text, arch_brief, focus) if part
     )
