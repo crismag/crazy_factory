@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -36,9 +37,11 @@ class AcceptanceReport:
     no_stub_sources: bool
     checklist_complete: bool
     validation_passed: bool
+    contracts_satisfied: bool = True
     missing_files: list[str] = field(default_factory=list)
     stub_files: list[str] = field(default_factory=list)
     open_items: list[str] = field(default_factory=list)
+    contract_gaps: list[str] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
 
 
@@ -61,6 +64,62 @@ def _is_stub_file(path: Path) -> bool:
     if not funcs:
         return False  # a data/constant module is not a stub by this measure
     return all(_is_placeholder_body(f.body) for f in funcs)
+
+
+def _interface_symbol(interface: str) -> str:
+    """Extract the function/class name from a declared interface signature."""
+    text = interface.strip()
+    match = re.match(r"(?:async\s+)?def\s+([A-Za-z_]\w*)", text) or re.match(
+        r"class\s+([A-Za-z_]\w*)", text
+    )
+    if match:
+        return match.group(1)
+    leading = re.match(r"([A-Za-z_]\w*)", text)
+    return leading.group(1) if leading else ""
+
+
+def _defined_symbols(path: Path) -> set[str]:
+    """Top-level function/class names defined in a Python file."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, SyntaxError):
+        return set()
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        )
+    }
+
+
+def _contract_interface_gaps(app_path: str, context_root: str) -> list[str]:
+    """9E ST9: enforce that each frozen file-contract's declared interfaces are
+    actually defined in its target file — the contracts we generate must be met,
+    not merely advisory."""
+    contracts_dir = Path(context_root) / "file_contracts"
+    if not contracts_dir.is_dir():
+        return []
+    base = Path(app_path)
+    gaps: list[str] = []
+    for spec_file in sorted(contracts_dir.glob("*.json")):
+        try:
+            spec = json.loads(spec_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        target = spec.get("file")
+        interfaces = spec.get("interfaces") or []
+        if not isinstance(target, str) or not isinstance(interfaces, list):
+            continue
+        target_path = base / target
+        if not target_path.exists():
+            continue  # absence is covered by the required-files gate
+        defined = _defined_symbols(target_path)
+        for interface in interfaces:
+            name = _interface_symbol(str(interface))
+            if name and name not in defined:
+                gaps.append(f"contract {target}: missing interface `{name}`")
+    return gaps
 
 
 def evaluate_acceptance(
@@ -111,6 +170,13 @@ def evaluate_acceptance(
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         validation_passed = False
 
+    # 5. the file-contracts we generated are met (declared interfaces present)
+    context_root = str(
+        project.get("context_root") or (Path(app_path) / "factory_context")
+    )
+    contract_gaps = _contract_interface_gaps(app_path, context_root)
+    contracts_satisfied = not contract_gaps
+
     reasons: list[str] = []
     if not required_present:
         reasons.append(f"missing required files: {', '.join(missing)}")
@@ -125,12 +191,17 @@ def evaluate_acceptance(
             reasons.append(f"{len(open_now)} checklist item(s) still open")
     if not validation_passed:
         reasons.append("last whole-project validation did not pass")
+    if not contracts_satisfied:
+        reasons.append(
+            f"unmet file-contract interfaces: {', '.join(contract_gaps)}"
+        )
 
     accepted = (
         required_present
         and no_stub_sources
         and checklist_complete
         and validation_passed
+        and contracts_satisfied
     )
     return AcceptanceReport(
         accepted=accepted,
@@ -138,9 +209,11 @@ def evaluate_acceptance(
         no_stub_sources=no_stub_sources,
         checklist_complete=checklist_complete,
         validation_passed=validation_passed,
+        contracts_satisfied=contracts_satisfied,
         missing_files=missing,
         stub_files=stub_files,
         open_items=open_now,
+        contract_gaps=contract_gaps,
         reasons=reasons,
     )
 
@@ -156,6 +229,7 @@ def render_acceptance(report: AcceptanceReport) -> str:
         ("no stub source files", report.no_stub_sources),
         ("checklist complete", report.checklist_complete),
         ("validation passed", report.validation_passed),
+        ("file-contracts satisfied", report.contracts_satisfied),
     ]
     lines.extend(f"  [{'x' if ok else ' '}] {label}" for label, ok in checks)
     if report.reasons:

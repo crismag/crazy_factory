@@ -95,5 +95,38 @@ class AcceptanceTests(unittest.TestCase):
             self.assertFalse(report.validation_passed)
 
 
+class ContractEnforcementTests(unittest.TestCase):
+    """9E ST9: a frozen file-contract's declared interfaces must be present."""
+
+    def _with_contract(self, root: Path, interfaces: list[str]) -> dict:
+        project = _scaffold(root, a_src="def f():\n    return 1\n")
+        _write(
+            root / "app/factory_context/file_contracts/src_a_py.json",
+            json.dumps({"file": "src/a.py", "interfaces": interfaces}),
+        )
+        return project
+
+    def test_satisfied_contract_accepts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = evaluate_acceptance(
+                self._with_contract(root, ["def f()"]), root
+            )
+            self.assertTrue(report.contracts_satisfied)
+            self.assertTrue(report.accepted, report.reasons)
+
+    def test_missing_interface_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = evaluate_acceptance(
+                self._with_contract(root, ["def f()", "def g()"]), root
+            )
+            self.assertFalse(report.contracts_satisfied)
+            self.assertFalse(report.accepted)
+            self.assertTrue(
+                any("missing interface `g`" in g for g in report.contract_gaps)
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
