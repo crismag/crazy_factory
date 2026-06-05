@@ -27,6 +27,7 @@ from typing import Any
 
 from llm_interaction import structured_call
 from severity import BLOCK, FIX, WARN, classify_reasons
+from skill_library import is_known_skill
 
 # The full disposition vocabulary (shared with the plan docs).
 ACCEPT = "accept"
@@ -170,8 +171,11 @@ def adjudicate(
         )
     assert data is not None  # a valid disposition implies a parsed object
     raw_skills = data.get("skills")
+    # Only allow skills from the bounded catalog (the model cannot invent ops).
     skills = (
-        [str(s) for s in raw_skills] if isinstance(raw_skills, list) else []
+        [str(s) for s in raw_skills if is_known_skill(str(s))]
+        if isinstance(raw_skills, list)
+        else []
     )
     return Adjudication(
         disposition,

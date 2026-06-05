@@ -76,6 +76,20 @@ class AdjudicateTests(unittest.TestCase):
         )
         self.assertEqual(result.disposition, ESCALATE)
 
+    def test_unknown_skills_are_filtered(self) -> None:
+        client = FakeClient(
+            '{"disposition": "scope_down", '
+            '"skills": ["scope_down_paths", "rm_rf_everything"]}'
+        )
+        result = adjudicate(
+            ["Python syntax error in src/x.py"],  # BLOCK → consults the model
+            client=client,
+            model="m",
+        )
+        # only catalog skills survive; the invented one is dropped
+        self.assertIn("scope_down_paths", result.skills)
+        self.assertNotIn("rm_rf_everything", result.skills)
+
 
 if __name__ == "__main__":
     unittest.main()

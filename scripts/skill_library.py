@@ -65,3 +65,35 @@ def autofix_lint(content: str, *, path: str = "file.py") -> SkillResult:
     if fixed and fixed != content:
         return SkillResult(fixed, True, "ruff --fix applied safe lint fixes")
     return SkillResult(content, False, "no auto-fixable lint")
+
+
+def scope_down_paths(
+    paths: list[str], allowed: list[str]
+) -> tuple[list[str], list[str]]:
+    """Reduce over-scope: keep only paths in ``allowed``; drop the rest.
+
+    Returns ``(kept, dropped)``. Deterministic; the caller decides what to do
+    with the dropped paths (e.g. defer them to a later deliverable).
+    """
+    allowed_set = set(allowed)
+    kept = [p for p in paths if p in allowed_set]
+    dropped = [p for p in paths if p not in allowed_set]
+    return kept, dropped
+
+
+# The bounded catalog of skills the adjudicator (9E.S2) may select. Names map to
+# the deterministic operations above; descriptions are what the LLM is shown.
+SKILL_CATALOG: dict[str, str] = {
+    "autofix_lint": (
+        "Deterministically fix safe lint (unused imports, import order, "
+        "formatting) in a Python file."
+    ),
+    "scope_down_paths": (
+        "Drop files outside the in-focus deliverable to reduce over-scope."
+    ),
+}
+
+
+def is_known_skill(name: str) -> bool:
+    """True when ``name`` is in the bounded skill catalog (an allow-list)."""
+    return name in SKILL_CATALOG
