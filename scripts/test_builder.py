@@ -33,6 +33,8 @@ from validation_runner import is_command_allowed
 class TestPlanParseError(ValueError):
     """Raised when test-builder output cannot be parsed into a test plan."""
 
+    __test__ = False  # not a pytest test class despite the TestPlan* name
+
 
 @dataclass(frozen=True)
 class TestPlan:
@@ -65,6 +67,7 @@ class TestPlanVerdict:
         warnings: Non-fatal concerns worth surfacing to the owner.
     """
 
+    __test__ = False  # not a pytest test class despite the TestPlan* name
     valid: bool
     reasons: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -82,6 +85,7 @@ class TestPlanResult:
         activated: ``True`` when the contract+proposal gate passed.
     """
 
+    __test__ = False  # not a pytest test class despite the TestPlan* name
     plan: TestPlan | None
     verdict: TestPlanVerdict
     source: str

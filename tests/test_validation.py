@@ -29,8 +29,13 @@ from test_builder import (  # noqa: E402
     parse_test_plan,
     request_test_plan,
     run_test_builder_stage,
-    test_plan_status_label,
     validate_test_plan,
+)
+
+# Imported under a non-"test_" alias so pytest does not try to COLLECT this
+# production status-label function as a test case (it errors on the missing arg).
+from test_builder import (  # noqa: E402
+    test_plan_status_label as plan_status_label,
 )
 from validation_runner import (  # noqa: E402
     ValidationResult,
@@ -515,7 +520,7 @@ class StateAndReportTests(unittest.TestCase):
 
     def test_status_labels(self) -> None:
         skipped = TestPlanResult(None, TestPlanVerdict(False), "skipped", "d")
-        self.assertEqual(test_plan_status_label(skipped), "not_activated")
+        self.assertEqual(plan_status_label(skipped), "not_activated")
 
     def test_report_includes_validation_section(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
