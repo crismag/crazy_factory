@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import ast
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +40,7 @@ from coder_proposal import (
 )
 from architecture import load_contract, patch_contract_violations
 from completeness_review import review_completeness
+from skill_library import autofix_lint
 from contract_stage import load_existing_contract
 from json_parsing import coerce_str, coerce_str_list, strip_code_fence
 from ollama_client import OllamaClient, OllamaConnectionError
@@ -295,6 +296,29 @@ def parse_patch_plan(raw: str) -> PatchPlan:
         files=files,
         notes=coerce_str(data.get("notes")),
     )
+
+
+def _autofix_plan(plan: PatchPlan) -> PatchPlan:
+    """9E.S1: deterministically auto-fix safe lint in the plan's Python files
+    before validation, so a trivially-fixable nit (e.g. an unused import) is
+    repaired rather than rejecting the whole patch. Degrades to unchanged when
+    ruff is unavailable.
+    """
+    changed = False
+    fixed_files: list[PatchFile] = []
+    for patch in plan.files:
+        if (
+            patch.action in ("create", "modify")
+            and patch.path.endswith(".py")
+            and patch.content.strip()
+        ):
+            result = autofix_lint(patch.content, path=patch.path)
+            if result.changed:
+                changed = True
+                fixed_files.append(replace(patch, content=result.content))
+                continue
+        fixed_files.append(patch)
+    return replace(plan, files=fixed_files) if changed else plan
 
 
 def validate_patch_plan(
@@ -897,7 +921,7 @@ def request_patch_plan(
         content = str(response["message"]["content"]).strip()
         if not content:
             raise ValueError("Ollama returned empty patch plan content")
-        plan = parse_patch_plan(content)
+        plan = _autofix_plan(parse_patch_plan(content))
     except (KeyError, TypeError, ValueError, PatchPlanParseError) as exc:
         reason = f"Patch plan parse failed: {exc}"
         return ApplicationResult(

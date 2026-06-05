@@ -1096,5 +1096,65 @@ class RulesDriftTests(unittest.TestCase):
         )
 
 
+class AutofixApplyTests(unittest.TestCase):
+    """9E.S1: an auto-fixable lint nit is repaired, not rejected (empty-app fix)."""
+
+    def test_unused_import_is_autofixed_not_rejected(self) -> None:
+        plan_json = json.dumps(
+            {
+                "plan_id": "PP-1",
+                "task_id": "DEMO-002",
+                "proposal_id": "CP-001",
+                "files": [
+                    {
+                        "path": "apps/demo/app/status.py",
+                        "action": "create",
+                        # unused `Optional` — the exact task-board failure
+                        "content": "from typing import Optional\n\nSTATUS = 'ok'\n",
+                    }
+                ],
+                "notes": "",
+            }
+        )
+        with (
+            patch(
+                "proposal_applier.build_prompt_package",
+                return_value=PromptPackage("coder", "demo", "P", []),
+            ),
+            patch(
+                "proposal_applier.OllamaClient.chat",
+                return_value={"message": {"content": plan_json}},
+            ),
+        ):
+            result = request_patch_plan(
+                app_path="apps/demo",
+                project={
+                    "name": "demo",
+                    "root": "apps/demo",
+                    "context_root": "apps/demo/factory_context",
+                },
+                proposal_record=_proposal_record(),
+                factory_config={
+                    "ollama": {
+                        "base_url": "http://localhost:11434",
+                        "timeout_seconds": 1,
+                        "stream": False,
+                    }
+                },
+                models_config={"models": {"coder": "x"}},
+                max_lines=50,
+                max_files=5,
+                mode="preview_only",
+            )
+        self.assertIsNotNone(result.plan)
+        content = result.plan.files[0].content
+        self.assertNotIn("Optional", content)  # auto-removed
+        self.assertFalse(
+            any("unused import" in r.lower() for r in result.verdict.reasons),
+            result.verdict.reasons,
+        )
+        self.assertTrue(result.verdict.valid, result.verdict.reasons)
+
+
 if __name__ == "__main__":
     unittest.main()
