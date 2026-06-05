@@ -91,6 +91,7 @@ JSON
 bin/crazy-admin enable-apply task-board
 bin/crazy-admin enable-validation task-board
 bin/crazy-admin enable-remediation task-board
+bin/crazy-admin enable-completeness task-board   # 9D Layer 2: reject incomplete patches pre-apply
 bin/crazy-admin enable-autonomous task-board
 
 # ---------------------------------------------------------------------------

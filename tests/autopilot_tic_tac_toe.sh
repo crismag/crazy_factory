@@ -137,6 +137,7 @@ JSON
 $ADMIN enable-apply "$ID"
 $ADMIN enable-validation "$ID"
 $ADMIN enable-remediation "$ID"
+$ADMIN enable-completeness "$ID"   # 9D Layer 2: reject incomplete patches pre-apply
 
 # ---------------------------------------------------------------------------
 # 5. Self-driving loop at MAX verbosity. Each beat advances exactly one stage:
@@ -168,10 +169,11 @@ for ((beat = 1; beat <= MAX_BEATS; beat++)); do
     break
   fi
 
-  # Green build AND no open checklist items left? Done.
-  if grep -q "Validation: passed" <<<"$out" \
-     && [ -f "$CHECKLIST" ] && ! grep -q '\[ \]' "$CHECKLIST"; then
-    done_reason="green build and checklist complete"
+  # Accepted? The deterministic acceptance checker is the single source of
+  # truth: required files present + non-stub + checklist complete + validation
+  # passed. Exit 0 means genuinely done.
+  if $ADMIN acceptance "$ID" >/dev/null 2>&1; then
+    done_reason="accepted: required files, no stubs, checklist complete, green"
     break
   fi
 done
@@ -188,6 +190,9 @@ echo "════════════════════ loop ended: $
   echo
   echo "## Checklist"
   [ -f "$CHECKLIST" ] && cat "$CHECKLIST" || echo "(no checklist yet)"
+  echo
+  echo "## Metrics"
+  $ADMIN metrics "$ID" 2>/dev/null || echo "(metrics unavailable)"
 } > "$SUMMARY"
 echo "run summary -> $SUMMARY"
 
@@ -201,11 +206,29 @@ echo "=== last decisions / rejections / errors in the trace ==="
 grep -E '\[DECISION\]|\[REJECT\]|\[ERROR\]|\[WARN\]' "$CRAZY_FACTORY_LOGFILE" | tail -30
 
 # ---------------------------------------------------------------------------
-# 7. Prove it works, run exactly at the owner's target location.
+# 7. Acceptance gate — the honest verdict. "Built" requires real evidence, not
+#    a partial run. This sets the script's exit code.
+# ---------------------------------------------------------------------------
+echo "=== acceptance ==="
+if $ADMIN acceptance "$ID"; then
+  ACCEPT_RC=0
+else
+  ACCEPT_RC=1
+fi
+
+# ---------------------------------------------------------------------------
+# 8. Prove it works, run exactly at the owner's target location.
 # ---------------------------------------------------------------------------
 echo "=== built tree ==="
 ls -R "$APP/src" "$APP/tests" 2>/dev/null || echo "(src/tests not created yet)"
 cd "$APP"
-python3 -m pytest tests
+python3 -m pytest tests || true   # shown for visibility; acceptance is the gate
 # Launch the window manually (needs a display):
 # python3 src/tic_tac_toe.py
+
+if [ "$ACCEPT_RC" -eq 0 ]; then
+  echo "RESULT: app built and ACCEPTED ✓"
+else
+  echo "RESULT: PARTIAL build — not accepted (see gaps above). Exiting non-zero."
+fi
+exit "$ACCEPT_RC"

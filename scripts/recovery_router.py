@@ -234,6 +234,54 @@ def plan_recovery(
             max_attempts=max_attempts,
         )
 
+    if trigger == APPLICATION_REJECTED and any(
+        marker in reason_blob
+        for marker in (
+            "missing behavior",
+            "missing test",
+            "completeness",
+            "acceptance criteria require tests",
+        )
+    ):
+        # The pre-apply completeness reviewer (9D Layer 2) rejected the patch as
+        # behaviourally incomplete. Clear the stale approval and request a fresh
+        # proposal; the situational packet carries the missing behaviours into
+        # the next coder beat so it targets the gap.
+        return RecoveryDecision(
+            recovery_id=recovery_id,
+            trigger=trigger,
+            trigger_stage="application",
+            trigger_reasons=reasons,
+            decision="revise_proposal",
+            reason=(
+                "Completeness review rejected an incomplete implementation; "
+                "request a fresh proposal that satisfies every acceptance "
+                "criterion with tests."
+            ),
+            target_stage="coder",
+            actions=[
+                _action(
+                    "clear_approval",
+                    "approved_proposal.json",
+                    "stale approval targets a behaviourally incomplete proposal",
+                ),
+                _action("retire_artifact", "coder_proposal.json"),
+                _action("retire_artifact", "CODER_PROPOSAL.md"),
+                _action("retire_artifact", "patch_plan.json"),
+                _action("retire_artifact", "PATCH_PLAN.md"),
+                _action("retire_artifact", "APPLICATION_REPORT.md"),
+                _action(
+                    "request_new_proposal",
+                    detail=(
+                        "New proposal must implement every acceptance "
+                        "criterion and add a test for each behavior."
+                    ),
+                ),
+            ],
+            attempt=attempt,
+            max_attempts=max_attempts,
+        )
+
     return RecoveryDecision(
         recovery_id=recovery_id,
         trigger=trigger or "unknown",

@@ -26,6 +26,7 @@ Example:
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -195,6 +196,55 @@ def _focus_file_token(checklist_md: str) -> str | None:
         if "/" in token:
             return token.strip(".,;:`")
     return None
+
+
+def build_item_evidence(
+    *,
+    item: str,
+    focus_file: str,
+    validation_status: str,
+    applied_files: list[str],
+    missing_required_files: list[str],
+) -> dict[str, Any]:
+    """Build the acceptance-evidence record for a retired checklist item.
+
+    Captures *why* the item was allowed to retire (validation + the files it
+    delivered) so reports/status can be truthful and a later acceptance check
+    can audit it.
+    """
+    return {
+        "item": item,
+        "focus_file": focus_file,
+        "status": "complete",
+        "evidence": {
+            "validation": validation_status,
+            "files": applied_files,
+            "missing_required_files": missing_required_files,
+        },
+    }
+
+
+def _append_item_evidence(
+    task_root: str, root: Path, record: dict[str, Any]
+) -> None:
+    """Append an item-evidence record to ``checklist_evidence.json``."""
+    rel = f"{task_root}/checklist_evidence.json"
+    records: list[dict[str, Any]] = []
+    try:
+        existing = json.loads(Path(rel).read_text(encoding="utf-8"))
+        if isinstance(existing, dict) and isinstance(
+            existing.get("items"), list
+        ):
+            records = existing["items"]
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        records = []
+    records.append(record)
+    try:
+        safe_write_json(
+            rel, {"items": records}, repo_root=root, allowed_roots=[task_root]
+        )
+    except Exception:  # pragma: no cover - evidence is best-effort
+        pass
 
 
 def _no_target_notice(detail: str) -> int:
@@ -798,6 +848,21 @@ def main(project: dict[str, Any] | None = None) -> int:
                 allowed_roots=[task_root],
             )
             msg.info(f"checklist: completed item -> {completed_item}")
+            # 9D.5: record acceptance evidence for the retired item so "done"
+            # is auditable (what validated, which files were delivered).
+            _append_item_evidence(
+                task_root,
+                root,
+                build_item_evidence(
+                    item=completed_item,
+                    focus_file=focus_file or "",
+                    validation_status=validation_status_label(
+                        validation_result
+                    ),
+                    applied_files=list(application_result.applied_files),
+                    missing_required_files=sorted(still_missing),
+                ),
+            )
             # Retire the finished task so the next advance plans the NEXT open
             # item. Without this the authorized contract is preserved and the
             # loop never moves past the completed item. If nothing remains open,

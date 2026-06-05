@@ -33,6 +33,8 @@ sys.dont_write_bytecode = True
 
 import factory_advance  # noqa: E402
 import factory_messaging as msg  # noqa: E402
+from acceptance_check import evaluate_acceptance, render_acceptance  # noqa: E402
+from run_metrics import collect_metrics, render_metrics_md  # noqa: E402
 from mission_state import (  # noqa: E402
     initial_state,
     load_state,
@@ -927,6 +929,15 @@ def main(argv: list[str] | None = None) -> int:
     st = sub.add_parser("status")
     st.add_argument("project_id", nargs="?", default=None)
     st.add_argument("--path", default=None)
+    acc = sub.add_parser("acceptance")
+    acc.add_argument("project_id", nargs="?", default=None)
+    acc.add_argument("--path", default=None)
+    met = sub.add_parser("metrics")
+    met.add_argument("project_id", nargs="?", default=None)
+    met.add_argument("--path", default=None)
+    met.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
     adv = sub.add_parser("advance")
     adv.add_argument("project_id", nargs="?", default=None)
     adv.add_argument("--path", default=None)
@@ -947,6 +958,8 @@ def main(argv: list[str] | None = None) -> int:
         "disable-validation",
         "enable-remediation",
         "disable-remediation",
+        "enable-completeness",
+        "disable-completeness",
         "enable-autonomous",
         "disable-autonomous",
         "enable-commit",
@@ -1090,6 +1103,21 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
         project = _resolve_project_arg(root, args.project_id, path=args.path)
         _print_status(status(project, root))
         return 0
+    if args.command == "acceptance":
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
+        report = evaluate_acceptance(project, root)
+        print(render_acceptance(report))
+        # Exit non-zero unless genuinely accepted, so a script (autopilot) can
+        # gate "app built" success on real evidence, not a partial build.
+        return 0 if report.accepted else 1
+    if args.command == "metrics":
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
+        metrics = collect_metrics(project, root)
+        if getattr(args, "json", False):
+            print(json.dumps(metrics, indent=2))
+        else:
+            print(render_metrics_md(metrics))
+        return 0
     owner_result = _dispatch_owner(args, root)
     if owner_result is not None:
         return owner_result
@@ -1133,6 +1161,8 @@ _CAPABILITY_COMMANDS: dict[str, tuple[str, bool]] = {
     "disable-validation": ("allow_validation", False),
     "enable-remediation": ("allow_remediation", True),
     "disable-remediation": ("allow_remediation", False),
+    "enable-completeness": ("allow_completeness_review", True),
+    "disable-completeness": ("allow_completeness_review", False),
     "enable-autonomous": ("allow_autonomous", True),
     "disable-autonomous": ("allow_autonomous", False),
     "enable-commit": ("allow_auto_commit", True),
@@ -1146,6 +1176,10 @@ _CAPABILITY_IMPACT: dict[str, str] = {
     "allow_delete": "delete files within the workbench",
     "allow_validation": "run validation commands (tests, linters, type checks)",
     "allow_remediation": "attempt automated fixes when validation fails",
+    "allow_completeness_review": (
+        "reject incomplete patches before apply (review them against the "
+        "task's acceptance criteria)"
+    ),
     "allow_autonomous": (
         "self-authorize and self-approve its own work "
         "(still gated by the deterministic safety floor)"

@@ -204,6 +204,21 @@ class FocusFileTokenTests(unittest.TestCase):
         self.assertIsNone(fa._focus_file_token("- [x] all done\n"))
         self.assertIsNone(fa._focus_file_token("- [ ] write the docs\n"))
 
+    def test_item_evidence_record(self) -> None:
+        import factory_advance as fa
+
+        rec = fa.build_item_evidence(
+            item="Implement src/storage.py",
+            focus_file="src/storage.py",
+            validation_status="passed",
+            applied_files=["src/storage.py"],
+            missing_required_files=[],
+        )
+        self.assertEqual(rec["status"], "complete")
+        self.assertEqual(rec["focus_file"], "src/storage.py")
+        self.assertEqual(rec["evidence"]["validation"], "passed")
+        self.assertIn("src/storage.py", rec["evidence"]["files"])
+
 
 if __name__ == "__main__":
     unittest.main()

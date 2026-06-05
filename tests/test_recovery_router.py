@@ -137,6 +137,38 @@ class RecoveryRouterTests(unittest.TestCase):
             )
             self.assertEqual(decision.decision, "regenerate_patch")
 
+    def test_completeness_rejection_revises_proposal(self) -> None:
+        # 9D Layer 2 reconciliation: a completeness-review rejection requests a
+        # fresh proposal (clear approval) instead of parking for owner review.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".git").mkdir()
+            project = _project(root)
+            task_root = root / "apps/demo/factory_tasks"
+            _write_json(
+                task_root / "patch_plan.json",
+                {
+                    "validation": {
+                        "status": "rejected",
+                        "reasons": [
+                            "missing behavior: load returns [] on missing file",
+                            "missing test: test_corrupt_json",
+                        ],
+                    }
+                },
+            )
+            project_state = {"current_blocker": APPLICATION_REJECTED}
+            decision = plan_recovery(
+                root=root, project=project, project_state=project_state
+            )
+            self.assertEqual(decision.decision, "revise_proposal")
+            self.assertTrue(
+                any(a.type == "clear_approval" for a in decision.actions)
+            )
+            self.assertTrue(
+                any(a.type == "request_new_proposal" for a in decision.actions)
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
