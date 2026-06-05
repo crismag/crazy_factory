@@ -330,6 +330,46 @@ def _autofix_plan(plan: PatchPlan) -> PatchPlan:
     return replace(plan, files=fixed_files) if changed else plan
 
 
+def _scope_down_plan(
+    plan: PatchPlan,
+    *,
+    app_path: str,
+    contract: dict[str, Any] | None,
+    runtime_prefixes: tuple[str, ...],
+) -> tuple[PatchPlan, list[str]]:
+    """9E.S1/ST5 scope_down skill: drop over-scoped files the gate would reject.
+
+    Deterministic and conservative — it removes ONLY create/modify files that are
+    individually illegal (out of the workbench/allowed tree, in a forbidden
+    directory/name, or importing forbidden tech), keeping every legal in-focus
+    file. So an over-scoped patch (the task-board "5 files incl. deliberate stubs
+    in app/") applies its real file instead of being wholesale rejected. It never
+    empties the patch: if no legal file would remain, the plan is left untouched
+    for the normal gate/recovery to handle. Returns ``(plan, dropped_paths)``.
+    """
+    writes = [p for p in plan.files if p.action in {"create", "modify"}]
+    if not writes:
+        return plan, []
+
+    def _illegal(patch: PatchFile) -> bool:
+        if classify_path(patch.path, app_path, runtime_prefixes) == "blocked":
+            return True
+        return bool(
+            patch_contract_violations([(patch.path, patch.content)], contract)
+            if contract
+            else []
+        )
+
+    dropped = [p.path for p in writes if _illegal(p)]
+    if not dropped:
+        return plan, []  # nothing over-scoped to drop
+    kept = [p for p in plan.files if p.path not in set(dropped)]
+    # Never salvage to nothing — leave it for the gate/recovery to reject.
+    if not any(p.action in {"create", "modify"} for p in kept):
+        return plan, []
+    return replace(plan, files=kept), dropped
+
+
 def validate_patch_plan(
     plan: PatchPlan | None,
     *,
@@ -968,6 +1008,25 @@ def request_patch_plan(
         if not content:
             raise ValueError("Ollama returned empty patch plan content")
         plan = _autofix_plan(parse_patch_plan(content))
+        # 9E.S1/ST5 scope_down (opt-in, default OFF): drop over-scoped illegal
+        # files before validation so the legal in-focus work still applies.
+        if bool(
+            (factory_config.get("proposal_application") or {}).get("scope_down")
+        ):
+            plan, dropped = _scope_down_plan(
+                plan,
+                app_path=app_path,
+                contract=contract,
+                runtime_prefixes=project_runtime_prefixes(project),
+            )
+            if dropped:
+                plan = replace(
+                    plan,
+                    notes=(
+                        f"{plan.notes}\n[scope_down] dropped over-scoped files: "
+                        + ", ".join(dropped)
+                    ).strip(),
+                )
     except (KeyError, TypeError, ValueError, PatchPlanParseError) as exc:
         reason = f"Patch plan parse failed: {exc}"
         return ApplicationResult(

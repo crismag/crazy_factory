@@ -27,6 +27,7 @@ from proposal_applier import (  # noqa: E402
     PatchFile,
     PatchPlan,
     PatchPlanParseError,
+    _scope_down_plan,
     application_paths,
     application_status_label,
     apply_patch_plan,
@@ -1270,6 +1271,68 @@ class AutofixApplyTests(unittest.TestCase):
             result.verdict.reasons,
         )
         self.assertTrue(result.verdict.valid, result.verdict.reasons)
+
+
+class ScopeDownTests(unittest.TestCase):
+    """9E.S1/ST5: drop over-scoped illegal files, keep the legal in-focus work."""
+
+    CONTRACT = {
+        "src_dirs": ["src"],
+        "test_dirs": ["tests"],
+        "forbidden_dirs": ["app"],
+        "forbidden_imports": ["sqlalchemy"],
+    }
+
+    def _plan(self, files: list[PatchFile]) -> PatchPlan:
+        return PatchPlan("P", "T", "PR", files=files, notes="")
+
+    def test_drops_file_in_forbidden_dir_keeps_legal(self) -> None:
+        plan = self._plan(
+            [
+                PatchFile("src/task_model.py", "create", "x = 1\n"),
+                PatchFile("app/models.py", "create", "y = 2\n"),
+            ]
+        )
+        scoped, dropped = _scope_down_plan(
+            plan, app_path="apps/demo", contract=self.CONTRACT, runtime_prefixes=()
+        )
+        self.assertEqual(dropped, ["app/models.py"])
+        self.assertEqual([f.path for f in scoped.files], ["src/task_model.py"])
+
+    def test_drops_forbidden_import_file(self) -> None:
+        plan = self._plan(
+            [
+                PatchFile("src/store.py", "create", "data = {}\n"),
+                PatchFile(
+                    "src/db.py", "create", "from sqlalchemy import x\n"
+                ),
+            ]
+        )
+        _, dropped = _scope_down_plan(
+            plan, app_path="apps/demo", contract=self.CONTRACT, runtime_prefixes=()
+        )
+        self.assertEqual(dropped, ["src/db.py"])
+
+    def test_never_empties_the_patch(self) -> None:
+        # All files illegal -> leave untouched for the gate/recovery to reject.
+        plan = self._plan(
+            [PatchFile("app/a.py", "create", "a = 1\n")]
+        )
+        scoped, dropped = _scope_down_plan(
+            plan, app_path="apps/demo", contract=self.CONTRACT, runtime_prefixes=()
+        )
+        self.assertEqual(dropped, [])
+        self.assertEqual(scoped, plan)
+
+    def test_noop_when_all_legal(self) -> None:
+        plan = self._plan(
+            [PatchFile("src/ok.py", "create", "ok = 1\n")]
+        )
+        scoped, dropped = _scope_down_plan(
+            plan, app_path="apps/demo", contract=self.CONTRACT, runtime_prefixes=()
+        )
+        self.assertEqual(dropped, [])
+        self.assertIs(scoped, plan)
 
 
 if __name__ == "__main__":
