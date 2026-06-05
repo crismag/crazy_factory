@@ -211,6 +211,43 @@ class ValidationLoopSmokeTests(unittest.TestCase):
         self.assertEqual(result.source, "fallback")
         self.assertIn("TASK_EXPANSION.md", result.content)
 
+    def _run_planner(self, reply: str) -> RoleResult:
+        architect_result = RoleResult(
+            "architect", "Review architecture.", "fallback", "offline"
+        )
+        with patch(
+            "planning_roles.OllamaClient.chat",
+            return_value={"message": {"content": reply}},
+        ):
+            return request_planner_result(
+                project_name="demo",
+                project=_TEST_PROJECT,
+                project_state={"current_task": "DEMO-002"},
+                factory_config=_OLLAMA_CONFIG,
+                models_config={"models": {"planner": "cogito:14b"}},
+                max_lines=20,
+                tasks={"CURRENT_TASK.md": "# Current Task"},
+                architect_result=architect_result,
+            )
+
+    def test_planner_refusal_is_never_stored(self) -> None:
+        """9E.7: a model refusal falls back; it is not stored as the action."""
+        result = self._run_planner(
+            "I'm sorry, I can't complete the request. Feel free to ask!"
+        )
+        self.assertEqual(result.source, "fallback")
+        self.assertNotIn("i'm sorry", result.content.lower())
+
+    def test_planner_valid_json_action_is_used(self) -> None:
+        """A well-formed JSON action is rendered into the next-action record."""
+        result = self._run_planner(
+            '{"next_action": "Implement src/task_model.py", '
+            '"kind": "implement", "rationale": "foundation first"}'
+        )
+        self.assertEqual(result.source, "ollama")
+        self.assertIn("Implement src/task_model.py", result.content)
+        self.assertIn("Next action:", result.content)
+
     def test_writes_task_expansion_and_next_action(self) -> None:
         """Write both fixed planning files inside a temporary task root."""
         with tempfile.TemporaryDirectory() as temp_dir:

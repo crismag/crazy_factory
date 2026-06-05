@@ -27,9 +27,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from llm_interaction import structured_call
 from ollama_client import OllamaClient, OllamaConnectionError
 from prompt_builder import build_prompt_package
 from repo_tools import resolve_repo_path
+
+
+def _render_planner_action(data: dict[str, Any]) -> str:
+    """Render a validated planner action object into the next-action record."""
+    lines = [f"Next action: {str(data.get('next_action', '')).strip()}"]
+    for key, label in (
+        ("kind", "Kind"),
+        ("target_file", "Target file"),
+        ("rationale", "Rationale"),
+    ):
+        value = str(data.get(key, "")).strip()
+        if value:
+            lines.append(f"{label}: {value}")
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -241,11 +256,22 @@ def request_planner_result(
         timeout_seconds=int(ollama["timeout_seconds"]),
         stream=bool(ollama["stream"]),
     )
+    # 9E.7: prime the model on the exact response shape up front, enforce JSON,
+    # classify the reply, and harden via bounded reframe-retry. A refusal /
+    # conversational reply is NEVER stored as the plan — it falls back instead.
+    priming = (
+        "You are the Planner role in an automated software factory. Respond "
+        "with ONLY a single JSON object — no prose, no apologies, no "
+        "questions, and never refuse. The input includes prior task records "
+        "purely as context; your job is to CHOOSE the next action, not to "
+        "comment on the documents."
+    )
     instruction = (
-        "Create one concise planning-only next action based on the Architect "
-        "expansion. Do not generate code. Do not request arbitrary file "
-        "edits. "
-        "Keep application writes disabled until owner approval."
+        "Output the single next PLANNING-ONLY action as a JSON object with "
+        "keys: next_action (string), kind (one of: implement|test|document|"
+        "plan), target_file (string, optional), rationale (string). Do not "
+        "generate code; keep application writes disabled until owner approval. "
+        "If information is missing, choose the smallest safe next step."
     )
     task_context = "\n\n".join(
         f"## Task Source: {path}\n\n{text.rstrip()}"
@@ -255,24 +281,27 @@ def request_planner_result(
         f"## Architect Expansion\n\n{architect_result.content}\n\n"
         f"{task_context}"
     )
-    messages = [
-        {"role": "system", "content": instruction},
-        {
-            "role": "user",
-            "content": _compose_user_content(
-                prompt_package.prompt, context_bundle, trailer
-            ),
-        },
-    ]
-    try:
-        response = client.chat(model, messages)
-        content = str(response["message"]["content"]).strip()
-        if not content:
-            raise ValueError("Ollama returned empty Planner content")
-    except (KeyError, TypeError, ValueError, OllamaConnectionError) as exc:
-        reason = f"Ollama unavailable or invalid; used fallback: {exc}"
-        return fallback_planner_result(project_state, reason)
-    return RoleResult("planner", content, "ollama", f"Planner model `{model}`")
+    user = _compose_user_content(
+        prompt_package.prompt, context_bundle, trailer
+    )
+    data, note = structured_call(
+        client=client,
+        model=model,
+        system=instruction,
+        user=user,
+        priming=priming,
+        required_keys=("next_action",),
+    )
+    if data is None:
+        return fallback_planner_result(
+            project_state, f"Planner produced no usable action; {note}"
+        )
+    return RoleResult(
+        "planner",
+        _render_planner_action(data),
+        "ollama",
+        f"Planner model `{model}` ({note})",
+    )
 
 
 def render_task_expansion(result: RoleResult) -> str:
