@@ -107,6 +107,9 @@ from architecture import (  # noqa: E402
     render_contract_brief,
 )
 from git_guard import status  # noqa: E402
+from project_contract import (  # noqa: E402
+    derive_and_write_seed_contract,
+)
 from mission_state import (  # noqa: E402
     load_state,
     persist_state,
@@ -512,6 +515,37 @@ def main(project: dict[str, Any] | None = None) -> int:
         repo_root=root,
         allowed_roots=[task_root],
     )
+
+    # 9E.ST6 (opt-in, default OFF): persist a SEED-DERIVED architecture contract
+    # from the architect's real design, so the NEXT advance's load_contract makes
+    # decomposition, the floor, the coherence gate, and acceptance all
+    # seed-grounded instead of relying on a hand-authored architecture.json.
+    # Absent-only (never overwrites an existing contract), never on a fallback
+    # (no real design), and never writes an incoherent contract. Best-effort.
+    if (
+        bool((factory_config.get("contract") or {}).get("derive_from_seed"))
+        and architect_result.source == "ollama"
+        and architect_result.data
+        and load_contract(app_path) is None
+    ):
+        seed_rel = f"{app_path}/{project.get('seed_file', 'docs/seed.md')}"
+        seed_text = _read_text_or_empty(seed_rel, root)
+        if seed_text.strip():
+            try:
+                written, gaps = derive_and_write_seed_contract(
+                    app_path, root, seed_text, architect_result.data
+                )
+            except Exception as exc:  # pragma: no cover - best-effort
+                msg.warn(f"seed contract derivation failed: {exc}")
+            else:
+                if written is not None:
+                    msg.info(
+                        "Derived seed-grounded architecture contract "
+                        f"-> {written.name}"
+                    )
+                elif gaps:
+                    msg.warn("seed contract not written: " + "; ".join(gaps))
+
     planner_result = request_planner_result(
         project_name=project_name,
         project=project,

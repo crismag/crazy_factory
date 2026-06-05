@@ -23,7 +23,7 @@ Example:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -105,6 +105,10 @@ class RoleResult:
     content: str
     source: str
     detail: str
+    # The raw structured model output (architect modules/task_candidates, …),
+    # preserved so downstream consumers (e.g. seed-derived contract generation)
+    # can use the design, not just its rendered text. Empty for fallbacks.
+    data: dict[str, Any] = field(default_factory=dict)
 
 
 def _compose_user_content(
@@ -245,6 +249,7 @@ def request_architect_result(
         _render_architect_expansion(data),
         "ollama",
         f"Architect model `{model}` ({note})",
+        data=data,
     )
 
 

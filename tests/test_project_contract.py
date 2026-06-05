@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,11 +13,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from project_contract import (  # noqa: E402
     Seed,
+    contract_from_architect,
     contract_from_seed,
+    derive_and_write_seed_contract,
     derive_tech,
+    module_tree,
     parse_seed,
     to_architecture_contract,
     validate_contract,
+    write_architecture_contract,
 )
 
 CLI_TODO_SEED = (ROOT / "examples/seeds/cli_todo_tracker.md").read_text(
@@ -132,6 +138,117 @@ class RenderTests(unittest.TestCase):
         self.assertIn("data", arch["extra_allowed"])
         self.assertEqual(arch["required_files"], tree)
         self.assertIn("flask", arch["forbidden_imports"])
+
+
+ARCHITECT_DATA = {
+    "summary": "A small CLI todo app.",
+    "modules": [
+        {"name": "Task Model", "responsibility": "the Task dataclass"},
+        {
+            "name": "storage",
+            "responsibility": "persist tasks to data/tasks.json",
+        },
+    ],
+    "task_candidates": [
+        {"deliverable": "Implement the Task model", "sequence": 1},
+        {"deliverable": "Add JSON storage in src/storage.py", "sequence": 2},
+    ],
+}
+
+
+class ArchitectTreeTests(unittest.TestCase):
+    def test_module_tree_maps_modules_to_src_and_tests(self) -> None:
+        tree = module_tree(ARCHITECT_DATA)
+        self.assertIn("README.md", tree)
+        self.assertIn("src/task_model.py", tree)  # "Task Model" -> snake
+        self.assertIn("tests/test_task_model.py", tree)
+        self.assertIn("src/storage.py", tree)
+        self.assertIn("tests/test_storage.py", tree)
+
+    def test_module_tree_keeps_architect_named_data_file(self) -> None:
+        # The architect explicitly named data/tasks.json (the task-board miss).
+        self.assertIn("data/tasks.json", module_tree(ARCHITECT_DATA))
+
+    def test_module_tree_ignores_absolute_and_traversal_paths(self) -> None:
+        data = {
+            "modules": [{"name": "x", "responsibility": "writes /etc/passwd"}],
+            "task_candidates": [{"deliverable": "touch ../escape.py"}],
+        }
+        tree = module_tree(data)
+        self.assertNotIn("/etc/passwd", tree)
+        self.assertFalse(any(".." in p for p in tree))
+
+    def test_module_tree_dedupes(self) -> None:
+        data = {
+            "modules": [
+                {"name": "a"},
+                {"name": "a"},
+            ]
+        }
+        tree = module_tree(data)
+        self.assertEqual(tree.count("src/a.py"), 1)
+
+    def test_contract_from_architect_uses_candidates_as_behaviors(self) -> None:
+        seed = parse_seed(CLI_TODO_SEED)
+        contract = contract_from_architect(seed, ARCHITECT_DATA)
+        self.assertEqual(
+            contract.required_behaviors,
+            ["Implement the Task model", "Add JSON storage in src/storage.py"],
+        )
+        self.assertEqual(contract.persistence_target, "data/tasks.json")
+        # Seed forbidden-tech still applies (stdlib-only todo seed).
+        self.assertIn("flask", contract.forbidden_tech)
+
+    def test_contract_from_architect_is_coherent(self) -> None:
+        seed = parse_seed(CLI_TODO_SEED)
+        contract = contract_from_architect(seed, ARCHITECT_DATA)
+        self.assertEqual(validate_contract(contract), [])
+
+
+class WriterTests(unittest.TestCase):
+    def test_writes_architecture_json_into_workbench(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".git").mkdir()
+            app = root / "apps/demo"
+            app.mkdir(parents=True)
+            seed = parse_seed(CLI_TODO_SEED)
+            contract = contract_from_architect(seed, ARCHITECT_DATA)
+            written = write_architecture_contract("apps/demo", root, contract)
+            self.assertTrue(written.is_file())
+            data = json.loads(written.read_text(encoding="utf-8"))
+            self.assertEqual(data["source"], "seed-derived")
+            self.assertIn("src/task_model.py", data["required_files"])
+            self.assertIn("flask", data["forbidden_imports"])
+            self.assertEqual(data["test_dirs"], ["tests"])
+
+
+class DeriveAndWriteTests(unittest.TestCase):
+    def test_writes_when_coherent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".git").mkdir()
+            (root / "apps/demo").mkdir(parents=True)
+            written, gaps = derive_and_write_seed_contract(
+                "apps/demo", root, CLI_TODO_SEED, ARCHITECT_DATA
+            )
+            self.assertEqual(gaps, [])
+            self.assertIsNotNone(written)
+            self.assertTrue((root / "apps/demo/architecture.json").is_file())
+
+    def test_refuses_incoherent_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".git").mkdir()
+            (root / "apps/demo").mkdir(parents=True)
+            # An architect that names a traversal path yields a clean tree (the
+            # bad path is dropped), so force incoherence via a missing goal.
+            written, gaps = derive_and_write_seed_contract(
+                "apps/demo", root, "Constraints:\n- Python\n", ARCHITECT_DATA
+            )
+            self.assertIsNone(written)
+            self.assertTrue(any("no goal" in g for g in gaps))
+            self.assertFalse((root / "apps/demo/architecture.json").exists())
 
 
 if __name__ == "__main__":

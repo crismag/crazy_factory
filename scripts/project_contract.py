@@ -30,6 +30,7 @@ adjudicator) is the next ST6 slice.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -215,6 +216,101 @@ def contract_from_seed(
     )
 
 
+def _snake(name: str) -> str:
+    """Normalise a module name into a snake_case python module stem."""
+    text = re.sub(r"[^0-9A-Za-z]+", "_", name.strip()).strip("_").lower()
+    return text or "module"
+
+
+# File extensions we treat as legitimate explicit paths in architect prose.
+_PATH_EXTS = frozenset(
+    {"py", "json", "md", "txt", "db", "sqlite", "csv", "cfg", "toml", "ini"}
+)
+_PATH_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_./-]*\.[A-Za-z0-9]+")
+
+
+def _explicit_paths(text: str) -> list[str]:
+    """Extract workbench-relative file paths an architect named in prose.
+
+    Honours an architect that explicitly calls out e.g. ``data/tasks.json`` so
+    it lands in the required tree — but never invents one. Absolute paths, URLs,
+    traversal, and unknown extensions are ignored.
+    """
+    found: list[str] = []
+    for match in _PATH_RE.findall(text):
+        if "://" in match or match.startswith("/"):
+            continue
+        parts = match.split("/")
+        if ".." in parts:
+            continue
+        if match.rsplit(".", 1)[-1].lower() not in _PATH_EXTS:
+            continue
+        found.append(match)
+    return found
+
+
+def module_tree(architect_data: dict[str, Any]) -> list[str]:
+    """Map an architect's structured design onto a required file tree.
+
+    Deterministic: ``README.md`` plus, per declared module, ``src/<name>.py`` and
+    ``tests/test_<name>.py``, plus any explicit relative paths the architect named
+    in module responsibilities or task-candidate deliverables (so an architect
+    that calls out ``data/tasks.json`` keeps it — the task-board miss). Order is
+    preserved; duplicates collapsed.
+    """
+    tree: list[str] = ["README.md"]
+    prose: list[str] = []
+    modules = architect_data.get("modules")
+    if isinstance(modules, list):
+        for module in modules:
+            if not isinstance(module, dict):
+                continue
+            stem = _snake(str(module.get("name", "")))
+            tree.append(f"src/{stem}.py")
+            tree.append(f"tests/test_{stem}.py")
+            prose.append(str(module.get("responsibility", "")))
+    candidates = architect_data.get("task_candidates")
+    if isinstance(candidates, list):
+        prose.extend(
+            str(c.get("deliverable", ""))
+            for c in candidates
+            if isinstance(c, dict)
+        )
+    tree.extend(_explicit_paths(" \n".join(prose)))
+    # De-dupe, preserving first-seen order.
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for path in tree:
+        if path not in seen:
+            seen.add(path)
+            ordered.append(path)
+    return ordered
+
+
+def contract_from_architect(
+    seed: Seed, architect_data: dict[str, Any]
+) -> ProjectContract:
+    """Derive a contract from the seed plus the architect's structured design.
+
+    ``required_tree`` comes from :func:`module_tree`; behaviors prefer the
+    architect's sequenced ``task_candidates`` (the concrete deliverables), else
+    fall back to the seed's Success criteria.
+    """
+    candidates = architect_data.get("task_candidates")
+    behaviors: list[str] = []
+    if isinstance(candidates, list):
+        behaviors = [
+            str(c.get("deliverable", "")).strip()
+            for c in candidates
+            if isinstance(c, dict) and str(c.get("deliverable", "")).strip()
+        ]
+    return contract_from_seed(
+        seed,
+        required_tree=module_tree(architect_data),
+        required_behaviors=behaviors or None,
+    )
+
+
 def validate_contract(contract: ProjectContract) -> list[str]:
     """Return deterministic coherence problems with a derived contract.
 
@@ -284,6 +380,48 @@ def to_architecture_contract(contract: ProjectContract) -> dict[str, Any]:
         "required_files": list(contract.required_tree),
         "source": "seed-derived",
     }
+
+
+def write_architecture_contract(
+    app_path: str, root: Path, contract: ProjectContract
+) -> Path:
+    """Write the seed-derived contract to ``<workbench>/architecture.json``.
+
+    Uses the repo-safe writer confined to the project workbench. Returns the
+    written path. Imported lazily so the pure derivation API has no hard
+    dependency on the repo-write machinery.
+    """
+    from repo_tools import safe_write_json
+
+    target = f"{str(app_path).rstrip('/')}/architecture.json"
+    return safe_write_json(
+        target,
+        to_architecture_contract(contract),
+        repo_root=root,
+        allowed_roots=[str(app_path)],
+    )
+
+
+def derive_and_write_seed_contract(
+    app_path: str,
+    root: Path,
+    seed_text: str,
+    architect_data: dict[str, Any],
+) -> tuple[Path | None, list[str]]:
+    """Derive a seed+architect contract and persist it, if coherent.
+
+    Returns ``(written_path, [])`` on success, or ``(None, reasons)`` when the
+    derived contract is incoherent (never writes a bad contract — degrade, don't
+    corrupt the gate). The written ``architecture.json`` is what the *next*
+    advance's ``load_contract`` consumes, making decomposition, the floor, the
+    coherence gate, and acceptance all seed-grounded.
+    """
+    seed = parse_seed(seed_text)
+    contract = contract_from_architect(seed, architect_data)
+    reasons = validate_contract(contract)
+    if reasons:
+        return None, reasons
+    return write_architecture_contract(app_path, root, contract), []
 
 
 def seed_to_dict(seed: Seed) -> dict[str, Any]:
