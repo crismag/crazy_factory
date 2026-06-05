@@ -34,6 +34,7 @@ from proposal_applier import (  # noqa: E402
     is_proposal_valid,
     parse_patch_plan,
     patch_plan_to_dict,
+    render_patch_plan_md,
     request_patch_plan,
     run_application_stage,
     validate_patch_plan,
@@ -1140,6 +1141,49 @@ class RulesDriftTests(unittest.TestCase):
         self.assertIn(
             "whole-project coherence gates remain mandatory", normalized
         )
+
+
+class RenderPatchPlanTests(unittest.TestCase):
+    """9E.8 PP4/PP5: the patch plan renders content + severity, not a tombstone."""
+
+    def test_render_shows_severity_content_disposition_and_stub(self) -> None:
+        plan = PatchPlan(
+            "PP",
+            "T",
+            "CP",
+            [
+                PatchFile(
+                    "src/x.py",
+                    "create",
+                    "from typing import Optional\n\nV=1\n",
+                ),
+                PatchFile("src/stub.py", "create", "\n"),  # stub
+            ],
+            "",
+        )
+        result = ApplicationResult(
+            plan,
+            ApplicationVerdict(
+                False,
+                [
+                    "src/x.py:1: unused import 'Optional'",  # fix
+                    "Python syntax error in src/y.py",  # block
+                ],
+                [],
+                [],
+            ),
+            "ollama",
+            "d",
+            "apply",
+            activated=True,
+        )
+        md = render_patch_plan_md(result)
+        self.assertIn("`[fix]`", md)  # lint classified as fixable
+        self.assertIn("`[block]`", md)  # syntax classified as blocking
+        self.assertIn("Disposition:", md)
+        self.assertIn("## Content", md)
+        self.assertIn("```python", md)
+        self.assertIn("⚠ stub", md)
 
 
 class KeepTheWorkTests(unittest.TestCase):

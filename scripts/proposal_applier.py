@@ -40,6 +40,7 @@ from coder_proposal import (
 )
 from architecture import load_contract, patch_contract_violations
 from completeness_review import review_completeness
+from severity import classify_reasons, overall_severity
 from skill_library import autofix_lint
 from contract_stage import load_existing_contract
 from json_parsing import coerce_str, coerce_str_list, strip_code_fence
@@ -52,6 +53,14 @@ from repo_tools import (
     safe_write_text,
 )
 from task_contract import is_contract_actionable
+
+# 9E.8 PP4: map an overall severity tier to a human disposition in the report.
+_DISPOSITION = {
+    "block": "blocked — needs revision or owner review",
+    "fix": "auto-fixable — repair and apply",
+    "warn": "advisory — safe to proceed",
+    "info": "clean",
+}
 
 # Top-level paths application may never touch, named explicitly for auditable
 # rejection messages. The app/docs/tests allow-list already excludes them.
@@ -724,28 +733,61 @@ def render_patch_plan_md(result: ApplicationResult) -> str:
         )
         if plan.files:
             for patch in plan.files:
+                line_count = len(patch.content.splitlines())
+                stub = (
+                    " ⚠ stub"
+                    if patch.action != "delete" and line_count <= 1
+                    else ""
+                )
                 lines.append(
                     f"- `{patch.action}` `{patch.path}` "
-                    f"({len(patch.content.splitlines())} lines)"
+                    f"({line_count} lines){stub}"
                 )
         else:
             lines.append("_None._")
         lines.append("")
+    # 9E.8 PP4/PP5: disposition + severity-classified reasons (not a flat list).
+    reasons = result.verdict.reasons
+    disposition = _DISPOSITION[overall_severity(reasons)]
     lines.extend(
         [
             "## Validation Verdict",
             "",
             f"- Valid: `{plan is not None and result.verdict.valid}`",
+            f"- Disposition: {disposition}",
             "",
-            "### Reasons",
+            "### Reasons (by severity)",
             "",
         ]
     )
-    lines.extend(_bullets(result.verdict.reasons))
+    if reasons:
+        buckets = classify_reasons(reasons)
+        for tier in ("block", "fix", "warn", "info"):
+            for reason in buckets[tier]:
+                lines.append(f"- `[{tier}]` {reason}")
+    else:
+        lines.append("_None._")
     lines.extend(["", "### Warnings", ""])
     lines.extend(_bullets(result.verdict.warnings))
     lines.extend(["", "### Blocked Paths", ""])
     lines.extend(_bullets(result.verdict.blocked_paths))
+    # 9E.8 PP4: render the kept content so the patch is inspectable/reusable.
+    if plan is not None and plan.files:
+        lines.extend(["", "## Content", ""])
+        for patch in plan.files:
+            if patch.action == "delete" or not patch.content.strip():
+                continue
+            lang = "python" if patch.path.endswith(".py") else "text"
+            lines.extend(
+                [
+                    f"### `{patch.path}`",
+                    "",
+                    f"```{lang}",
+                    patch.content.rstrip(),
+                    "```",
+                    "",
+                ]
+            )
     lines.append("")
     return "\n".join(lines)
 
