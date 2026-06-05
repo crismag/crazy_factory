@@ -24,6 +24,12 @@ to its detailed plan doc. Run every implemented slice through the gate: `ruff` +
 | **9E.S0** — severity policy module (`severity.py`) | DONE (`6dc3a20`) | severity.py |
 | **9E.S1** — skill library + apply-path lint autofix (**empty-app unblocker**) | DONE (`d5fc4d2`) | skill_library.py / proposal_applier.py |
 | **9E EVID-1** — carry rejection reasons via state (packet) | DONE (`a9f5bec`) | mission_state.py / diagnosis_packet.py |
+| **9E.S1b** — recovery-executes-fixes | SUPERSEDED by 9E.S1; residual → adjudicator | recovery_router.py |
+| **9E.6 RPT1** — truthful report mode + outcome | DONE (`de02534`) | report_writer.py |
+| **9E STATE-1** — status reflects blocker | DONE (`de9d031`) | mission_state.py |
+| **9E.7-L3 / 9E.9 ARC1-2** — architect produces architecture, not code | DONE (`3952f6b`) | planning_roles.py |
+| **9E.8 PP3** — keep-the-work (persist patch content) | DONE (`8834911`) | proposal_applier.py |
+| **9E.8 PP4/PP5** — rich PATCH_PLAN render (content/severity/disposition/stubs) | DONE (`0556c0e`) | proposal_applier.py |
 | **9E.S1b** — recovery-executes-fixes | SUPERSEDED by 9E.S1 (lint auto-fixed pre-apply, no longer reaches recovery); residual deferred to the adjudicator (9E.S2) per the no-heuristics principle | — |
 
 ## QUEUED — execution order
