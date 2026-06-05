@@ -11,6 +11,9 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from unittest import mock  # noqa: E402
+
+from adjudicator import Adjudication  # noqa: E402
 from recovery_router import (  # noqa: E402
     APPLICATION_REJECTED,
     ESCALATE_AFTER,
@@ -264,6 +267,117 @@ class RoutingTests(unittest.TestCase):
             )
             self.assertEqual(d.decision, "park")
             self.assertIn("SYNTAX", d.reason)
+
+
+class AdjudicatorLedTests(unittest.TestCase):
+    """9E.S2/ST5: the adjudicator decides; classify_failure is the rail."""
+
+    def _plan_with_adjudication(
+        self, adj: Adjudication, reasons: list[str]
+    ) -> object:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".git").mkdir(exist_ok=True)
+            project = _project(root)
+            _write_json(
+                root / "apps/demo/factory_tasks/patch_plan.json",
+                {"validation": {"status": "rejected", "reasons": reasons}},
+            )
+            state = {"current_blocker": APPLICATION_REJECTED}
+            with mock.patch(
+                "recovery_router.adjudicate", return_value=adj
+            ) as patched:
+                decision = plan_recovery(
+                    root=root,
+                    project=project,
+                    project_state=state,
+                    client=object(),
+                    model="reviewer",
+                )
+            self.assertTrue(patched.called)
+            return decision
+
+    def test_revise_disposition_maps_to_revise_proposal(self) -> None:
+        adj = Adjudication(
+            "revise", "incomplete code", findings=["x"], source="ollama"
+        )
+        d = self._plan_with_adjudication(
+            adj, ["missing behavior: handle missing file"]
+        )
+        self.assertEqual(d.decision, "revise_proposal")
+        self.assertEqual(d.source, "adjudicator")
+        self.assertEqual(d.disposition, "revise")
+        self.assertTrue(any(a.type == "clear_approval" for a in d.actions))
+
+    def test_fix_disposition_maps_to_regenerate_patch(self) -> None:
+        adj = Adjudication(
+            "fix", "auto-fixable", findings=["x"], source="deterministic"
+        )
+        d = self._plan_with_adjudication(adj, ["src/x.py:2: unused import"])
+        self.assertEqual(d.decision, "regenerate_patch")
+        self.assertEqual(d.source, "adjudicator")
+        self.assertEqual(d.disposition, "fix")
+
+    def test_scope_down_revises_with_scope_detail(self) -> None:
+        adj = Adjudication(
+            "scope_down", "over-reach", findings=["x"], source="ollama"
+        )
+        d = self._plan_with_adjudication(adj, ["touches 5 files, over limit"])
+        self.assertEqual(d.decision, "revise_proposal")
+        self.assertEqual(d.disposition, "scope_down")
+        self.assertTrue(
+            any("in-focus" in a.detail for a in d.actions if a.detail)
+        )
+
+    def test_reject_unsafe_parks_for_owner(self) -> None:
+        adj = Adjudication(
+            "reject_unsafe",
+            "safety floor violated",
+            findings=["secret"],
+            source="deterministic",
+        )
+        d = self._plan_with_adjudication(adj, ["references secret-like material"])
+        self.assertEqual(d.decision, "park")
+        self.assertEqual(d.disposition, "reject_unsafe")
+        self.assertIn("safety floor", d.reason)
+
+    def test_fallback_source_drops_to_deterministic_rail(self) -> None:
+        # The adjudicator could not judge the ambiguous block (no model / it
+        # returned an escalate fallback) → recovery uses the deterministic rail,
+        # NOT a park, preserving the no-regression degrade path.
+        adj = Adjudication(
+            "escalate", "no model", findings=["x"], source="fallback"
+        )
+        d = self._plan_with_adjudication(
+            adj, ["Python syntax error in src/x.py: invalid syntax"]
+        )
+        self.assertEqual(d.decision, "regenerate_patch")
+        self.assertEqual(d.source, "deterministic")
+
+    def test_no_client_never_consults_adjudicator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / ".git").mkdir(exist_ok=True)
+            project = _project(root)
+            _write_json(
+                root / "apps/demo/factory_tasks/patch_plan.json",
+                {
+                    "validation": {
+                        "status": "rejected",
+                        "reasons": [
+                            "Python syntax error in src/x.py: invalid syntax"
+                        ],
+                    }
+                },
+            )
+            state = {"current_blocker": APPLICATION_REJECTED}
+            with mock.patch("recovery_router.adjudicate") as patched:
+                d = plan_recovery(
+                    root=root, project=project, project_state=state
+                )
+            patched.assert_not_called()
+            self.assertEqual(d.decision, "regenerate_patch")
+            self.assertEqual(d.source, "deterministic")
 
 
 if __name__ == "__main__":

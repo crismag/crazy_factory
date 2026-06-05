@@ -14,6 +14,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from adjudicator import (
+    ACCEPT,
+    ESCALATE,
+    FIXIT,
+    REDIRECT,
+    REJECT_UNSAFE,
+    REVISE,
+    SCOPE_DOWN,
+    Adjudication,
+    adjudicate,
+)
+from ollama_client import OllamaClient
 from owner_controls import revoke_proposal
 from repo_tools import (
     resolve_repo_path,
@@ -71,6 +83,7 @@ class RecoveryDecision:
     valid: bool = True
     validation_reasons: list[str] = field(default_factory=list)
     failure_class: str = ""
+    disposition: str = ""
 
 
 def _task_path(project: dict[str, Any], name: str) -> str:
@@ -248,8 +261,20 @@ def plan_recovery(
     project: dict[str, Any],
     project_state: dict[str, Any],
     max_attempts: int = 3,
+    client: Any | None = None,
+    model: str | None = None,
 ) -> RecoveryDecision:
-    """Plan deterministic recovery for the latest project blocker."""
+    """Plan recovery for the latest project blocker.
+
+    The decision is **adjudicator-led** when a reviewer model is available
+    (``client``/``model``): the adjudicator (9E.S2) judges the rejection
+    reasons and Python maps its graded disposition onto the bounded recovery
+    decision vocabulary. With no model — or when the adjudicator cannot judge an
+    ambiguous block — recovery **degrades to the deterministic rail** below
+    (the #37 ``classify_failure`` router), never to a fake pass. The
+    deterministic ``classify_failure`` is also kept purely for the
+    ``failure_class`` observability tag.
+    """
     trigger = str(project_state.get("current_blocker") or "")
     if (
         not trigger
@@ -265,7 +290,7 @@ def plan_recovery(
         project_state.get("recovery_class_history"), cls
     )
 
-    def _park(reason: str) -> RecoveryDecision:
+    def _park(reason: str, *, disposition: str = "") -> RecoveryDecision:
         return RecoveryDecision(
             recovery_id=recovery_id,
             trigger=trigger or "unknown",
@@ -278,11 +303,52 @@ def plan_recovery(
             attempt=attempt,
             max_attempts=max_attempts,
             failure_class=cls,
+            disposition=disposition,
+        )
+
+    def _regenerate(reason: str, *, source: str, disposition: str = "") -> (
+        RecoveryDecision
+    ):
+        return RecoveryDecision(
+            recovery_id=recovery_id,
+            trigger=trigger,
+            trigger_stage="application",
+            trigger_reasons=reasons,
+            decision="regenerate_patch",
+            reason=reason,
+            target_stage="application",
+            actions=_regenerate_actions(),
+            attempt=attempt,
+            max_attempts=max_attempts,
+            failure_class=cls,
+            source=source,
+            disposition=disposition,
+        )
+
+    def _revise(reason: str, detail: str, *, source: str, disposition: str = "") -> (
+        RecoveryDecision
+    ):
+        return RecoveryDecision(
+            recovery_id=recovery_id,
+            trigger=trigger,
+            trigger_stage="application",
+            trigger_reasons=reasons,
+            decision="revise_proposal",
+            reason=reason,
+            target_stage="coder",
+            actions=_revise_actions(detail),
+            attempt=attempt,
+            max_attempts=max_attempts,
+            failure_class=cls,
+            source=source,
+            disposition=disposition,
         )
 
     # Escalate instead of blind-retrying: budget spent, OR the same failure class
     # has already repeated enough that another identical retry is unlikely to
     # help. Park with a CLASSIFIED diagnosis + mitigation, never a bare message.
+    # This is a safety rail (not a decision heuristic) so it fires before any
+    # adjudication.
     if attempt > max_attempts or repeats >= ESCALATE_AFTER:
         why = (
             f"recovery budget exhausted after {attempt - 1} attempt(s)"
@@ -292,21 +358,26 @@ def plan_recovery(
         )
         return _park(f"Escalated ({cls}): {why}. {_MITIGATION.get(cls, '')}")
 
-    # Class-driven routing. regenerate_patch keeps the authorized proposal and
+    # Adjudicator-led decision (the brain). Only honoured when the adjudicator
+    # actually resolved the case — its deterministic fast-paths (``source ==
+    # "deterministic"``: floor/all-fixable/advisory) or a real model judgement
+    # (``source == "ollama"``). A ``"fallback"`` source means it could not judge
+    # the ambiguous block, so we drop through to the deterministic rail.
+    if client is not None and model and reasons:
+        adj = adjudicate(
+            reasons, client=client, model=model, context=f"Failure class: {cls}"
+        )
+        if adj.source in ("deterministic", "ollama"):
+            return _decision_from_disposition(
+                adj, regenerate=_regenerate, revise=_revise, park=_park
+            )
+
+    # Deterministic rail. regenerate_patch keeps the authorized proposal and
     # rebuilds the patch; revise_proposal clears the approval and re-proposes.
     if cls in (CLASS_SYNTAX, CLASS_LINT, CLASS_NO_CONTENT):
-        return RecoveryDecision(
-            recovery_id=recovery_id,
-            trigger=trigger,
-            trigger_stage="application",
-            trigger_reasons=reasons,
-            decision="regenerate_patch",
-            reason=f"Application rejected ({cls}); regenerate the patch plan.",
-            target_stage="application",
-            actions=_regenerate_actions(),
-            attempt=attempt,
-            max_attempts=max_attempts,
-            failure_class=cls,
+        return _regenerate(
+            f"Application rejected ({cls}); regenerate the patch plan.",
+            source="deterministic",
         )
 
     if cls in (CLASS_INCOMPLETE, CLASS_PROPOSAL_DESYNC):
@@ -316,23 +387,68 @@ def plan_recovery(
             if cls == CLASS_INCOMPLETE
             else "Re-propose cleanly so the patch and approval ids match."
         )
-        return RecoveryDecision(
-            recovery_id=recovery_id,
-            trigger=trigger,
-            trigger_stage="application",
-            trigger_reasons=reasons,
-            decision="revise_proposal",
-            reason=f"Application rejected ({cls}); request a fresh proposal.",
-            target_stage="coder",
-            actions=_revise_actions(detail),
-            attempt=attempt,
-            max_attempts=max_attempts,
-            failure_class=cls,
+        return _revise(
+            f"Application rejected ({cls}); request a fresh proposal.",
+            detail,
+            source="deterministic",
         )
 
     # CONTRACT / UNKNOWN: no safe deterministic auto-fix — park with diagnosis.
     return _park(
         f"No deterministic recovery for {cls}. {_MITIGATION.get(cls, '')}"
+    )
+
+
+def _decision_from_disposition(
+    adj: Adjudication,
+    *,
+    regenerate: Any,
+    revise: Any,
+    park: Any,
+) -> RecoveryDecision:
+    """Map an adjudicator disposition onto the bounded recovery vocabulary.
+
+    The judgement already happened in the adjudicator; this is a flat, total
+    mapping (no per-class heuristics), staying within the validated
+    ``DECISIONS`` allow-list. ``fix``/``accept`` rebuild the patch (the
+    apply-path autofix handles fixables on regeneration); ``scope_down``/
+    ``revise``/``redirect`` request a fresh, narrower/realigned proposal;
+    ``escalate``/``reject_unsafe`` park for the owner.
+    """
+    note = adj.rationale or "adjudicator decision"
+    if adj.disposition in (FIXIT, ACCEPT):
+        return regenerate(
+            f"Adjudicated '{adj.disposition}': {note}. Regenerate the patch.",
+            source="adjudicator",
+            disposition=adj.disposition,
+        )
+    if adj.disposition == SCOPE_DOWN:
+        return revise(
+            f"Adjudicated 'scope_down': {note}. Re-propose only the in-focus "
+            "deliverable.",
+            "Re-propose a narrower patch: keep only the in-focus deliverable "
+            "and defer the extra modules.",
+            source="adjudicator",
+            disposition=adj.disposition,
+        )
+    if adj.disposition in (REVISE, REDIRECT):
+        detail = (
+            "Re-propose so the patch realigns with the project goal/seed."
+            if adj.disposition == REDIRECT
+            else "Re-propose a complete, correct patch that satisfies the "
+            "acceptance criteria."
+        )
+        return revise(
+            f"Adjudicated '{adj.disposition}': {note}. Request a fresh proposal.",
+            detail,
+            source="adjudicator",
+            disposition=adj.disposition,
+        )
+    # ESCALATE / REJECT_UNSAFE (and any unmapped disposition) → owner.
+    safety = " (safety floor)" if adj.disposition == REJECT_UNSAFE else ""
+    return park(
+        f"Adjudicated '{adj.disposition or 'escalate'}'{safety}: {note}.",
+        disposition=adj.disposition or ESCALATE,
     )
 
 
@@ -373,6 +489,7 @@ def recovery_to_dict(decision: RecoveryDecision) -> dict[str, Any]:
         "attempt": decision.attempt,
         "max_attempts": decision.max_attempts,
         "source": decision.source,
+        "disposition": decision.disposition,
         "validation": {
             "status": "valid" if decision.valid else "rejected",
             "reasons": list(decision.validation_reasons),
@@ -387,6 +504,7 @@ def render_recovery_md(decision: RecoveryDecision) -> str:
         "",
         f"- Recovery ID: `{decision.recovery_id}`",
         f"- Source: `{decision.source}`",
+        f"- Disposition: `{decision.disposition or 'n/a'}`",
         f"- Trigger: `{decision.trigger}`",
         f"- Trigger stage: `{decision.trigger_stage}`",
         f"- Decision: `{decision.decision}`",
@@ -517,6 +635,30 @@ def apply_recovery(
     return changed
 
 
+def _build_reviewer_client(
+    factory_config: dict[str, Any] | None,
+    models_config: dict[str, Any] | None,
+) -> tuple[Any | None, str | None]:
+    """Build the adjudicator (reviewer) LLM client from config, if available.
+
+    Returns ``(None, None)`` when config is absent or malformed so recovery
+    degrades to the deterministic rail rather than failing — never a fake pass.
+    """
+    if not factory_config or not models_config:
+        return None, None
+    try:
+        ollama = factory_config["ollama"]
+        model = str(models_config["models"]["reviewer"])
+        client = OllamaClient(
+            base_url=str(ollama["base_url"]),
+            timeout_seconds=int(ollama["timeout_seconds"]),
+            stream=bool(ollama["stream"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None, None
+    return client, model
+
+
 def run_recovery_router(
     *,
     root: Path,
@@ -524,13 +666,18 @@ def run_recovery_router(
     project_state: dict[str, Any],
     active_run: dict[str, Any],
     max_attempts: int = 3,
+    factory_config: dict[str, Any] | None = None,
+    models_config: dict[str, Any] | None = None,
 ) -> tuple[RecoveryDecision, list[str]]:
-    """Plan and apply deterministic recovery."""
+    """Plan and apply recovery (adjudicator-led when a reviewer model is set)."""
+    client, model = _build_reviewer_client(factory_config, models_config)
     decision = plan_recovery(
         root=root,
         project=project,
         project_state=project_state,
         max_attempts=max_attempts,
+        client=client,
+        model=model,
     )
     changed = apply_recovery(
         root=root,

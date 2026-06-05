@@ -1086,6 +1086,8 @@ def main(project: dict[str, Any] | None = None) -> int:
             project=project,
             project_state=project_state,
             active_run=active_run,
+            factory_config=factory_config,
+            models_config=models_config,
         )
         persist_state(
             root=root,
