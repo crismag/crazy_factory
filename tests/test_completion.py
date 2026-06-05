@@ -220,5 +220,50 @@ class FocusFileTokenTests(unittest.TestCase):
         self.assertIn("src/storage.py", rec["evidence"]["files"])
 
 
+class NoProgressMonitorTests(unittest.TestCase):
+    """Issue #37 §6: stop the loop when beats don't advance project state."""
+
+    def test_progress_resets_streak(self) -> None:
+        import factory_advance as fa
+
+        state: dict[str, object] = {"beats_without_progress": 3}
+        out = fa.progress_blocker(
+            state, progressed=True, current_blocker="application_rejected"
+        )
+        self.assertIsNone(out)
+        self.assertEqual(state["beats_without_progress"], 0)
+
+    def test_streak_trips_no_progress(self) -> None:
+        import factory_advance as fa
+
+        state: dict[str, object] = {
+            "beats_without_progress": fa.NO_PROGRESS_BEATS - 1
+        }
+        out = fa.progress_blocker(
+            state, progressed=False, current_blocker="application_rejected"
+        )
+        self.assertEqual(out, fa.NO_PROGRESS)
+        self.assertEqual(state["beats_without_progress"], fa.NO_PROGRESS_BEATS)
+
+    def test_terminal_blocker_not_overridden(self) -> None:
+        import factory_advance as fa
+
+        state: dict[str, object] = {
+            "beats_without_progress": fa.NO_PROGRESS_BEATS + 2
+        }
+        out = fa.progress_blocker(
+            state, progressed=False, current_blocker="recovery_exhausted"
+        )
+        self.assertIsNone(out)
+
+    def test_no_progress_is_a_persistent_stall(self) -> None:
+        from stall_detector import detect_stall
+
+        signal = detect_stall(
+            factory_state={}, project_state={"current_blocker": "no_progress"}
+        )
+        self.assertTrue(signal.stalled)
+
+
 if __name__ == "__main__":
     unittest.main()

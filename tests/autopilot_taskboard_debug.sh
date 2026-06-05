@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash -ef
 #
 # Crazy Factory — task-board autopilot, HIGH-VERBOSITY / DEBUG variant.
 #

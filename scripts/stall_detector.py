@@ -42,6 +42,7 @@ RECOVERABLE_BLOCKERS: frozenset[str] = frozenset(
 # attention, so stall/recovery reporting should park instead of looping.
 PERSISTENT_BLOCKERS: frozenset[str] = frozenset(
     {
+        "no_progress",
         "remediation_exhausted",
         "recovery_exhausted",
         "needs_owner_decision",

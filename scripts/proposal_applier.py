@@ -98,6 +98,33 @@ _INCOMPLETE_NOTE_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
 )
 
 
+_CODE_FENCE_RE = re.compile(r"```[A-Za-z0-9_+.-]*\n(.*?)```", re.DOTALL)
+
+
+def _unfence_content(content: str) -> str:
+    """Strip a Markdown code fence the model may wrap file content in.
+
+    Local coder models often return the file body as a fenced block (sometimes
+    with a prose preamble) *inside* the JSON ``content`` value. Written verbatim,
+    line 1 becomes ```` ```python ```` and every ``compile()`` fails with
+    "invalid syntax (line 1)" — rejecting the patch and burning the recovery
+    budget before the model can converge. Extract the fenced body when present;
+    return the content unchanged when there is no fence (no-op for clean code).
+    """
+    if "```" not in content:
+        return content
+    match = _CODE_FENCE_RE.search(content)
+    if match:
+        return match.group(1).rstrip("\n")
+    # Unterminated leading fence (e.g. "```python\n<code>"): drop the marker.
+    stripped = content.lstrip()
+    if stripped.startswith("```"):
+        newline = stripped.find("\n")
+        if newline != -1:
+            return stripped[newline + 1 :].rstrip("`\n")
+    return content
+
+
 class PatchPlanParseError(ValueError):
     """Raised when coder output cannot be parsed into a patch plan."""
 
@@ -249,7 +276,11 @@ def parse_patch_plan(raw: str) -> PatchPlan:
             if not isinstance(item, dict):
                 continue
             raw_content = item.get("content")
-            content = raw_content if isinstance(raw_content, str) else ""
+            content = (
+                _unfence_content(raw_content)
+                if isinstance(raw_content, str)
+                else ""
+            )
             files.append(
                 PatchFile(
                     path=coerce_str(item.get("path")),

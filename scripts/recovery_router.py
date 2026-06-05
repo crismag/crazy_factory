@@ -9,6 +9,7 @@ LLM recovery can sit above this later as an escalation layer.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -69,6 +70,7 @@ class RecoveryDecision:
     source: str = "deterministic"
     valid: bool = True
     validation_reasons: list[str] = field(default_factory=list)
+    failure_class: str = ""
 
 
 def _task_path(project: dict[str, Any], name: str) -> str:
@@ -119,6 +121,127 @@ def _action(type_: str, path: str = "", detail: str = "") -> RecoveryAction:
     return RecoveryAction(type=type_, path=path, detail=detail)
 
 
+# Issue #37: same failure class this many times in a row → stop blind-retrying
+# and escalate to a classified park (recovery is unlikely to succeed by repeat).
+ESCALATE_AFTER = 3
+_HISTORY_CAP = 8
+
+# Failure taxonomy (most-specific markers first). One class drives the recovery
+# strategy and the diagnosis, instead of ad-hoc per-reason string matches.
+CLASS_NO_CONTENT = "NO_CONTENT"
+CLASS_PROPOSAL_DESYNC = "PROPOSAL_DESYNC"
+CLASS_SYNTAX = "SYNTAX"
+CLASS_INCOMPLETE = "INCOMPLETE"
+CLASS_LINT = "LINT"
+CLASS_CONTRACT = "CONTRACT"
+CLASS_UNKNOWN = "UNKNOWN"
+
+# Per-class mitigation shown on an escalation/budget park, so the owner sees a
+# diagnosis + next step instead of a bare "budget exhausted".
+_MITIGATION: dict[str, str] = {
+    CLASS_NO_CONTENT: (
+        "the model keeps returning empty file content — constrain it to emit "
+        "full file bodies, or switch the coder model"
+    ),
+    CLASS_PROPOSAL_DESYNC: (
+        "proposal/approval id desync persists — clear approval and re-propose "
+        "from a clean state"
+    ),
+    CLASS_SYNTAX: (
+        "the model repeatedly emits invalid Python — tighten the coder output "
+        "format (no prose/fences) or switch to a stronger coder model"
+    ),
+    CLASS_INCOMPLETE: (
+        "the implementation keeps missing required behaviors/tests — reduce the "
+        "task scope or split the checklist item"
+    ),
+    CLASS_LINT: (
+        "the patch keeps failing lint quality — consider a deterministic "
+        "lint-autofix pass before apply"
+    ),
+    CLASS_CONTRACT: (
+        "proposed work violates the architecture contract — revise the plan "
+        "within the contract, or adjust the contract"
+    ),
+    CLASS_UNKNOWN: "owner review required — see the rejection reasons",
+}
+
+
+def classify_failure(reasons: list[str]) -> str:
+    """Classify application rejection reasons into a single failure class.
+
+    Most-specific markers win, so a patch that is both incomplete and lint-dirty
+    is treated as INCOMPLETE (re-propose) rather than LINT (regenerate).
+    """
+    blob = "\n".join(reasons).lower()
+    if "no content provided" in blob:
+        return CLASS_NO_CONTENT
+    if "does not match the approved proposal" in blob:
+        return CLASS_PROPOSAL_DESYNC
+    if "syntax error" in blob:
+        return CLASS_SYNTAX
+    if any(
+        marker in blob
+        for marker in (
+            "does not include or declare validation tests",
+            "missing behavior",
+            "missing test",
+            "completeness",
+            "acceptance criteria require tests",
+            "placeholder function body",
+        )
+    ):
+        return CLASS_INCOMPLETE
+    if "unused import" in blob or re.search(r"\b[ef]\d{3}\b", blob):
+        return CLASS_LINT
+    if any(
+        m in blob for m in ("forbidden", "outside the project", "contract")
+    ):
+        return CLASS_CONTRACT
+    return CLASS_UNKNOWN
+
+
+def _trailing_repeats(history: object, cls: str) -> int:
+    """Count how many of the most-recent history entries equal ``cls``."""
+    if not isinstance(history, list):
+        return 0
+    count = 0
+    for entry in reversed(history):
+        if entry == cls:
+            count += 1
+        else:
+            break
+    return count
+
+
+_REGEN_ARTIFACTS = (
+    "patch_plan.json",
+    "PATCH_PLAN.md",
+    "APPLICATION_REPORT.md",
+)
+_REVISE_ARTIFACTS = (
+    "coder_proposal.json",
+    "CODER_PROPOSAL.md",
+    *_REGEN_ARTIFACTS,
+)
+
+
+def _regenerate_actions() -> list[RecoveryAction]:
+    return [_action("retire_artifact", name) for name in _REGEN_ARTIFACTS]
+
+
+def _revise_actions(detail: str) -> list[RecoveryAction]:
+    return [
+        _action(
+            "clear_approval",
+            "approved_proposal.json",
+            "stale approval targets a proposal that cannot pass application",
+        ),
+        *[_action("retire_artifact", name) for name in _REVISE_ARTIFACTS],
+        _action("request_new_proposal", detail=detail),
+    ]
+
+
 def plan_recovery(
     *,
     root: Path,
@@ -135,169 +258,81 @@ def plan_recovery(
         trigger = APPLICATION_REJECTED
     attempt = _attempt(project_state, trigger)
     reasons = _latest_application_reasons(root, project, project_state)
-    reason_blob = "\n".join(reasons).lower()
     recovery_id = f"REC-{attempt:03d}"
+    cls = classify_failure(reasons)
+    # How many times this exact failure class has already repeated in a row.
+    repeats = _trailing_repeats(
+        project_state.get("recovery_class_history"), cls
+    )
 
-    if attempt > max_attempts:
+    def _park(reason: str) -> RecoveryDecision:
         return RecoveryDecision(
             recovery_id=recovery_id,
-            trigger=trigger,
+            trigger=trigger or "unknown",
             trigger_stage="recovery",
             trigger_reasons=reasons,
             decision="park",
-            reason="Recovery attempt budget exhausted.",
+            reason=reason,
             target_stage="owner",
-            actions=[
-                _action(
-                    "record_owner_question",
-                    detail="Recovery exhausted; owner review is required.",
-                )
-            ],
+            actions=[_action("record_owner_question", detail=reason)],
             attempt=attempt,
             max_attempts=max_attempts,
+            failure_class=cls,
         )
 
-    if trigger == APPLICATION_REJECTED and (
-        "does not include or declare validation tests" in reason_blob
-    ):
-        return RecoveryDecision(
-            recovery_id=recovery_id,
-            trigger=trigger,
-            trigger_stage="application",
-            trigger_reasons=reasons,
-            decision="revise_proposal",
-            reason=(
-                "Application rejected a source-only implementation; request a "
-                "fresh proposal that includes validation tests."
-            ),
-            target_stage="coder",
-            actions=[
-                _action(
-                    "clear_approval",
-                    "approved_proposal.json",
-                    "stale approval targets a proposal that cannot pass application",
-                ),
-                _action("retire_artifact", "coder_proposal.json"),
-                _action("retire_artifact", "CODER_PROPOSAL.md"),
-                _action("retire_artifact", "patch_plan.json"),
-                _action("retire_artifact", "PATCH_PLAN.md"),
-                _action("retire_artifact", "APPLICATION_REPORT.md"),
-                _action(
-                    "request_new_proposal",
-                    detail="New proposal must include source and tests.",
-                ),
-            ],
-            attempt=attempt,
-            max_attempts=max_attempts,
+    # Escalate instead of blind-retrying: budget spent, OR the same failure class
+    # has already repeated enough that another identical retry is unlikely to
+    # help. Park with a CLASSIFIED diagnosis + mitigation, never a bare message.
+    if attempt > max_attempts or repeats >= ESCALATE_AFTER:
+        why = (
+            f"recovery budget exhausted after {attempt - 1} attempt(s)"
+            if attempt > max_attempts
+            else f"repeated {cls} failures ({repeats + 1}x) — retrying is "
+            "unlikely to help"
         )
+        return _park(f"Escalated ({cls}): {why}. {_MITIGATION.get(cls, '')}")
 
-    if (
-        trigger == APPLICATION_REJECTED
-        and "python syntax error" in reason_blob
-    ):
+    # Class-driven routing. regenerate_patch keeps the authorized proposal and
+    # rebuilds the patch; revise_proposal clears the approval and re-proposes.
+    if cls in (CLASS_SYNTAX, CLASS_LINT, CLASS_NO_CONTENT):
         return RecoveryDecision(
             recovery_id=recovery_id,
             trigger=trigger,
             trigger_stage="application",
             trigger_reasons=reasons,
             decision="regenerate_patch",
-            reason="Application rejected a syntactically invalid patch plan.",
+            reason=f"Application rejected ({cls}); regenerate the patch plan.",
             target_stage="application",
-            actions=[
-                _action("retire_artifact", "patch_plan.json"),
-                _action("retire_artifact", "PATCH_PLAN.md"),
-                _action("retire_artifact", "APPLICATION_REPORT.md"),
-            ],
+            actions=_regenerate_actions(),
             attempt=attempt,
             max_attempts=max_attempts,
+            failure_class=cls,
         )
 
-    if trigger == APPLICATION_REJECTED and "unused import" in reason_blob:
-        return RecoveryDecision(
-            recovery_id=recovery_id,
-            trigger=trigger,
-            trigger_stage="application",
-            trigger_reasons=reasons,
-            decision="regenerate_patch",
-            reason=(
-                "Application rejected a patch with deterministic lint-quality "
-                "violations; regenerate the patch plan without changing the "
-                "authorized proposal."
-            ),
-            target_stage="application",
-            actions=[
-                _action("retire_artifact", "patch_plan.json"),
-                _action("retire_artifact", "PATCH_PLAN.md"),
-                _action("retire_artifact", "APPLICATION_REPORT.md"),
-            ],
-            attempt=attempt,
-            max_attempts=max_attempts,
+    if cls in (CLASS_INCOMPLETE, CLASS_PROPOSAL_DESYNC):
+        detail = (
+            "New proposal must implement every acceptance criterion and add a "
+            "test for each behavior."
+            if cls == CLASS_INCOMPLETE
+            else "Re-propose cleanly so the patch and approval ids match."
         )
-
-    if trigger == APPLICATION_REJECTED and any(
-        marker in reason_blob
-        for marker in (
-            "missing behavior",
-            "missing test",
-            "completeness",
-            "acceptance criteria require tests",
-        )
-    ):
-        # The pre-apply completeness reviewer (9D Layer 2) rejected the patch as
-        # behaviourally incomplete. Clear the stale approval and request a fresh
-        # proposal; the situational packet carries the missing behaviours into
-        # the next coder beat so it targets the gap.
         return RecoveryDecision(
             recovery_id=recovery_id,
             trigger=trigger,
             trigger_stage="application",
             trigger_reasons=reasons,
             decision="revise_proposal",
-            reason=(
-                "Completeness review rejected an incomplete implementation; "
-                "request a fresh proposal that satisfies every acceptance "
-                "criterion with tests."
-            ),
+            reason=f"Application rejected ({cls}); request a fresh proposal.",
             target_stage="coder",
-            actions=[
-                _action(
-                    "clear_approval",
-                    "approved_proposal.json",
-                    "stale approval targets a behaviourally incomplete proposal",
-                ),
-                _action("retire_artifact", "coder_proposal.json"),
-                _action("retire_artifact", "CODER_PROPOSAL.md"),
-                _action("retire_artifact", "patch_plan.json"),
-                _action("retire_artifact", "PATCH_PLAN.md"),
-                _action("retire_artifact", "APPLICATION_REPORT.md"),
-                _action(
-                    "request_new_proposal",
-                    detail=(
-                        "New proposal must implement every acceptance "
-                        "criterion and add a test for each behavior."
-                    ),
-                ),
-            ],
+            actions=_revise_actions(detail),
             attempt=attempt,
             max_attempts=max_attempts,
+            failure_class=cls,
         )
 
-    return RecoveryDecision(
-        recovery_id=recovery_id,
-        trigger=trigger or "unknown",
-        trigger_stage="unknown",
-        trigger_reasons=reasons,
-        decision="park",
-        reason="No deterministic recovery rule matched.",
-        target_stage="owner",
-        actions=[
-            _action(
-                "record_owner_question",
-                detail="No deterministic recovery rule matched; owner review required.",
-            )
-        ],
-        attempt=attempt,
-        max_attempts=max_attempts,
+    # CONTRACT / UNKNOWN: no safe deterministic auto-fix — park with diagnosis.
+    return _park(
+        f"No deterministic recovery for {cls}. {_MITIGATION.get(cls, '')}"
     )
 
 
@@ -325,6 +360,7 @@ def recovery_to_dict(decision: RecoveryDecision) -> dict[str, Any]:
     return {
         "recovery_id": decision.recovery_id,
         "trigger": decision.trigger,
+        "failure_class": decision.failure_class,
         "trigger_stage": decision.trigger_stage,
         "trigger_reasons": list(decision.trigger_reasons),
         "decision": decision.decision,
@@ -408,6 +444,14 @@ def _record_attempt(
     attempts[decision.trigger] = decision.attempt
     project_state["last_recovery_decision"] = decision.decision
     project_state["last_recovery_id"] = decision.recovery_id
+    # Track the failure-class trail so repeated identical failures can escalate
+    # instead of blind-retrying (issue #37 §2).
+    if decision.failure_class:
+        history = project_state.get("recovery_class_history")
+        if not isinstance(history, list):
+            history = []
+        history.append(decision.failure_class)
+        project_state["recovery_class_history"] = history[-_HISTORY_CAP:]
 
 
 def apply_recovery(

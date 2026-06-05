@@ -147,6 +147,37 @@ from advance_config import validate_dry_run_settings  # noqa: E402
 from settings import load_engine_settings  # noqa: E402
 
 
+# Issue #37 §6: if this many beats pass with no applied code AND no checklist
+# item completed, the loop is active but not advancing — stop churning and park.
+NO_PROGRESS = "no_progress"
+NO_PROGRESS_BEATS = 5
+_PROGRESS_TERMINAL_BLOCKERS = frozenset(
+    {"recovery_exhausted", "self_rejection", "needs_owner_decision"}
+)
+
+
+def progress_blocker(
+    project_state: dict[str, Any], *, progressed: bool, current_blocker: object
+) -> str | None:
+    """Update the no-progress streak; return NO_PROGRESS when it trips.
+
+    A beat "progresses" only if it applied code or completed a checklist item
+    (recovery succeeding is NOT progress). Mutates ``beats_without_progress``.
+    Returns the blocker to set, or ``None``. Never overrides a terminal blocker.
+    """
+    if progressed:
+        project_state["beats_without_progress"] = 0
+        return None
+    streak = int(project_state.get("beats_without_progress", 0) or 0) + 1
+    project_state["beats_without_progress"] = streak
+    if (
+        streak >= NO_PROGRESS_BEATS
+        and current_blocker not in _PROGRESS_TERMINAL_BLOCKERS
+    ):
+        return NO_PROGRESS
+    return None
+
+
 def _read_text_or_empty(rel_path: str, root: Path) -> str:
     """Read a workbench file directly (handles external paths + missing).
 
@@ -708,13 +739,30 @@ def main(project: dict[str, Any] | None = None) -> int:
         checks = test_plan.required_checks if test_plan else []
         plan_valid = test_plan is not None and test_plan_result.verdict.valid
         plan_id = test_plan.test_plan_id if test_plan else ""
+    # When this beat attempted an apply and it was REJECTED, nothing new was
+    # written — running whole-project validation now only re-reports the
+    # application failure as a phantom "ruff E902 / no tests" validation failure
+    # against a project that was never applied. Skip execution this beat; the
+    # blocker stays application_rejected and recovery owns it.
+    apply_rejected = (
+        application_result.activated and not application_result.applied
+    )
+    if apply_rejected:
+        msg.detail(
+            "validation skipped this beat: the application was rejected, so "
+            "there is no newly-applied code to validate (recovery handles the "
+            "rejection)."
+        )
     validation_result, validation_json, validation_md = run_validation_stage(
         test_plan_id=plan_id,
         required_checks=checks,
         plan_valid=plan_valid,
         root=root,
         project=project,
-        allow_run=bool(validation_config.get("allow_run", False)),
+        allow_run=(
+            bool(validation_config.get("allow_run", False))
+            and not apply_rejected
+        ),
         timeout_seconds=int(validation_config.get("timeout_seconds", 60)),
     )
     # Contract scan: any forbidden file/import already on disk fails the gate
@@ -813,6 +861,7 @@ def main(project: dict[str, Any] | None = None) -> int:
     # that validates green completes the item it was working — mark it done so
     # the next beat targets the next open item and the project converges. A
     # preserved/green re-validation does no new work and must not over-tick.
+    item_completed = False
     if (
         application_result.applied
         and application_result.source != "preserved"
@@ -841,6 +890,7 @@ def main(project: dict[str, Any] | None = None) -> int:
                 checklist_now
             )
         if completed_item is not None:
+            item_completed = True
             safe_write_text(
                 checklist_rel,
                 updated_checklist,
@@ -872,6 +922,35 @@ def main(project: dict[str, Any] | None = None) -> int:
                 msg.info(
                     "retired completed task; next advance plans the next item."
                 )
+
+    # Issue #37 §6 — no-progress monitor. A beat advances state only if it
+    # applied code or completed a checklist item; "recovery succeeded" is NOT
+    # progress. After NO_PROGRESS_BEATS of neither, stop the churn and park with
+    # a diagnosis instead of looping until the per-trigger budgets run out.
+    progressed = bool(application_result.applied) or item_completed
+    if (
+        progress_blocker(
+            project_state,
+            progressed=progressed,
+            current_blocker=project_state.get("current_blocker"),
+        )
+        == NO_PROGRESS
+    ):
+        project_state["current_blocker"] = NO_PROGRESS
+        active_run["current_blocker"] = NO_PROGRESS
+        msg.warn(
+            f"NO_PROGRESS: {project_state['beats_without_progress']} beats with "
+            f"no applied code and no checklist item completed. The loop is "
+            f"active but not advancing project state — parking for owner review "
+            f"rather than continuing to churn recovery."
+        )
+    persist_state(
+        root=root,
+        state_dir=state_dir,
+        factory_state=factory_state,
+        active_run=active_run,
+        project_state=project_state,
+    )
 
     planning_files = [task_expansion_path, next_action_path]
     contract_status = contract_status_label(contract_result)

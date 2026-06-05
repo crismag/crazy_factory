@@ -154,6 +154,36 @@ class ParseTests(unittest.TestCase):
         with self.assertRaises(PatchPlanParseError):
             parse_patch_plan("[1, 2]")
 
+    def test_parse_unfences_file_content(self) -> None:
+        # Model wraps file body in a ```python fence inside the JSON content.
+        data = _valid_plan_dict()
+        data["files"] = [
+            {
+                "path": "apps/demo/app/x.py",
+                "action": "create",
+                "content": "```python\nX = 1\n```",
+            },
+            {
+                "path": "apps/demo/app/y.py",
+                "action": "create",
+                "content": "Here is the code:\n```python\nY = 2\n```\n",
+            },
+        ]
+        plan = parse_patch_plan(json.dumps(data))
+        self.assertEqual(plan.files[0].content, "X = 1")
+        self.assertEqual(plan.files[1].content, "Y = 2")
+        # Unfenced content is left untouched.
+        data["files"] = [
+            {
+                "path": "apps/demo/app/z.py",
+                "action": "create",
+                "content": "Z = 3\n",
+            }
+        ]
+        self.assertEqual(
+            parse_patch_plan(json.dumps(data)).files[0].content, "Z = 3\n"
+        )
+
     def test_parse_drops_non_dict_file_items(self) -> None:
         data = _valid_plan_dict()
         data["files"] = [

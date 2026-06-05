@@ -13,6 +13,8 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from recovery_router import (  # noqa: E402
     APPLICATION_REJECTED,
+    ESCALATE_AFTER,
+    classify_failure,
     plan_recovery,
     run_recovery_router,
 )
@@ -168,6 +170,100 @@ class RecoveryRouterTests(unittest.TestCase):
             self.assertTrue(
                 any(a.type == "request_new_proposal" for a in decision.actions)
             )
+
+
+class FailureTaxonomyTests(unittest.TestCase):
+    """Issue #37 §1: rejection reasons classify into a single failure class."""
+
+    def test_classify(self) -> None:
+        cases = {
+            "NO_CONTENT": ["No content provided for create: src/x.py"],
+            "PROPOSAL_DESYNC": [
+                "Patch plan proposal_id '3' does not match the approved "
+                "proposal '2'"
+            ],
+            "SYNTAX": ["Python syntax error in src/x.py: invalid syntax"],
+            "INCOMPLETE": ["missing behavior: handle missing file"],
+            "LINT": ["src/x.py:2: unused import 'json'"],
+            "CONTRACT": ["forbidden import sqlalchemy"],
+            "UNKNOWN": ["something unexpected happened"],
+        }
+        for expected, reasons in cases.items():
+            self.assertEqual(classify_failure(reasons), expected, expected)
+
+    def test_incomplete_beats_lint_when_both_present(self) -> None:
+        reasons = [
+            "src/x.py:23: placeholder function body in delete()",
+            "src/x.py:2: unused import 'json'",
+        ]
+        self.assertEqual(classify_failure(reasons), "INCOMPLETE")
+
+
+class RoutingTests(unittest.TestCase):
+    """Issue #37 §1/§2: class-driven routing + escalation."""
+
+    def _plan(self, root: Path, reasons: list[str], state: dict) -> object:
+        (root / ".git").mkdir(exist_ok=True)
+        project = _project(root)
+        _write_json(
+            root / "apps/demo/factory_tasks/patch_plan.json",
+            {"validation": {"status": "rejected", "reasons": reasons}},
+        )
+        state.setdefault("current_blocker", APPLICATION_REJECTED)
+        return plan_recovery(root=root, project=project, project_state=state)
+
+    def test_no_content_regenerates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._plan(
+                Path(tmp), ["No content provided for create: src/x.py"], {}
+            )
+            self.assertEqual(d.decision, "regenerate_patch")
+            self.assertEqual(d.failure_class, "NO_CONTENT")
+
+    def test_proposal_desync_revises(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            d = self._plan(
+                Path(tmp),
+                [
+                    "Patch plan proposal_id '3' does not match the approved "
+                    "proposal '2'"
+                ],
+                {},
+            )
+            self.assertEqual(d.decision, "revise_proposal")
+            self.assertEqual(d.failure_class, "PROPOSAL_DESYNC")
+            self.assertTrue(any(a.type == "clear_approval" for a in d.actions))
+
+    def test_repeated_class_escalates_to_classified_park(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            # Same SYNTAX class already repeated ESCALATE_AFTER times.
+            state = {
+                "current_blocker": APPLICATION_REJECTED,
+                "recovery_class_history": ["SYNTAX"] * ESCALATE_AFTER,
+            }
+            d = self._plan(
+                Path(tmp),
+                ["Python syntax error in src/x.py: invalid syntax"],
+                state,
+            )
+            self.assertEqual(d.decision, "park")
+            self.assertEqual(d.failure_class, "SYNTAX")
+            self.assertIn("SYNTAX", d.reason)
+            self.assertNotIn("No deterministic recovery rule", d.reason)
+
+    def test_budget_park_is_classified(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            state = {
+                "current_blocker": APPLICATION_REJECTED,
+                "recovery_attempts": {APPLICATION_REJECTED: 3},
+            }
+            d = self._plan(
+                Path(tmp),
+                ["Python syntax error in src/x.py: invalid syntax"],
+                state,
+            )
+            self.assertEqual(d.decision, "park")
+            self.assertIn("SYNTAX", d.reason)
 
 
 if __name__ == "__main__":
