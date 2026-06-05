@@ -20,7 +20,11 @@ to its detailed plan doc. Run every implemented slice through the gate: `ruff` +
 | Issue #37 — failure taxonomy + escalation + no-progress monitor | DONE (committed `b68d627`) — **but per the governing principle, this deterministic router is now the "heuristic pile" to STOP growing**: keep it thin (fast-path + observability + no-progress rail) and migrate decisions to the adjudicator + skill catalog (see 9E.S1b). | ISSUE_37_recovery_throughput.md |
 | Fence-unfence in `parse_patch_plan` (the "invalid syntax line 1") | DONE | proposal_applier.py |
 | Skip validation after a rejected apply (no phantom E902/no-tests) | DONE | factory_advance.py |
-| 9E.7 Slice 1 — planner robustness (`llm_interaction.py` + planner wiring) | DONE (uncommitted) | 07_robust_llm_calls.md |
+| 9E.7 Slice 1 — planner robustness (`llm_interaction.py` + planner wiring) | DONE (`dbe959a`) | 07_robust_llm_calls.md |
+| **9E.S0** — severity policy module (`severity.py`) | DONE (`6dc3a20`) | severity.py |
+| **9E.S1** — skill library + apply-path lint autofix (**empty-app unblocker**) | DONE (`d5fc4d2`) | skill_library.py / proposal_applier.py |
+| **9E EVID-1** — carry rejection reasons via state (packet) | DONE (`a9f5bec`) | mission_state.py / diagnosis_packet.py |
+| **9E.S1b** — recovery-executes-fixes | SUPERSEDED by 9E.S1 (lint auto-fixed pre-apply, no longer reaches recovery); residual deferred to the adjudicator (9E.S2) per the no-heuristics principle | — |
 
 ## QUEUED — execution order
 
