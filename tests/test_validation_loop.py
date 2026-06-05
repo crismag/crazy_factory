@@ -248,6 +248,45 @@ class ValidationLoopSmokeTests(unittest.TestCase):
         self.assertIn("Implement src/task_model.py", result.content)
         self.assertIn("Next action:", result.content)
 
+    def _run_architect(self, reply: str) -> RoleResult:
+        with patch(
+            "planning_roles.OllamaClient.chat",
+            return_value={"message": {"content": reply}},
+        ):
+            return request_architect_result(
+                project_name="demo",
+                project=_TEST_PROJECT,
+                project_state={
+                    "current_task": "DEMO-002",
+                    "current_milestone": "M1",
+                },
+                factory_config=_OLLAMA_CONFIG,
+                models_config={"models": {"architect": "cogito:14b"}},
+                max_lines=20,
+                tasks={"CURRENT_TASK.md": "# Current Task"},
+            )
+
+    def test_architect_code_dump_is_rejected(self) -> None:
+        """9E.9: code instead of an architecture (no modules) falls back."""
+        result = self._run_architect(
+            '{"implementation": "def f():\\n    return 1"}'
+        )
+        self.assertEqual(result.source, "fallback")
+
+    def test_architect_valid_expansion_is_used(self) -> None:
+        """A real architecture (modules + task_candidates) is rendered."""
+        result = self._run_architect(
+            '{"summary": "task board", '
+            '"modules": [{"name": "task_model", "responsibility": "domain"}], '
+            '"risks": ["persistence"], '
+            '"task_candidates": [{"deliverable": "task_model + tests", '
+            '"sequence": 1}]}'
+        )
+        self.assertEqual(result.source, "ollama")
+        self.assertIn("Modules:", result.content)
+        self.assertIn("task_model", result.content)
+        self.assertIn("Task candidates", result.content)
+
     def test_writes_task_expansion_and_next_action(self) -> None:
         """Write both fixed planning files inside a temporary task root."""
         with tempfile.TemporaryDirectory() as temp_dir:

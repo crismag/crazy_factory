@@ -333,7 +333,9 @@ class PlannerIntegrationTests(unittest.TestCase):
     def _capture_prompt(self, context_bundle: str) -> str:
         captured: dict[str, str] = {}
 
-        def fake_chat(model: str, messages: list[dict[str, str]]) -> dict:
+        def fake_chat(
+            model: str, messages: list[dict[str, str]], **_: object
+        ) -> dict:
             captured["user"] = messages[1]["content"]
             return {"message": {"content": "ok"}}
 

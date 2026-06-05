@@ -28,9 +28,52 @@ from pathlib import Path
 from typing import Any
 
 from llm_interaction import structured_call
-from ollama_client import OllamaClient, OllamaConnectionError
+from ollama_client import OllamaClient
 from prompt_builder import build_prompt_package
 from repo_tools import resolve_repo_path
+
+
+def _render_architect_expansion(data: dict[str, Any]) -> str:
+    """Render a validated architecture object into the task-expansion record."""
+    lines: list[str] = []
+    summary = str(data.get("summary", "")).strip()
+    if summary:
+        lines.append(f"Summary: {summary}")
+    modules = data.get("modules") or []
+    if isinstance(modules, list) and modules:
+        lines.append("\nModules:")
+        for module in modules:
+            if isinstance(module, dict):
+                name = str(module.get("name", "")).strip()
+                resp = str(module.get("responsibility", "")).strip()
+                deps = module.get("depends_on") or []
+                dep_s = (
+                    ", ".join(str(d) for d in deps)
+                    if isinstance(deps, list)
+                    else str(deps)
+                )
+                entry = f"- {name}: {resp}".rstrip(": ")
+                if dep_s:
+                    entry += f" (depends on: {dep_s})"
+                lines.append(entry)
+            else:
+                lines.append(f"- {module}")
+    risks = data.get("risks") or []
+    if isinstance(risks, list) and risks:
+        lines.append("\nRisks:")
+        lines.extend(f"- {risk}" for risk in risks)
+    candidates = data.get("task_candidates") or []
+    if isinstance(candidates, list) and candidates:
+        lines.append("\nTask candidates (sequenced):")
+        for cand in candidates:
+            if isinstance(cand, dict):
+                seq = cand.get("sequence", "?")
+                lines.append(
+                    f"- [{seq}] {str(cand.get('deliverable', '')).strip()}"
+                )
+            else:
+                lines.append(f"- {cand}")
+    return "\n".join(lines)
 
 
 def _render_planner_action(data: dict[str, Any]) -> str:
@@ -162,33 +205,46 @@ def request_architect_result(
         timeout_seconds=int(ollama["timeout_seconds"]),
         stream=bool(ollama["stream"]),
     )
+    # 9E.7-L3 / 9E.9: the architect designs ARCHITECTURE, not code. Prime the
+    # role, enforce a structured expansion, and let role-fit (required modules +
+    # task_candidates) reject a code-dump — which previously poisoned the planner.
+    priming = (
+        "You are a senior software architect in an automated software factory. "
+        "Respond with ONLY a single JSON object describing the ARCHITECTURE. "
+        "Do NOT write implementation code, prose, apologies, or questions."
+    )
     instruction = (
-        "Create a concise planning-only task expansion. Do not generate code. "
-        "Do not request arbitrary file edits. Recommend one safe next action."
+        "Output a JSON object with keys: summary (string), modules (array of "
+        "{name, responsibility, depends_on}), risks (array of string), "
+        "task_candidates (array of {deliverable, sequence}, foundation first). "
+        "Design the structure and sequence only — do not generate code."
     )
     task_context = "\n\n".join(
         f"## Task Source: {path}\n\n{text.rstrip()}"
         for path, text in tasks.items()
     )
-    messages = [
-        {"role": "system", "content": instruction},
-        {
-            "role": "user",
-            "content": _compose_user_content(
-                prompt_package.prompt, context_bundle, task_context
-            ),
-        },
-    ]
-    try:
-        response = client.chat(model, messages)
-        content = str(response["message"]["content"]).strip()
-        if not content:
-            raise ValueError("Ollama returned empty Architect content")
-    except (KeyError, TypeError, ValueError, OllamaConnectionError) as exc:
-        reason = f"Ollama unavailable or invalid; used fallback: {exc}"
-        return fallback_architect_result(project_name, project_state, reason)
+    user = _compose_user_content(
+        prompt_package.prompt, context_bundle, task_context
+    )
+    data, note = structured_call(
+        client=client,
+        model=model,
+        system=instruction,
+        user=user,
+        priming=priming,
+        required_keys=("modules", "task_candidates"),
+    )
+    if data is None:
+        return fallback_architect_result(
+            project_name,
+            project_state,
+            f"Architect produced no usable expansion; {note}",
+        )
     return RoleResult(
-        "architect", content, "ollama", f"Architect model `{model}`"
+        "architect",
+        _render_architect_expansion(data),
+        "ollama",
+        f"Architect model `{model}` ({note})",
     )
 
 
