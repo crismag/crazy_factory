@@ -33,7 +33,9 @@ to its detailed plan doc. Run every implemented slice through the gate: `ruff` +
 | **9E.ST9** — enforce file-contract interfaces at acceptance | DONE (`a6b3e87`) | acceptance_check.py |
 | **9E.S2** — adjudication decision core (disposition model) | DONE (`696a0d5`) | adjudicator.py |
 | **9E.S1/S2** — skill catalog + scope-down; adjudicator skill allow-list | DONE (`ae05158`) | skill_library.py / adjudicator.py |
-| **9E.S2/ST5** — wire adjudicator into the **live recovery** path (adjudicator-led; classify_failure demoted to fallback rail + observability tag) | DONE (`702c4e4`) — recovery wired; **apply-path adjudication (mid-write scope_down) still deferred to ST6 focus set** | recovery_router.py / factory_advance.py |
+| **9E.S2/ST5** — wire adjudicator into the **live recovery** path (adjudicator-led; classify_failure demoted to fallback rail + observability tag) | DONE (`702c4e4`) | recovery_router.py / factory_advance.py |
+| **9E.S1/ST5** — apply-path **scope_down** (deterministic): drop over-scoped illegal files, keep+apply the legal in-focus work; opt-in `proposal_application.scope_down` default OFF | DONE (`7e41aed`) | proposal_applier.py |
+| **9E.ST6** — seed-derived ProjectContract: deterministic core (`6ef44ae`) + **live generation** of `architecture.json` from the architect's design at advance time, opt-in `contract.derive_from_seed` default OFF (`2380c1c`) | DONE (foundational+wiring); **remaining: coherent right-sized decomposition (ST6 decomp) + ST11/ST10/ST13** | project_contract.py / planning_roles.py / factory_advance.py |
 | **9E.S1b** — recovery-executes-fixes | SUPERSEDED by 9E.S1 (lint auto-fixed pre-apply, no longer reaches recovery); residual deferred to the adjudicator (9E.S2) per the no-heuristics principle | — |
 
 ## QUEUED — execution order
@@ -89,11 +91,18 @@ Tiered by dependency. **Tier 0 items are ready now (no new deps).**
 | **9E.S4** | Acceptance/loop-until-accepted hardened on the new gates; measured task-board re-run vs `crazy-admin metrics`/`acceptance`. | 03, 07_target | — |
 | **DEFER** | Model-switching on escalation; cross-run skill/knowledge learning; `recovery_manager`→stall-reporter rename; per-attempt `attempt_history` log. | various | — |
 
-## Recommended first execution session
+## Recommended next execution session
 
-`9E.S1` (skill library + keep-work + auto-repair) → it unblocks the empty-app
-failure deterministically and underpins the adjudicator. Pair with the cheap
-Tier-0 wins: `EVID-1`, `STATE-1`, `RPT-S1` (all low-risk, no-LLM).
+The adjudication spine is now **live end-to-end** (S0/S1/S2 core + recovery
+wiring + apply-path scope_down) and the contract is **seed-grounded** (ST6 core +
+live generation). All new live behaviour is gated OFF by default. The remaining
+high-value work is **(a)** an end-to-end task-board re-run with the new gates
+enabled (`contract.derive_from_seed`, `proposal_application.scope_down`,
+`validation.allow_remediation`) measured by `crazy-admin acceptance`/`metrics` —
+this needs a live Ollama, not unit tests — and **(b)** the contract-quality tier:
+**ST6 coherent right-sized decomposition**, **ST11** (seed-complete checklist),
+**ST10/ST13** (contract scope/coherence + artifact uplift). Then the policy
+externalization (S0b/S0c) and reporting (RPT-S1/S2).
 
 ## How to resume
 
