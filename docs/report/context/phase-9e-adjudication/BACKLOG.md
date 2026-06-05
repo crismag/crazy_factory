@@ -31,8 +31,9 @@ to its detailed plan doc. Run every implemented slice through the gate: `ruff` +
 | **9E.8 PP3** — keep-the-work (persist patch content) | DONE (`8834911`) | proposal_applier.py |
 | **9E.8 PP4/PP5** — rich PATCH_PLAN render (content/severity/disposition/stubs) | DONE (`0556c0e`) | proposal_applier.py |
 | **9E.ST9** — enforce file-contract interfaces at acceptance | DONE (`a6b3e87`) | acceptance_check.py |
-| **9E.S2** — adjudication decision core (disposition model) | DONE (`696a0d5`) — standalone; **not yet wired into live apply/recovery** | adjudicator.py |
+| **9E.S2** — adjudication decision core (disposition model) | DONE (`696a0d5`) | adjudicator.py |
 | **9E.S1/S2** — skill catalog + scope-down; adjudicator skill allow-list | DONE (`ae05158`) | skill_library.py / adjudicator.py |
+| **9E.S2/ST5** — wire adjudicator into the **live recovery** path (adjudicator-led; classify_failure demoted to fallback rail + observability tag) | DONE (`702c4e4`) — recovery wired; **apply-path adjudication (mid-write scope_down) still deferred to ST6 focus set** | recovery_router.py / factory_advance.py |
 | **9E.S1b** — recovery-executes-fixes | SUPERSEDED by 9E.S1 (lint auto-fixed pre-apply, no longer reaches recovery); residual deferred to the adjudicator (9E.S2) per the no-heuristics principle | — |
 
 ## QUEUED — execution order
@@ -75,7 +76,7 @@ Tiered by dependency. **Tier 0 items are ready now (no new deps).**
 
 | ID | Task | Plan | Risk |
 |---|---|---|---|
-| **9E.S2** | **Adjudicator role + wiring** (ST4+ST5) — disposition taxonomy; replace the binary gate with adjudicate→skills→apply/redirect/escalate; `redirect` via recovery. | 00, 03 | high |
+| **9E.S2** | **Adjudicator role + wiring** (ST4+ST5) — disposition taxonomy; replace the binary gate with adjudicate→skills→apply/redirect/escalate; `redirect` via recovery. **PARTIAL:** ST4 core + **recovery wiring DONE** (`702c4e4`, adjudicator-led recovery). **Remaining:** mid-write **apply-path** adjudication (scope_down on the kept patch content) — needs the ST6 seed-derived focus set to scope principled; and `redirect`→planner re-plan (vs the current revise_proposal) once ST6/ST7 land. | 00, 03 | high |
 | **9E.8** | **Patch-plan generation & artifact uplift** (subsumes ST12) — improve BOTH what generates the patch plan (richer schema + proper prompt/context: file contract + situational packet + focus + self-review, via `structured_call`) AND the render (content/diff, intent, acceptance-coverage table, severity-classified reasons, disposition + next action, stub flags). Slice 1 (render uplift, low-LLM) makes the doc actionable immediately. | **08** | med |
 | **9E.S3** | Redirect/context skills (ST7) — `revise_contract`, `split_task`, `update_focus`, `request_new_proposal`, `add_required_file`, `generate_subcontext`. | 01, 03 | med |
 | **DOC-S3 / CX-S3** | Dual-consumption loop — AI re-ingests its own `docs/` + `factory_context/` as grounding. | 04, 05 | med |
