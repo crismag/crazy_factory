@@ -996,6 +996,52 @@ class StateAndReportTests(unittest.TestCase):
             self.assertIn("apps/demo/src/storage.py", report)
             self.assertNotIn("No application code was modified", report)
 
+    def test_report_mode_and_outcome_are_truthful(self) -> None:
+        # 9E.6 RPT1: an apply attempt that was rejected must NOT be reported as
+        # "dry-run complete"; Mode reflects the effective apply mode.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "reports").mkdir()
+            (root / "apps/demo/factory_reports").mkdir(parents=True)
+            (root / "reports/ACTIVITY_BLOG.md").write_text(
+                "# Activity Blog\n", encoding="utf-8"
+            )
+            (root / "reports/DAILY_REPORT.md").write_text(
+                "# Daily Report\n", encoding="utf-8"
+            )
+            report_path = append_dry_run_report(
+                project_name="demo",
+                project_report_root="apps/demo/factory_reports",
+                mode="dry_run",  # static global mode…
+                context_files=["c.md"],
+                task_files=["t.md"],
+                git_status="clean",
+                factory_state={"last_failed_run": None},
+                active_run={"resume_from": "review"},
+                project_state={
+                    "current_task": "DEMO",
+                    "current_milestone": "M",
+                    "last_completed_checkpoint": None,
+                    "failure_count": 1,
+                    "current_blocker": "application_rejected",
+                },
+                architect_source="ollama",
+                architect_detail="m",
+                planner_source="ollama",
+                planner_detail="m",
+                last_role_completed="reporter",
+                planning_files=["TASK_EXPANSION.md", "NEXT_ACTION.md"],
+                application_status="rejected",
+                application_mode="apply",  # …but an apply was attempted
+                application_applied=False,
+                application_reasons=["bad"],
+                repo_root=root,
+            )
+            report = report_path.read_text(encoding="utf-8")
+            self.assertNotIn("dry-run complete", report)
+            self.assertIn("Mode: `apply`", report)
+            self.assertIn("application rejected (not applied)", report)
+
 
 class PatchPlanPromptTests(unittest.TestCase):
     """9D.0: the code prompt must carry the success definition + quality bar."""

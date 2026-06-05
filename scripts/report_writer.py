@@ -449,17 +449,35 @@ def append_dry_run_report(
             "- Safety: application files were written inside the approved "
             "workbench; no commit or push attempted.\n"
         )
+    elif application_status == "rejected":
+        activity_safety = (
+            "- Safety: an application was attempted but REJECTED; no files "
+            "were written; no commit or push attempted.\n"
+        )
     else:
         activity_safety = (
             "- Safety: no application edit, commit, or push attempted.\n"
         )
 
+    # 9E.6 RPT1: report the TRUTH, not a static "dry_run". The effective mode is
+    # the application mode when it ran; the outcome reflects what actually
+    # happened (applied / rejected / planning-only).
+    effective_mode = application_mode or mode
+    if application_applied:
+        outcome = "applied"
+    elif application_status == "rejected":
+        outcome = "application rejected (not applied)"
+    elif application_status in (None, "skipped", "not_activated"):
+        outcome = "planning only (no application)"
+    else:
+        outcome = str(application_status)
+
     body = (
         f"# Factory Session Report\n\n"
         f"- Timestamp: `{stamp}`\n"
-        f"- Mode: `{mode}`\n"
+        f"- Mode: `{effective_mode}`\n"
         f"- Active project: `{project_name}`\n"
-        f"- Outcome: `dry-run complete`\n\n"
+        f"- Outcome: `{outcome}`\n\n"
         f"## Context Read\n\n"
         + "".join(f"- `{path}`\n" for path in context_files)
         + "\n## Task Records Read\n\n"
@@ -504,8 +522,9 @@ def append_dry_run_report(
         + "- No git commit or push was attempted.\n"
     )
     entry = (
-        f"\n## {stamp} - Dry-run advance\n\n"
+        f"\n## {stamp} - Advance ({outcome})\n\n"
         f"- Active project: `{project_name}`\n"
+        f"- Mode: `{effective_mode}` · Outcome: `{outcome}`\n"
         f"- Result: created `{app_report_path}`\n"
         f"- Architect planning source: `{architect_source}`\n"
         f"- Planner planning source: `{planner_source}`\n"
@@ -513,8 +532,8 @@ def append_dry_run_report(
     )
     daily_entry = (
         f"\n## {stamp}\n\n"
-        f"Dry-run advance completed for `{project_name}`. "
-        f"Detailed report: `{app_report_path}`.\n"
+        f"Advance for `{project_name}` (mode `{effective_mode}`): "
+        f"`{outcome}`. Detailed report: `{app_report_path}`.\n"
     )
     # Reports are the only app-workbench writes performed by the bootstrap
     # advance. Each destination is constrained to an approved report subtree.
