@@ -445,6 +445,22 @@ class StateAndReportTests(unittest.TestCase):
         )
         return active_run, project_state
 
+    def test_status_reflects_blocker(self) -> None:
+        # 9E STATE-1: status must track the blocker, not stay "planning".
+        import mission_state as ms
+
+        terminal = {"current_blocker": "recovery_exhausted"}
+        ms._sync_status(terminal)
+        self.assertEqual(terminal["status"], "blocked")
+
+        recovering = {"current_blocker": "application_rejected"}
+        ms._sync_status(recovering)
+        self.assertEqual(recovering["status"], "in_progress")
+
+        clear = {"current_blocker": None, "status": "planning"}
+        ms._sync_status(clear)
+        self.assertEqual(clear["status"], "planning")  # untouched
+
     def test_application_rejection_outranks_validation_failure(self) -> None:
         # Root-cause precedence: when this beat's patch was rejected (nothing
         # applied), a failing validation run on stale code is a symptom — the

@@ -293,7 +293,34 @@ def update_success_state(
         _apply_checkpoint_state(
             factory_state, active_run, project_state, checkpoint_result
         )
+    _sync_status(project_state)
     return completed_at
+
+
+# Terminal blockers — the project is parked for owner attention, not progressing.
+_TERMINAL_BLOCKERS: frozenset[str] = frozenset(
+    {
+        "recovery_exhausted",
+        "remediation_exhausted",
+        "needs_owner_decision",
+        "no_progress",
+        "self_rejection",
+    }
+)
+
+
+def _sync_status(project_state: dict[str, Any]) -> None:
+    """9E STATE-1: keep `status` truthful w.r.t. the current blocker.
+
+    A terminal blocker means the project is *blocked* (not "planning"); any other
+    active blocker means it is *in_progress* (recovering). With no blocker the
+    prior status is left untouched (satisfaction/bootstrap own those).
+    """
+    blocker = project_state.get("current_blocker")
+    if blocker in _TERMINAL_BLOCKERS:
+        project_state["status"] = "blocked"
+    elif blocker:
+        project_state["status"] = "in_progress"
 
 
 def _apply_checkpoint_state(
