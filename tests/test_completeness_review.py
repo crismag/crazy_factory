@@ -76,6 +76,52 @@ class ReviewTests(unittest.TestCase):
         self.assertIn("handle missing file", v.missing_behaviors)
         self.assertTrue(v.blocking)
 
+    def test_optional_findings_do_not_block(self) -> None:
+        # Issue #38 #7: a revise verdict whose findings are all optional /
+        # nice-to-have suggestions is downgraded to valid (advisory, not block).
+        with patch(
+            "completeness_review.OllamaClient.chat",
+            return_value=_ai(
+                DECISION_REVISE,
+                missing_tests=[
+                    "Test missing task id (although optional, robustness "
+                    "suggests it)"
+                ],
+                missing_behaviors=["Consider adding input validation"],
+            ),
+        ):
+            v = review_completeness(
+                acceptance_criteria=["save persists data"],
+                patch_files=[_SRC, _TEST],
+                models_config=_MODELS,
+                factory_config=_FACTORY,
+            )
+        self.assertEqual(v.decision, DECISION_VALID)
+        self.assertFalse(v.blocking)
+        self.assertEqual(v.missing_tests, [])
+        self.assertEqual(v.missing_behaviors, [])
+
+    def test_required_gap_still_blocks_after_dropping_optional(self) -> None:
+        with patch(
+            "completeness_review.OllamaClient.chat",
+            return_value=_ai(
+                DECISION_REVISE,
+                missing_behaviors=[
+                    "load returns [] on missing file",  # required -> blocks
+                    "Consider extra logging",  # optional -> dropped
+                ],
+            ),
+        ):
+            v = review_completeness(
+                acceptance_criteria=["load returns [] on missing file"],
+                patch_files=[_SRC, _TEST],
+                models_config=_MODELS,
+                factory_config=_FACTORY,
+            )
+        self.assertEqual(v.decision, DECISION_REVISE)
+        self.assertTrue(v.blocking)
+        self.assertEqual(v.missing_behaviors, ["load returns [] on missing file"])
+
     def test_model_valid_passes(self) -> None:
         with patch(
             "completeness_review.OllamaClient.chat",

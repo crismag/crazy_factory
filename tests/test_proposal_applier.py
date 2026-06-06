@@ -502,9 +502,37 @@ class StageTests(unittest.TestCase):
         )
         return result, plan_json
 
-    def test_completeness_review_blocks_apply_when_no_test(self) -> None:
-        # 9D Layer 2: with the gate enabled, a valid plan that ships no test for
-        # criteria is downgraded to rejected (floor) and never applied.
+    def _fake_no_test_plan(self) -> ApplicationResult:
+        plan = parse_patch_plan(
+            json.dumps(
+                {
+                    "plan_id": "PP-1",
+                    "task_id": "DEMO-002",
+                    "proposal_id": "CP-001",
+                    "files": [
+                        {
+                            "path": "apps/demo/app/storage.py",
+                            "action": "create",
+                            "content": "def save():\n    return 1\n",
+                        }
+                    ],
+                    "notes": "",
+                }
+            )
+        )
+        return ApplicationResult(
+            plan,
+            ApplicationVerdict(True, [], [], []),
+            "ollama",
+            "m",
+            "apply",
+            activated=True,
+        )
+
+    def test_completeness_review_deferred_when_greenfield(self) -> None:
+        # Issue #38 code-birth gate: while the workbench has no real source code,
+        # completeness review is DEFERRED so the first scaffold can land instead
+        # of being rejected for incompleteness before any code exists.
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             project = self._setup(root)
@@ -516,33 +544,45 @@ class StageTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            plan = parse_patch_plan(
-                json.dumps(
+            with patch(
+                "proposal_applier.request_patch_plan",
+                return_value=self._fake_no_test_plan(),
+            ), patch(
+                "proposal_applier.review_completeness",
+                side_effect=AssertionError("must not review when greenfield"),
+            ):
+                result, _ = self._run(
+                    root,
+                    project,
                     {
-                        "plan_id": "PP-1",
-                        "task_id": "DEMO-002",
-                        "proposal_id": "CP-001",
-                        "files": [
-                            {
-                                "path": "apps/demo/app/storage.py",
-                                "action": "create",
-                                "content": "def save():\n    return 1\n",
-                            }
-                        ],
-                        "notes": "",
-                    }
+                        "mode": "apply",
+                        "allow_apply": True,
+                        "completeness_review": True,
+                    },
                 )
-            )
-            fake = ApplicationResult(
-                plan,
-                ApplicationVerdict(True, [], [], []),
-                "ollama",
-                "m",
-                "apply",
-                activated=True,
+            self.assertTrue(result.applied)
+            self.assertTrue((root / "apps/demo/app/storage.py").exists())
+
+    def test_completeness_review_blocks_once_code_exists(self) -> None:
+        # Once the workbench has real code, the completeness floor resumes: a
+        # plan that ships no test for the criteria is rejected, not applied.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project = self._setup(root)
+            existing = root / "apps/demo/src/existing.py"
+            existing.parent.mkdir(parents=True, exist_ok=True)
+            existing.write_text("VALUE = 1\n", encoding="utf-8")
+            (
+                root / "apps/demo/factory_tasks/approved_proposal.json"
+            ).write_text(
+                json.dumps(
+                    {"proposal_id": "CP-001", "application_approved": True}
+                ),
+                encoding="utf-8",
             )
             with patch(
-                "proposal_applier.request_patch_plan", return_value=fake
+                "proposal_applier.request_patch_plan",
+                return_value=self._fake_no_test_plan(),
             ):
                 result, _ = self._run(
                     root,
@@ -557,7 +597,6 @@ class StageTests(unittest.TestCase):
             self.assertFalse(result.applied)
             self.assertFalse(result.verdict.valid)
             self.assertIn("Completeness review", result.detail)
-            # The source file must not have been written.
             self.assertFalse((root / "apps/demo/app/storage.py").exists())
 
     def test_skips_without_approval(self) -> None:

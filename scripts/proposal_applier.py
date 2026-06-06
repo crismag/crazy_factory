@@ -40,6 +40,7 @@ from coder_proposal import (
 )
 from architecture import load_contract, patch_contract_violations
 from completeness_review import review_completeness
+from workbench_growth import is_code_birth_pending
 from severity import classify_reasons, overall_severity
 from skill_library import autofix_lint
 from contract_stage import load_existing_contract
@@ -1253,6 +1254,16 @@ def run_application_stage(
     # it is written. A blocking verdict downgrades the result to rejected so the
     # apply is skipped and the existing application_rejected → recovery path
     # (already attempt-bounded) handles it.
+    #
+    # Issue #38 — CODE-BIRTH gate: while the workbench has no real source code
+    # yet (greenfield), the completeness review is DEFERRED. A project cannot be
+    # judged "incomplete" before it has been allowed to exist; blocking the first
+    # scaffold here produced the zero-code rejection loop (high process activity,
+    # empty app). Before first code: only the deterministic safety/syntax floor
+    # may reject. Once real code exists, completeness review resumes normally.
+    code_birth_pending = is_code_birth_pending(
+        app_path if Path(app_path).is_absolute() else str(root / app_path)
+    )
     if (
         bool(
             (factory_config.get("proposal_application") or {}).get(
@@ -1261,6 +1272,7 @@ def run_application_stage(
         )
         and result.verdict.valid
         and result.plan is not None
+        and not code_birth_pending
     ):
         review = review_completeness(
             acceptance_criteria=[

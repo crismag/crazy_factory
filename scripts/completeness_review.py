@@ -62,6 +62,28 @@ def _has_test_file(patch_files: list[tuple[str, str]]) -> bool:
     )
 
 
+# Issue #38 capability #7: phrases that mark a finding as a non-required,
+# advisory suggestion rather than a missing required acceptance criterion.
+_OPTIONAL_MARKERS = (
+    "although optional",
+    "optional",
+    "nice-to-have",
+    "nice to have",
+    "robustness suggests",
+    "would be nice",
+    "consider ",
+    "suggestion",
+    "could also",
+    "preferably",
+)
+
+
+def _is_optional(finding: str) -> bool:
+    """True when a completeness finding is advisory, not a required gap."""
+    low = finding.lower()
+    return any(marker in low for marker in _OPTIONAL_MARKERS)
+
+
 def _request_ai_review(
     *,
     acceptance_criteria: list[str],
@@ -129,17 +151,36 @@ def _request_ai_review(
                 DECISION_REJECT,
             }:
                 continue
-            missing_b = coerce_str_list(data.get("missing_behaviors"))
-            missing_t = coerce_str_list(data.get("missing_tests"))
+            # Issue #38 capability #7 (reviewer restraint): optional / nice-to-
+            # have / robustness suggestions are ADVISORY, not blockers. Drop them
+            # from the blocking findings; if nothing required remains, the patch
+            # is not blocked (only required acceptance gaps reject a patch).
+            missing_b = [
+                b
+                for b in coerce_str_list(data.get("missing_behaviors"))
+                if not _is_optional(b)
+            ]
+            missing_t = [
+                t
+                for t in coerce_str_list(data.get("missing_tests"))
+                if not _is_optional(t)
+            ]
+            decision = verdict
+            if (
+                verdict in {DECISION_REVISE, DECISION_REJECT}
+                and not missing_b
+                and not missing_t
+            ):
+                decision = DECISION_VALID
             return ReviewVerdict(
-                decision=verdict,
+                decision=decision,
                 missing_behaviors=missing_b,
                 missing_tests=missing_t,
                 reasons=(
                     [f"missing behavior: {b}" for b in missing_b]
                     + [f"missing test: {t}" for t in missing_t]
                 )
-                or ([] if verdict == DECISION_VALID else ["completeness gap"]),
+                or ([] if decision == DECISION_VALID else ["completeness gap"]),
                 source="ollama",
             )
         except (

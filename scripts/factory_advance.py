@@ -110,6 +110,7 @@ from git_guard import status  # noqa: E402
 from project_contract import (  # noqa: E402
     derive_and_write_seed_contract,
 )
+from workbench_growth import workbench_metrics  # noqa: E402
 from mission_state import (  # noqa: E402
     load_state,
     persist_state,
@@ -1096,6 +1097,22 @@ def main(project: dict[str, Any] | None = None) -> int:
         f"Checkpoint: {checkpoint_status_label(checkpoint_result)} "
         f"(committed: {str(checkpoint_result.committed).lower()})"
     )
+    # Issue #38 capability #4/#5/#10: the question that matters most — did the
+    # workbench actually grow? Report real product (source/test files, LOC), and
+    # flag ZERO_CODE_OUTPUT when a greenfield project still has no code: a run is
+    # not a success, however much planning/review completed, if no software exists.
+    growth = workbench_metrics(
+        app_path if Path(app_path).is_absolute() else str(root / app_path)
+    )
+    msg.report(
+        f"Workbench: {growth.source_files} source + {growth.test_files} test "
+        f"file(s), {growth.lines_of_code} LOC"
+    )
+    if growth.is_greenfield:
+        msg.report(
+            "ZERO_CODE_OUTPUT: the application is still empty (no real source "
+            "or test files); this run did not advance product state."
+        )
     msg.report("Last role completed: reporter")
     # report_path may live outside the repo (external app workbench).
     try:
