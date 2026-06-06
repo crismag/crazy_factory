@@ -16,6 +16,7 @@ from typing import Any
 
 from flags import set_flag
 from repo_tools import safe_write_text
+from workbench_growth import workbench_metrics
 
 
 @dataclass(frozen=True)
@@ -32,13 +33,24 @@ class SatisfactionVerdict:
 
 
 def evaluate_satisfaction(
-    *, checklist_text: str, project_state: dict[str, Any]
+    *,
+    checklist_text: str,
+    project_state: dict[str, Any],
+    source_file_count: int | None = None,
+    test_file_count: int | None = None,
 ) -> SatisfactionVerdict:
     """Evaluate satisfaction criteria from the checklist and state.
 
     Args:
         checklist_text: Contents of the project ``MASTER_CHECKLIST.md``.
         project_state: Active project state snapshot.
+        source_file_count: Real source files in the workbench. When provided
+            (Issue #38 #6/#7), a project with no source — or no test — is NOT
+            satisfied: a software factory that produced no software has not
+            finished, however clean the checklist looks. ``None`` skips the
+            check (kept for callers without workbench access).
+        test_file_count: Real test files in the workbench (Minimum Viable Code
+            Birth requires at least one).
 
     Returns:
         The satisfaction verdict; ``reasons`` lists unmet criteria.
@@ -55,6 +67,10 @@ def evaluate_satisfaction(
         )
     if project_state.get("last_validation_status") != "passed":
         reasons.append("Validation has not passed")
+    if source_file_count is not None and source_file_count == 0:
+        reasons.append("Application has no source code (empty project)")
+    if test_file_count is not None and test_file_count == 0:
+        reasons.append("Application has no tests (code birth requires a test)")
 
     return SatisfactionVerdict(satisfied=not reasons, reasons=reasons)
 
@@ -137,8 +153,16 @@ def run_satisfaction(
     Returns:
         The satisfaction verdict.
     """
+    # Issue #38 #6/#7: a project is not "satisfied" while the workbench is empty
+    # or has no test. Resolve the workbench against root (CWD-independent).
+    app_path = str(project["app_path"])
+    wb = app_path if Path(app_path).is_absolute() else str(root / app_path)
+    metrics = workbench_metrics(wb)
     verdict = evaluate_satisfaction(
-        checklist_text=checklist_text, project_state=project_state
+        checklist_text=checklist_text,
+        project_state=project_state,
+        source_file_count=metrics.source_files,
+        test_file_count=metrics.test_files,
     )
     report_root = str(project["report_root"])
     task_root = str(project["task_root"])

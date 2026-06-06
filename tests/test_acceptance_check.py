@@ -132,6 +132,38 @@ class ContractEnforcementTests(unittest.TestCase):
             )
 
 
+class EmptyProjectTests(unittest.TestCase):
+    """Issue #38 #6: an empty project is never accepted, even if vacuously green."""
+
+    def test_no_source_is_not_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = root / "app"
+            tasks = app / "factory_tasks"
+            # No source files; a complete checklist + passing validation + no
+            # contract would otherwise accept vacuously.
+            _write(app / "src/.gitkeep", "")
+            _write(
+                tasks / "MASTER_CHECKLIST.md",
+                "# Master Checklist\n\n- [x] done\n",
+            )
+            _write(
+                tasks / "validation_result.json",
+                json.dumps({"status": "passed", "checks": []}),
+            )
+            project = {
+                "app_path": str(app),
+                "task_root": str(tasks),
+                "name": "demo",
+            }
+            report = evaluate_acceptance(project, root)
+            self.assertFalse(report.has_code)
+            self.assertFalse(report.accepted)
+            self.assertTrue(
+                any("no real source" in r for r in report.reasons), report.reasons
+            )
+
+
 class PerItemAcceptanceTests(unittest.TestCase):
     """Issue #35: per-item retirement evidence helpers."""
 

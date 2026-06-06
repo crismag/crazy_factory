@@ -45,6 +45,7 @@ def _demo_project(root: Path) -> dict[str, object]:
     report_root.mkdir(parents=True)
     return {
         "root": "apps/demo",
+        "app_path": "apps/demo",
         "task_root": "apps/demo/factory_tasks",
         "report_root": "apps/demo/factory_reports",
     }
@@ -227,10 +228,46 @@ class SatisfactionTests(unittest.TestCase):
         )
         self.assertFalse(verdict.satisfied)
 
+    def test_not_satisfied_when_empty_workbench(self) -> None:
+        # Issue #38 #6/#7: a clean checklist does not make an EMPTY project done.
+        state = {"last_validation_status": "passed", "current_blocker": None}
+        zero_src = evaluate_satisfaction(
+            checklist_text="- [x] done\n",
+            project_state=state,
+            source_file_count=0,
+            test_file_count=0,
+        )
+        self.assertFalse(zero_src.satisfied)
+        self.assertTrue(any("no source" in r for r in zero_src.reasons))
+        no_test = evaluate_satisfaction(
+            checklist_text="- [x] done\n",
+            project_state=state,
+            source_file_count=2,
+            test_file_count=0,
+        )
+        self.assertFalse(no_test.satisfied)
+        self.assertTrue(any("no tests" in r for r in no_test.reasons))
+        ok = evaluate_satisfaction(
+            checklist_text="- [x] done\n",
+            project_state=state,
+            source_file_count=2,
+            test_file_count=1,
+        )
+        self.assertTrue(ok.satisfied, ok.reasons)
+
     def test_run_satisfaction_sets_flag_when_satisfied(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             project = _demo_project(root)
+            # MVCB (Issue #38 #6/#7): satisfaction needs real source + a test.
+            (root / "apps/demo/src").mkdir(parents=True)
+            (root / "apps/demo/src/main.py").write_text(
+                "x = 1\n", encoding="utf-8"
+            )
+            (root / "apps/demo/tests").mkdir(parents=True)
+            (root / "apps/demo/tests/test_main.py").write_text(
+                "def test_x():\n    assert True\n", encoding="utf-8"
+            )
             verdict = run_satisfaction(
                 root=root,
                 project=project,

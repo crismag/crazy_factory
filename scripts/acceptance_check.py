@@ -26,6 +26,7 @@ from typing import Any
 from architecture import load_contract, missing_required
 from completion import open_items, parse_checklist
 from proposal_applier import _is_placeholder_body
+from workbench_growth import workbench_metrics
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class AcceptanceReport:
     no_stub_sources: bool
     checklist_complete: bool
     validation_passed: bool
+    has_code: bool = True
     contracts_satisfied: bool = True
     missing_files: list[str] = field(default_factory=list)
     stub_files: list[str] = field(default_factory=list)
@@ -171,6 +173,12 @@ def evaluate_acceptance(
     task_root = Path(str(project["task_root"]))
     arch = load_contract(app_path) or {}
 
+    # Issue #38 #6: a run cannot be ACCEPTED if the application is empty. A
+    # contract-less project would otherwise pass vacuously; require real source
+    # code to exist (resolve the workbench against root so it is CWD-independent).
+    wb = app_path if Path(app_path).is_absolute() else str(root / app_path)
+    has_code = workbench_metrics(wb).source_files >= 1
+
     # 1. required files present
     missing = missing_required(app_path, arch) if arch else []
     required_present = not missing
@@ -219,6 +227,10 @@ def evaluate_acceptance(
     contracts_satisfied = not contract_gaps
 
     reasons: list[str] = []
+    if not has_code:
+        reasons.append(
+            "application has no real source files (empty project)"
+        )
     if not required_present:
         reasons.append(f"missing required files: {', '.join(missing)}")
     if not no_stub_sources:
@@ -238,7 +250,8 @@ def evaluate_acceptance(
         )
 
     accepted = (
-        required_present
+        has_code
+        and required_present
         and no_stub_sources
         and checklist_complete
         and validation_passed
@@ -250,6 +263,7 @@ def evaluate_acceptance(
         no_stub_sources=no_stub_sources,
         checklist_complete=checklist_complete,
         validation_passed=validation_passed,
+        has_code=has_code,
         contracts_satisfied=contracts_satisfied,
         missing_files=missing,
         stub_files=stub_files,
@@ -266,6 +280,7 @@ def render_acceptance(report: AcceptanceReport) -> str:
         f"Acceptance: {mark} {'ACCEPTED' if report.accepted else 'NOT YET'}"
     ]
     checks = [
+        ("real code exists", report.has_code),
         ("required files present", report.required_present),
         ("no stub source files", report.no_stub_sources),
         ("checklist complete", report.checklist_complete),
