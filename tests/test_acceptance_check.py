@@ -16,7 +16,11 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
-from acceptance_check import evaluate_acceptance  # noqa: E402
+from acceptance_check import (  # noqa: E402
+    evaluate_acceptance,
+    interface_gaps_for_file,
+    is_stub_source,
+)
 
 
 def _write(path: Path, text: str) -> None:
@@ -126,6 +130,63 @@ class ContractEnforcementTests(unittest.TestCase):
             self.assertTrue(
                 any("missing interface `g`" in g for g in report.contract_gaps)
             )
+
+
+class PerItemAcceptanceTests(unittest.TestCase):
+    """Issue #35: per-item retirement evidence helpers."""
+
+    def _setup(self, root: Path, a_src: str, interfaces: list[str]) -> str:
+        app = root / "app"
+        _write(app / "src/a.py", a_src)
+        _write(
+            app / "factory_context/file_contracts/src_a_py.json",
+            json.dumps({"file": "src/a.py", "interfaces": interfaces}),
+        )
+        return str(app)
+
+    def test_interface_gaps_for_file_detects_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = self._setup(
+                root, "def f():\n    return 1\n", ["def f()", "def g()"]
+            )
+            gaps = interface_gaps_for_file(
+                app, f"{app}/factory_context", "src/a.py"
+            )
+            self.assertEqual(gaps, ["missing interface `g`"])
+
+    def test_interface_gaps_empty_when_satisfied(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = self._setup(root, "def f():\n    return 1\n", ["def f()"])
+            self.assertEqual(
+                interface_gaps_for_file(
+                    app, f"{app}/factory_context", "src/a.py"
+                ),
+                [],
+            )
+
+    def test_interface_gaps_empty_when_no_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = root / "app"
+            _write(app / "src/a.py", "def f():\n    return 1\n")
+            self.assertEqual(
+                interface_gaps_for_file(
+                    str(app), f"{app}/factory_context", "src/a.py"
+                ),
+                [],
+            )
+
+    def test_is_stub_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = root / "app"
+            _write(app / "src/stub.py", "def f():\n    pass\n")
+            _write(app / "src/real.py", "def f():\n    return 1\n")
+            self.assertTrue(is_stub_source(str(app), "src/stub.py"))
+            self.assertFalse(is_stub_source(str(app), "src/real.py"))
+            self.assertFalse(is_stub_source(str(app), "src/missing.py"))
 
 
 if __name__ == "__main__":

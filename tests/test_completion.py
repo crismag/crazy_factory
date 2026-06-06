@@ -219,6 +219,28 @@ class FocusFileTokenTests(unittest.TestCase):
         self.assertEqual(rec["evidence"]["validation"], "passed")
         self.assertIn("src/storage.py", rec["evidence"]["files"])
 
+    def test_blocked_item_evidence_record(self) -> None:
+        # Issue #35: a refused retirement records WHY it was blocked.
+        import factory_advance as fa
+
+        rec = fa.build_item_evidence(
+            item="Implement src/storage.py",
+            focus_file="src/storage.py",
+            validation_status="passed",
+            applied_files=["src/storage.py"],
+            missing_required_files=[],
+            status="blocked",
+            interface_gaps=["src/storage.py: missing interface `save`"],
+            is_stub=True,
+            block_reasons=["src/storage.py is a stub (all-placeholder bodies)"],
+        )
+        self.assertEqual(rec["status"], "blocked")
+        self.assertTrue(rec["evidence"]["is_stub"])
+        self.assertTrue(rec["evidence"]["block_reasons"])
+        self.assertIn(
+            "missing interface `save`", rec["evidence"]["interface_gaps"][0]
+        )
+
 
 class NoProgressMonitorTests(unittest.TestCase):
     """Issue #37 §6: stop the loop when beats don't advance project state."""

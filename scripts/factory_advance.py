@@ -98,6 +98,10 @@ from validation_runner import (  # noqa: E402
     run_validation_stage,
     validation_status_label,
 )
+from acceptance_check import (  # noqa: E402
+    interface_gaps_for_file,
+    is_stub_source,
+)
 from architecture import (  # noqa: E402
     coherence_commands,
     existing_violations,
@@ -240,21 +244,29 @@ def build_item_evidence(
     validation_status: str,
     applied_files: list[str],
     missing_required_files: list[str],
+    status: str = "complete",
+    interface_gaps: list[str] | None = None,
+    is_stub: bool = False,
+    block_reasons: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Build the acceptance-evidence record for a retired checklist item.
+    """Build the acceptance-evidence record for a checklist item (Issue #35).
 
-    Captures *why* the item was allowed to retire (validation + the files it
-    delivered) so reports/status can be truthful and a later acceptance check
-    can audit it.
+    Captures *why* an item is complete OR blocked — validation, the files it
+    delivered, and the acceptance signals (contract-interface gaps, stub status,
+    and the explicit block reasons) — so reports/status are truthful and the
+    decision is auditable. ``status`` is ``complete`` or ``blocked``.
     """
     return {
         "item": item,
         "focus_file": focus_file,
-        "status": "complete",
+        "status": status,
         "evidence": {
             "validation": validation_status,
             "files": applied_files,
             "missing_required_files": missing_required_files,
+            "interface_gaps": interface_gaps or [],
+            "is_stub": is_stub,
+            "block_reasons": block_reasons or [],
         },
     }
 
@@ -912,12 +924,55 @@ def main(project: dict[str, Any] | None = None) -> int:
         still_missing = set(
             missing_required(app_path, arch_contract) if arch_contract else []
         )
+        # Issue #35: retire on ACCEPTANCE EVIDENCE, not just coherence-green. The
+        # item's deliverable must (1) exist, (2) not be a hollow stub, and (3)
+        # satisfy the interfaces its file-contract declares (ST9, per-item).
+        # Whole-project pytest/ruff only proves the existing tests pass — it does
+        # not prove this item's intended behaviour was implemented.
+        context_root = str(project["context_root"])
+        interface_gaps: list[str] = []
+        is_stub = False
+        block_reasons: list[str] = []
         if focus_file is not None and focus_file in still_missing:
+            block_reasons.append(
+                f"required file '{focus_file}' does not exist yet (the applied "
+                f"patch did not create it)"
+            )
+        elif focus_file:
+            interface_gaps = interface_gaps_for_file(
+                app_path, context_root, focus_file
+            )
+            is_stub = is_stub_source(app_path, focus_file)
+            if is_stub:
+                block_reasons.append(
+                    f"{focus_file} is a stub (all-placeholder bodies)"
+                )
+            block_reasons.extend(
+                f"{focus_file}: {gap}" for gap in interface_gaps
+            )
+        if block_reasons:
             msg.warn(
-                f"Not retiring the current item: its required file "
-                f"'{focus_file}' does not exist yet, even though whole-project "
-                f"validation passed. The applied patch did not create it; the "
-                f"item stays open."
+                "Not retiring the current item (acceptance evidence missing): "
+                + "; ".join(block_reasons)
+                + ". The item stays open."
+            )
+            open_now = open_items(parse_checklist(checklist_now))
+            _append_item_evidence(
+                task_root,
+                root,
+                build_item_evidence(
+                    item=open_now[0].text if open_now else (focus_file or ""),
+                    focus_file=focus_file or "",
+                    validation_status=validation_status_label(
+                        validation_result
+                    ),
+                    applied_files=list(application_result.applied_files),
+                    missing_required_files=sorted(still_missing),
+                    status="blocked",
+                    interface_gaps=interface_gaps,
+                    is_stub=is_stub,
+                    block_reasons=block_reasons,
+                ),
             )
             updated_checklist, completed_item = checklist_now, None
         else:

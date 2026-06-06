@@ -122,6 +122,47 @@ def _contract_interface_gaps(app_path: str, context_root: str) -> list[str]:
     return gaps
 
 
+def interface_gaps_for_file(
+    app_path: str, context_root: str, target_rel: str
+) -> list[str]:
+    """ST9 (per-item, Issue #35): interface gaps for ONE file's contract.
+
+    Returns the interfaces a ``file_contracts`` spec declares for ``target_rel``
+    but that are not defined in it. Empty when the file has no contract, does not
+    exist (the required-files gate owns absence), or satisfies every interface.
+    This lets per-item checklist retirement require acceptance evidence (the
+    contracted behaviour exists), not just coherence-green.
+    """
+    contracts_dir = Path(context_root) / "file_contracts"
+    if not contracts_dir.is_dir() or not target_rel:
+        return []
+    target_path = Path(app_path) / target_rel
+    if not target_path.exists():
+        return []
+    defined = _defined_symbols(target_path)
+    gaps: list[str] = []
+    for spec_file in sorted(contracts_dir.glob("*.json")):
+        try:
+            spec = json.loads(spec_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if spec.get("file") != target_rel:
+            continue
+        for interface in spec.get("interfaces") or []:
+            name = _interface_symbol(str(interface))
+            if name and name not in defined:
+                gaps.append(f"missing interface `{name}`")
+    return gaps
+
+
+def is_stub_source(app_path: str, target_rel: str) -> bool:
+    """True when ``target_rel`` exists but is an all-placeholder stub module."""
+    if not target_rel:
+        return False
+    path = Path(app_path) / target_rel
+    return path.exists() and _is_stub_file(path)
+
+
 def evaluate_acceptance(
     project: dict[str, Any], root: Path
 ) -> AcceptanceReport:
