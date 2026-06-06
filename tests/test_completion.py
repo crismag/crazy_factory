@@ -110,18 +110,22 @@ class DecomposeTests(unittest.TestCase):
         self.assertEqual(len(items), 1)
 
     def test_required_files_drive_deterministic_checklist(self) -> None:
-        # When the contract declares required_files, decomposition is
-        # deterministic + foundation-first and never calls the model.
+        # ST6 / #38 #8: a source module is paired with its test into ONE coherent
+        # item; deterministic + foundation-first; never calls the model.
         files = [
             "src/task_model.py",
             "tests/test_task_model.py",
             "src/storage.py",
         ]
         items = items_from_required_files(files)
-        self.assertEqual(len(items), 3)
+        # task_model + its test collapse into one item; storage stands alone.
+        self.assertEqual(len(items), 2)
         self.assertIn("src/task_model.py", items[0])
-        self.assertIn("Implement", items[0])  # source -> implement
-        self.assertIn("Write", items[1])  # test file -> write tests
+        self.assertIn("tests/test_task_model.py", items[0])  # paired in one item
+        self.assertTrue(items[0].index("src/task_model.py") < items[0].index(
+            "tests/test_task_model.py"
+        ))  # source leads, so focus resolves to the module
+        self.assertIn("src/storage.py", items[1])
         # build_checklist_items prefers required_files over any AI call.
         with patch(
             "completion.OllamaClient.chat",
@@ -134,6 +138,29 @@ class DecomposeTests(unittest.TestCase):
                 required_files=files,
             )
         self.assertEqual(built, items)
+
+    def test_coherent_pairing_edge_cases(self) -> None:
+        # Source with no test stands alone; orphan test gets its own item;
+        # non-.py required files become "Create" items.
+        items = items_from_required_files(
+            [
+                "README.md",
+                "src/a.py",
+                "tests/test_a.py",
+                "src/b.py",  # no test -> stands alone
+                "tests/test_orphan.py",  # no source -> own item
+            ]
+        )
+        paired = [i for i in items if "src/a.py" in i]
+        self.assertEqual(len(paired), 1)
+        self.assertIn("tests/test_a.py", paired[0])
+        self.assertTrue(any(i.startswith("Create README.md") for i in items))
+        self.assertTrue(
+            any("src/b.py" in i and "tests/" not in i for i in items)
+        )
+        self.assertTrue(
+            any("tests/test_orphan.py" in i for i in items)
+        )
 
     def test_initial_markdown_is_all_open(self) -> None:
         md = initial_checklist_markdown(

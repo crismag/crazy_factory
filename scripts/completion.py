@@ -210,27 +210,71 @@ def _is_test_file(path: str) -> bool:
     )
 
 
-def items_from_required_files(required_files: list[str]) -> list[str]:
-    """Derive a concrete, file-targeted checklist from the contract's files.
+def _module_stem(path: str) -> str:
+    """The python module stem of a path (``src/task_model.py`` -> ``task_model``)."""
+    name = path.rsplit("/", 1)[-1]
+    return name[:-3] if name.endswith(".py") else name
 
-    Deterministic and foundation-first (the contract lists files in build
-    order), so decomposition no longer varies run-to-run between concrete,
-    well-ordered items and vague mis-ordered themes — the dominant cause of
-    non-convergence. One item per canonical file; each is gated by the whole-
-    project coherence check.
+
+def _test_covers_source(test_path: str, source_stem: str) -> bool:
+    """Whether ``test_path`` is the conventional test for ``source_stem``."""
+    stem = _module_stem(test_path)
+    return stem in (f"test_{source_stem}", f"{source_stem}_test")
+
+
+def items_from_required_files(required_files: list[str]) -> list[str]:
+    """Derive a concrete, foundation-first checklist from the contract's files.
+
+    Issue #38 #8 / ST6 — COHERENT, right-sized deliverables. A source module is
+    paired with its conventional test into a SINGLE item ("implement src/x.py AND
+    its tests tests/test_x.py"), so each iteration produces an observable,
+    self-validating increment. This removes the structural cause of the per-file
+    "no test in the patch" rejection churn (the model split a module from its
+    tests across separate items). The source path leads each item so downstream
+    focus resolution targets the module. Deterministic + foundation-first (the
+    contract lists files in build order); each item is gated by the whole-project
+    coherence check.
     """
+    tests = [p for p in required_files if _is_test_file(p)]
+    used_tests: set[str] = set()
     items: list[str] = []
     for path in required_files:
         if _is_test_file(path):
+            continue  # emitted with its source, or as a leftover below
+        if not path.endswith(".py"):
             items.append(
-                f"Write {path} with unit tests for the module it covers; "
-                "every test must pass."
+                f"Create {path} so the project provides it, keeping the whole "
+                "project coherent."
+            )
+            continue
+        stem = _module_stem(path)
+        match = next(
+            (
+                t
+                for t in tests
+                if t not in used_tests and _test_covers_source(t, stem)
+            ),
+            None,
+        )
+        if match is not None:
+            used_tests.add(match)
+            items.append(
+                f"Implement {path} AND write its unit tests {match} in the "
+                "SAME increment; every test must pass and the whole project "
+                "must compile, lint-clean, and pass all tests."
             )
         else:
             items.append(
                 f"Implement {path} with the functionality the project goal "
                 "assigns to it, keeping the whole project compiling, "
                 "lint-clean, and passing all tests."
+            )
+    # Tests whose source was not in the required set get their own item.
+    for test_path in tests:
+        if test_path not in used_tests:
+            items.append(
+                f"Write {test_path} with unit tests for the module it covers; "
+                "every test must pass."
             )
     return items
 
