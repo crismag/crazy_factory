@@ -64,7 +64,7 @@ They must not be the thing the owner cranks with `advance`.
 | **P1** | Runnable output (install/build/start tools + inspect) | `done` (observer) |
 | **P2** | Convergence: remaining gaps become the next objective | `done` (engine; `objective_generator`) |
 | **P3** | External invocation: MCP wraps the working engine | `done` (`start` + seed; inspect/status report mission) |
-| **P4** | Better agents: coding-agent adapter, then specialized roles | **done (P4a–P4e)**; Cursor/Codex IDE adapters deferred |
+| **P4** | Better agents: coding-agent adapter, then specialized roles | **done (P4a–P4f)**; agentic control active |
 | **P5** | Broader product intelligence, dynamic teams, self-improve | **done (P5-01 Director)**; P5-02/P5-03 deferred |
 
 P5-01 is the Director (owner-facing brief + featured MCP). Do not

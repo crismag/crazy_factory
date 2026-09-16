@@ -20,6 +20,9 @@ purpose-built execution assignment from evidence so the plugin is
 not asked to “implement this task.” P4e observes runtime every
 evaluation beat (not only after file acceptance) and annotates the
 next execute objective with what the coding plugin actually wrote.
+P4f makes continuation, objective, stance, and quality **model
+decisions** with attempt-log persistence; rails still veto stop,
+budget, unsafe start, and fake COMPLETE.
 P5a names the next MCP/CLI verb instead of dumping inspect JSON.
 
 The execution audit is
@@ -66,10 +69,11 @@ The MCP surface map is [CF2_MCP_SURFACE.md](../CF2_MCP_SURFACE.md).
 
 ## Next State Transition
 
-P4e is landed: every evaluation probes a declared start command, and
-the next execute objective is annotated with the files (or skip
-reason) the coding plugin actually wrote. Remaining work is
-Cursor/Codex IDE adapters, specialized roles, and deferred P5 — do
-not start those, UI, network MCP, or KAE-Memory from this slice.
+P4f is landed: continuation, objective, stance, and quality are
+model decisions persisted in `attempts.jsonl` and
+`control_memory.json`. Rails still veto stop, budget, unsafe start,
+and COMPLETE without evidence. Remaining work is Cursor/Codex IDE
+adapters, specialized roles, and deferred P5 — do not start those,
+UI, network MCP, or KAE-Memory from this slice.
 See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and
 [CF2_TASK_CHECKLIST.md](../CF2_TASK_CHECKLIST.md).

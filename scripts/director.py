@@ -20,8 +20,10 @@ Recommended actions:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
+from control_intelligence import load_decision
 from mission_runner import (
     BUDGET_EXHAUSTED,
     COMPLETE,
@@ -204,6 +206,21 @@ def build_director_brief(
     mission = load_mission_snapshot(project, root)
     pid = str(project.get("name") or "")
     nxt = _next_for_assessment(pid, assessment, mission)
+    control_payload = None
+    task_root = project.get("task_root")
+    if task_root:
+        decision = load_decision(Path(str(task_root)))
+        if decision is not None:
+            control_payload = {
+                "outcome": decision.outcome,
+                "kind": decision.kind,
+                "stance": decision.stance,
+                "source": decision.source,
+                "rationale": decision.rationale,
+                "quality_ok": decision.quality_ok,
+            }
+            if decision.source == "model" and decision.director_why:
+                nxt.why = decision.director_why
     snap = assessment_to_dict(assessment)
     focus = focus_module_payload(select_focus_module(assessment.model))
     modules = [
@@ -240,6 +257,7 @@ def build_director_brief(
             "objective": mission.get("objective"),
         },
         "next": asdict(nxt),
+        "control": control_payload,
         "surface": mcp_surface(),
     }
 

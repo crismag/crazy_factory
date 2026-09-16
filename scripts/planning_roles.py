@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from coding_llm import resolve_coding_backend
+from control_intelligence import control_model_enabled
 from llm_interaction import structured_call
 from ollama_client import OllamaClient
 from prompt_builder import build_prompt_package
@@ -97,7 +99,8 @@ class RoleResult:
     Attributes:
         role: Worker role that produced the planning text.
         content: Planning-only worker output.
-        source: ``"ollama"`` or ``"fallback"``.
+        source: ``"anthropic"`` / ``"openai"`` / ``"ollama"`` or
+        ``"fallback"``.
         detail: Human-readable explanation for reports.
     """
 
@@ -169,6 +172,23 @@ def fallback_architect_result(
     return RoleResult("architect", content, "fallback", reason)
 
 
+def _chat_backend(
+    factory_config: dict[str, Any], model: str
+) -> tuple[str, Any, str]:
+    """Prefer Claude/OpenAI; Ollama remains the local fallback."""
+    if control_model_enabled():
+        pack = resolve_coding_backend()
+        if pack is not None:
+            return pack
+    ollama = factory_config["ollama"]
+    client = OllamaClient(
+        base_url=str(ollama["base_url"]),
+        timeout_seconds=int(ollama["timeout_seconds"]),
+        stream=bool(ollama["stream"]),
+    )
+    return ("ollama", client, model)
+
+
 def request_architect_result(
     *,
     project_name: str,
@@ -180,7 +200,7 @@ def request_architect_result(
     tasks: dict[str, str],
     context_bundle: str = "",
 ) -> RoleResult:
-    """Ask Ollama for a planning-only Architect expansion when available.
+    """Ask the control model (Claude/OpenAI) or Ollama for an expansion.
 
     Args:
         project_name: Active application workbench name.
@@ -194,7 +214,7 @@ def request_architect_result(
             prompt so planning reflects supplied project knowledge.
 
     Returns:
-        Ollama-backed result or deterministic fallback result.
+        Model-backed result or deterministic fallback result.
     """
     prompt_package = build_prompt_package(
         role="architect",
@@ -203,12 +223,7 @@ def request_architect_result(
         max_lines_per_file=max_lines,
     )
     model = str(models_config["models"]["architect"])
-    ollama = factory_config["ollama"]
-    client = OllamaClient(
-        base_url=str(ollama["base_url"]),
-        timeout_seconds=int(ollama["timeout_seconds"]),
-        stream=bool(ollama["stream"]),
-    )
+    source, client, chat_model = _chat_backend(factory_config, model)
     # 9E.7-L3 / 9E.9: the architect designs ARCHITECTURE, not code. Prime the
     # role, enforce a structured expansion, and let role-fit (required modules +
     # task_candidates) reject a code-dump — which previously poisoned the planner.
@@ -232,7 +247,7 @@ def request_architect_result(
     )
     data, note = structured_call(
         client=client,
-        model=model,
+        model=chat_model,
         system=instruction,
         user=user,
         priming=priming,
@@ -247,8 +262,8 @@ def request_architect_result(
     return RoleResult(
         "architect",
         _render_architect_expansion(data),
-        "ollama",
-        f"Architect model `{model}` ({note})",
+        source,
+        f"Architect model `{chat_model}` ({note})",
         data=data,
     )
 
@@ -311,12 +326,7 @@ def request_planner_result(
         max_lines_per_file=max_lines,
     )
     model = str(models_config["models"]["planner"])
-    ollama = factory_config["ollama"]
-    client = OllamaClient(
-        base_url=str(ollama["base_url"]),
-        timeout_seconds=int(ollama["timeout_seconds"]),
-        stream=bool(ollama["stream"]),
-    )
+    source, client, chat_model = _chat_backend(factory_config, model)
     # 9E.7: prime the model on the exact response shape up front, enforce JSON,
     # classify the reply, and harden via bounded reframe-retry. A refusal /
     # conversational reply is NEVER stored as the plan — it falls back instead.
@@ -347,7 +357,7 @@ def request_planner_result(
     )
     data, note = structured_call(
         client=client,
-        model=model,
+        model=chat_model,
         system=instruction,
         user=user,
         priming=priming,
@@ -360,8 +370,8 @@ def request_planner_result(
     return RoleResult(
         "planner",
         _render_planner_action(data),
-        "ollama",
-        f"Planner model `{model}` ({note})",
+        source,
+        f"Planner model `{chat_model}` ({note})",
     )
 
 

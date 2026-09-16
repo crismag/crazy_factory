@@ -12,7 +12,7 @@ The nine task-intelligence questions are answered here, deterministically:
 2. What does the repository contain?     workbench inventory
 3. What information is missing?          missing required files
 4. What needs investigation?             failing checks / runtime / prior write
-5. What kind of engineering work?        objective.kind → stance
+5. What kind of engineering work?        control stance (else kind heuristic)
 6. What context does the executor need?  seed excerpt + snapshot + architecture
 7. What constraints must not be violated path confinement + safety floor
 8. What constitutes success?             acceptance criteria
@@ -29,6 +29,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from control_intelligence import load_decision
 from diagnosis_packet import DiagnosisPacket, executor_slice
 
 ALLOWED_TOPS = (
@@ -275,6 +276,20 @@ def compile_assignment(
     stance = classify_stance(
         kind, previous_files=prev_files, still_failing=still_failing
     )
+    control = load_decision(task_root)
+    if (
+        control is not None
+        and control.source == "model"
+        and control.stance
+        in {
+            STANCE_BIRTH,
+            STANCE_IMPLEMENT,
+            STANCE_REPAIR,
+            STANCE_INVESTIGATE,
+            STANCE_NEED_CONTEXT,
+        }
+    ):
+        stance = control.stance
     success: list[str] = []
     verification: list[str] = []
     missing: list[str] = []

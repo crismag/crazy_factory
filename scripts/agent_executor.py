@@ -7,9 +7,10 @@ This module is the implementation actuator:
     objective + curated assignment + evidence
       → files → existing apply/observe/evaluate
 
-The factory compiles the assignment
-(``execution_assignment.compile_assignment``). Coding plugins do not
-own understanding or judgment.
+The factory compiles the assignment. Coding plugins write files.
+Control intelligence (Claude/OpenAI) decides the beat: continuation,
+objective, stance, quality, recovery. Attempt history and working
+memory persist under the task root.
 
 Productization is Lovable-like: a bounded prompt becomes a working
 app. Coding intelligence is a plugin, not a local-model-first path.
@@ -18,9 +19,8 @@ Default chain:
 
 1. ``CloudCodingExecutor`` — Claude (Anthropic) or OpenAI file map.
    Skips immediately when no API key is set (no network).
-2. ``StdlibWebExecutor`` — capable bounded actuator for the first
-   proof seed (stdlib task-board). Copies a verified implementation
-   into the workbench. This is not a multi-agent org.
+2. ``StdlibWebExecutor`` — last-resort fixture for the task-board
+   proof when no API key is set. Live missions use the cloud plugin.
 
 ``LlmFileExecutor`` (Ollama) is opt-in via
 ``CRAZY_FACTORY_EXECUTOR=ollama``. None of the backends write engine

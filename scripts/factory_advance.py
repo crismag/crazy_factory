@@ -584,7 +584,7 @@ def main(project: dict[str, Any] | None = None) -> int:
     # (no real design), and never writes an incoherent contract. Best-effort.
     if (
         bool((factory_config.get("contract") or {}).get("derive_from_seed"))
-        and architect_result.source == "ollama"
+        and architect_result.source != "fallback"
         and architect_result.data
         and load_contract(app_path) is None
     ):

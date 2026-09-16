@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from control_intelligence import load_decision
 from product_kernel import (
     focus_module_payload,
     inspect_project,
@@ -311,6 +312,40 @@ def _annotate_with_executor(
     return replace(obj, focus=f"{obj.focus}{extra}")
 
 
+def _overlay_control(
+    obj: ExecuteObjective, task_root: Path
+) -> ExecuteObjective:
+    """Control intelligence may replace heuristic kind/focus."""
+    decision = load_decision(task_root)
+    if decision is None or decision.source != "model":
+        return obj
+    kind = decision.kind
+    allowed = {
+        KIND_CODE_BIRTH,
+        KIND_SPECIFY,
+        KIND_IMPLEMENT,
+        KIND_REPAIR_RUNTIME,
+        KIND_REPAIR_VALIDATION,
+        KIND_REPAIR_PROGRESS,
+        KIND_COMPLETE,
+    }
+    if kind not in allowed:
+        return obj
+    if kind == KIND_COMPLETE and obj.kind != KIND_COMPLETE:
+        return obj
+    title = decision.title.strip() or obj.title
+    focus = decision.focus.strip() or obj.focus
+    if decision.rationale:
+        focus = f"{focus} Control: {decision.rationale}"
+    return replace(
+        obj,
+        kind=kind,
+        title=title,
+        focus=focus,
+        source="control",
+    )
+
+
 def progress_repair_objective(reason: str = "") -> ExecuteObjective:
     """Objective emitted when a no-progress streak trips the first time."""
     detail = reason or (
@@ -379,6 +414,7 @@ def next_execute_objective(
                     ),
                     source="acceptance",
                 )
+    obj = _overlay_control(obj, task_root)
     obj = _annotate_with_executor(obj, task_root)
     try:
         assessment = inspect_project(project, root)

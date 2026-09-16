@@ -272,6 +272,38 @@ MCP verbs.
 
 ---
 
+## P4f — Agentic control + persistent monitoring
+
+### Objective
+
+The control plane is a model. Claude/OpenAI monitor each beat against
+attempt history, then decide outcome, objective, stance, and recovery.
+Deterministic rails still veto owner stop, beat budget, unsafe start,
+and COMPLETE without acceptance evidence. Persistence is
+`attempts.jsonl` + `control_memory.json`, not a vector store.
+
+### New
+
+`scripts/control_intelligence.py`, `tests/test_control_intelligence.py`.
+
+### Changed
+
+`evaluate_mission` calls `reason_control` then `apply_rails`.
+`next_execute_objective` overlays a model kind/focus.
+`compile_assignment` takes model stance.
+Director brief includes `control`.
+Architect/Planner prefer the cloud backend when a key is present.
+
+### Acceptance
+
+- Model `quality_ok=false` turns COMPLETE into MORE_WORK.
+- Model cannot force COMPLETE when evidence is missing.
+- Attempt log and working memory persist across beats.
+- Pytest does not call a vendor unless `CRAZY_FACTORY_CONTROL=1`.
+- No LangChain, KAE-Memory, or new MCP verbs.
+
+---
+
 ## P5a — Director + featured MCP
 
 ### Objective

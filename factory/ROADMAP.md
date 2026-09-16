@@ -12,7 +12,7 @@ below is retained as ancestry; it is not the current execution plan.
 | **P1** | Runnable output: install/build/start on the tool executor; observe runtime | `done` |
 | **P2** | Convergence: remaining product gaps become the next objective | `done` (engine + module loop) |
 | **P3** | MCP wraps the working engine (`start` / `status` / `continue` / `stop`) | `done` (engine) |
-| **P4** | Coding-agent adapter; factory-owned assignment; specialized roles later | `done` (P4a–P4e); Cursor/Codex IDE adapters deferred |
+| **P4** | Coding-agent adapter; factory-owned assignment; specialized roles later | `done` (P4a–P4f); agentic control; Cursor/Codex deferred |
 | **P5** | Broader product intelligence, dynamic teams, self-improving capabilities | `done` (P5-01 Director + P5b module loop); P5-02/P5-03 deferred |
 
 Living checklists:

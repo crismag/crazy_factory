@@ -26,6 +26,7 @@ from typing import Any, Callable
 import factory_advance
 import factory_messaging as msg
 from acceptance_check import evaluate_acceptance
+from control_intelligence import apply_rails, load_decision, reason_control
 from execution_assignment import persist_judgment
 from flags import flag_active, set_flag
 from mission_state import load_state
@@ -164,26 +165,66 @@ def evaluate_mission(
     acceptance = evaluate_acceptance(project, root)
     if acceptance.accepted:
         if not runtime.safe:
-            return HUMAN_REQUIRED, f"runtime unsafe: {runtime.reason}"
-        if runtime.required and not runtime.ok:
+            candidate, why = HUMAN_REQUIRED, f"runtime unsafe: {runtime.reason}"
+        elif runtime.required and not runtime.ok:
             if beat >= max_beats:
-                return (
+                candidate, why = (
                     BUDGET_EXHAUSTED,
                     f"beat budget {max_beats} exhausted ({runtime.reason})",
                 )
-            return MORE_WORK, f"runtime: {runtime.reason}"
-        extra = ""
-        if runtime.required:
-            extra = f" (runtime {runtime.status})"
-        return COMPLETE, "acceptance evidence is complete" + extra
-    if beat >= max_beats:
-        return BUDGET_EXHAUSTED, f"beat budget {max_beats} exhausted"
-    if blocker:
-        return RECOVERABLE, f"blocker={blocker}"
-    growth = workbench_metrics(str(_as_path(project["app_path"], root)))
-    if growth.is_greenfield:
-        return MORE_WORK, "ZERO_CODE_OUTPUT: no source or tests yet"
-    return MORE_WORK, "; ".join(acceptance.reasons) or "work remains"
+            else:
+                candidate, why = MORE_WORK, f"runtime: {runtime.reason}"
+        else:
+            extra = ""
+            if runtime.required:
+                extra = f" (runtime {runtime.status})"
+            candidate, why = (
+                COMPLETE,
+                "acceptance evidence is complete" + extra,
+            )
+    elif beat >= max_beats:
+        candidate, why = (
+            BUDGET_EXHAUSTED,
+            f"beat budget {max_beats} exhausted",
+        )
+    elif blocker:
+        candidate, why = RECOVERABLE, f"blocker={blocker}"
+    else:
+        growth = workbench_metrics(str(_as_path(project["app_path"], root)))
+        if growth.is_greenfield:
+            candidate, why = (
+                MORE_WORK,
+                "ZERO_CODE_OUTPUT: no source or tests yet",
+            )
+        else:
+            candidate, why = (
+                MORE_WORK,
+                "; ".join(acceptance.reasons) or "work remains",
+            )
+    heuristic = None
+    task_root = project.get("task_root")
+    if task_root:
+        heuristic = load_objective(Path(str(task_root)))
+    decision = reason_control(
+        project,
+        root,
+        beat=beat,
+        max_beats=max_beats,
+        candidate_outcome=candidate,
+        candidate_reason=why,
+        accepted=acceptance.accepted,
+        runtime_status=runtime.status,
+        runtime_safe=runtime.safe,
+        heuristic_kind=heuristic.kind if heuristic else "implement",
+        heuristic_stance="implement",
+    )
+    return apply_rails(
+        decision,
+        candidate_outcome=candidate,
+        candidate_reason=why,
+        accepted=acceptance.accepted,
+        runtime_safe=runtime.safe,
+    )
 
 
 @dataclass
@@ -438,6 +479,7 @@ def load_mission_snapshot(
         "focus_module": None,
         "current_module": None,
         "runtime": None,
+        "control": None,
     }
     if result_path.is_file():
         try:
@@ -476,6 +518,16 @@ def load_mission_snapshot(
                     "required": runtime.get("required"),
                     "reason": runtime.get("reason"),
                 }
+        decision = load_decision(Path(str(task_root)))
+        if decision is not None:
+            snapshot["control"] = {
+                "outcome": decision.outcome,
+                "kind": decision.kind,
+                "stance": decision.stance,
+                "source": decision.source,
+                "rationale": decision.rationale,
+                "quality_ok": decision.quality_ok,
+            }
     return snapshot
 
 
@@ -498,4 +550,14 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
         f"- Objective: `{obj}`\n"
         f"- Module: `{snapshot.get('focus_module') or 'none'}`\n"
         f"- Runtime: `{runtime_status}`\n"
+        f"- Control: `{_control_label(snapshot)}`\n"
     )
+
+
+def _control_label(snapshot: dict[str, Any]) -> str:
+    control = snapshot.get("control") or {}
+    if not isinstance(control, dict) or not control.get("source"):
+        return "none"
+    kind = control.get("kind") or "none"
+    source = control.get("source") or "none"
+    return f"{source}:{kind}"

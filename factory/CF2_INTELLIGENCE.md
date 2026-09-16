@@ -18,10 +18,12 @@ Governing principle:
 > **Capability first. Architecture second. Technology third.**
 
 Do not acquire infrastructure and then invent reasons to use it.
-Claude/OpenAI/other plugins are workers. MCP is machinery. Crazy
-Factory is the factory: it owns mission, understanding, context,
-planning, capability selection, observation, evidence, judgment,
-recovery, and outcome.
+Claude/OpenAI are the factory's intelligence plugins: they write
+code **and** they supervise continuation, objective, stance, quality,
+and recovery. MCP is machinery. Deterministic rails remain vetoes
+(stop flag, budget, unsafe start, COMPLETE without evidence). The
+factory persists attempts and working memory so the model can keep
+going across beats.
 
 ## Capability-first adoption
 
@@ -40,19 +42,17 @@ exists. Deferred until a demonstrated need:
 ## Provider independence
 
 ```text
-Crazy Factory
-     | objective, curated context, acceptance, constraints
+Crazy Factory control intelligence (attempts.jsonl + control_memory)
+     | monitor packet: runtime, validation, hashes, prior attempts
      v
-AgentExecutor
-     +-- Claude / Anthropic
-     +-- OpenAI
-     +-- stdlib proof actuator
-     +-- future specialist
+Claude / OpenAI
+     | outcome, kind, stance, quality_ok, recovery, memory_notes
+     v
+rails (stop / budget / unsafe / evidence) then EXECUTE
 ```
 
-The factory compiles the assignment. The plugin writes files. The
-factory independently inspects and judges. Crazy Factory is not
-synonymous with Claude.
+The factory compiles evidence. The model decides the beat. Rails
+can only veto, not plan. Crazy Factory is not synonymous with Claude.
 
 ## Context engineering
 
@@ -72,42 +72,30 @@ Process exit status is not success. Evidence today:
 - workbench inventory and architecture
 - `executor_result.json` (what the plugin wrote, plus stance)
 - `judgment.json` (outcome vs acceptance vs validation vs runtime)
+- `attempts.jsonl` (append-only beat history + file hashes)
+- `control_memory.json` (working notes the model updates)
+- `control_decision.json` (latest outcome / kind / stance)
 
 Browser/visual journeys remain deferred.
 
-## Judgment vs execution success
-
-`ExecutorResult.ok` means the plugin produced files. Acceptance
-means the product is demonstrable. `judgment.json` records both so
-the next beat cannot confuse them. Tests passing is one evidence
-gate, not product quality.
-
-## Recovery / reconsideration
-
-The assignment stance is not “fix the errors”:
-
-| Stance | When |
-| --- | --- |
-| `birth` | greenfield / code birth |
-| `implement` | product gap |
-| `repair` | first validation/runtime failure |
-| `investigate` | previous executor wrote files and the failure remains |
-| `need_context` | placeholder / unspecified product |
+`ExecutorResult.ok` is still not acceptance. The control model can
+block COMPLETE on quality; it cannot declare COMPLETE without
+evidence.
 
 ## Intelligence loop mapping (current)
 
-| Capability | Implementation | Strength | This slice |
-| --- | --- | --- | --- |
-| UNDERSTAND | `product_kernel`, seed parse, Director | strong owner view | executor now receives a slice |
-| INVESTIGATE | DiagnosisPacket, validation, runtime observer | facts not prose | failing checks reach the assignment |
-| REASON | objective generator, convergence | repair vs product | stance from kind + prior write |
-| PLAN | `next_execute_objective`, factory_advance | one objective per beat | assignment names that objective |
-| EQUIP | workbench profile, capability gates | isolated | no new tools; confinement in assignment |
-| EXECUTE | `AgentExecutor` + Claude/OpenAI | provider-neutral | quality assignment, not a thin prompt |
-| OBSERVE | validation + runtime + metrics | every beat | `runtime_result.json` before acceptance; executor files feed the next objective |
-| JUDGE | `evaluate_acceptance`, `evaluate_mission` | multi-gate | `judgment.json`; executor ok ≠ accepted |
-| RECONSIDER | repair objectives, no-progress retry | kinds exist | `investigate` vs blind rewrite |
-| DELIVER | mission trace, Director, MCP | owner-facing | no new MCP verbs |
+| Function | Who decides | Model? |
+| --- | --- | --- |
+| Continue / stop / budget / stop-flag | `reason_control` + rails | **Yes** (rails veto stop/budget) |
+| Next objective | control overlay on `next_execute_objective` | **Yes** |
+| Assignment + stance | control stance, else heuristic | **Yes** |
+| Acceptance | model `quality_ok` + evidence gates | **Yes** (cannot force COMPLETE) |
+| Runtime / validation | observers collect; model interprets | **Yes** (probes stay confined) |
+| Product inspect / Director next command | Director reads `control_decision` | **Yes** |
+| Safety / stall / recovery routing | `recovery` field + floor | **Yes** (floor never overridden) |
+| Write application files | `CloudCodingExecutor` | **Yes** — Claude preferred |
+| Inner Architect / Planner | `_chat_backend` cloud then Ollama | **Yes** (Ollama if no key) |
+| Task-board proof with no keys | `StdlibWebExecutor` | Fixture fallback only |
 
 ## Near-term boundary (not this slice)
 
