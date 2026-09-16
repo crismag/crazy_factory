@@ -61,7 +61,7 @@ They must not be the thing the owner cranks with `advance`.
 | **P1** | Runnable output (install/build/start tools + inspect) | `done` (observer) |
 | **P2** | Convergence: remaining gaps become the next objective | `done` (engine; `objective_generator`) |
 | **P3** | External invocation: MCP wraps the working engine | `done` (`start` + seed; inspect/status report mission) |
-| **P4** | Better agents: coding-agent adapter, then specialized roles | **active (P4a)** |
+| **P4** | Better agents: coding-agent adapter, then specialized roles | **done (P4a)** |
 | **P5** | Broader product intelligence, dynamic teams, self-improve | postpone |
 
 Do not begin P5 while P0/P1 remain unfinished. Phase and task

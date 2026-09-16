@@ -10,9 +10,8 @@ for the stdlib task-board proof seed.
 
 It keeps calling the kernel until acceptance evidence, a genuine
 human blocker, or a beat budget — without the owner cranking
-`advance`. The remaining proof is that a clean workbench with
-`examples/seeds/task_board_web.md` reaches COMPLETE with runtime
-evidence.
+`advance`. P4a proved `examples/seeds/task_board_web.md` from a
+clean workbench reaches COMPLETE with runtime evidence.
 
 The execution audit is
 [docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
@@ -47,7 +46,10 @@ The plan of record is [CF2_ARCHITECTURE.md](../CF2_ARCHITECTURE.md).
 ## Next State Transition
 
 P3 engine is landed ([CF2_P3_COMPLETION.md](../CF2_P3_COMPLETION.md)).
-P4a is the remaining proof: `examples/seeds/task_board_web.md` from a
-clean workbench → COMPLETE with runtime evidence.
+P4a is landed: `examples/seeds/task_board_web.md` from a clean
+workbench reaches COMPLETE with runtime evidence via
+`StdlibWebExecutor`. Do not start P5 / UI / extra MCP / multi-agent
+org. Remaining P4 items are later providers (Cursor/Codex/Claude)
+only where they measurably help.
 See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and
 [CF2_TASK_CHECKLIST.md](../CF2_TASK_CHECKLIST.md).

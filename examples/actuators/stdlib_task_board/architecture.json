@@ -6,7 +6,8 @@
     "data",
     "docs",
     "architecture.json",
-    "crazy_project.yaml"
+    "crazy_project.yaml",
+    "requirements.txt"
   ],
   "forbidden_imports": ["sqlalchemy", "django", "flask", "fastapi"],
   "required_files": ["src/task_board.py", "tests/test_task_board.py"],

@@ -40,6 +40,7 @@ ALLOWED_TOPS = frozenset(
         "docs",
         "README.md",
         "architecture.json",
+        "requirements.txt",
     }
 )
 BLOCKED_PARTS = frozenset(
@@ -223,7 +224,8 @@ class LlmFileExecutor:
             user=user,
             priming=(
                 'Respond with JSON {"files": {"relative/path": "content"}}. '
-                "Only src/, tests/, data/, README.md, architecture.json."
+                "Only src/, tests/, data/, README.md, architecture.json, "
+                "and requirements.txt."
             ),
             required_keys=("files",),
             retries=0,

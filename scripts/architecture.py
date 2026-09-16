@@ -282,5 +282,7 @@ def coherence_commands(app_path: str, contract: dict[str, Any]) -> list[str]:
     commands = [f"python3 -m compileall -q {joined}"]
     if tests:
         commands.append(f"python3 -m pytest {' '.join(tests)}")
-    commands.append(f"ruff check {joined}")
+    commands.append(f"python3 -m ruff check {joined}")
+    if (base / "requirements.txt").is_file():
+        commands.insert(0, "python3 -m pip install -r requirements.txt")
     return commands

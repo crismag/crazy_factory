@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -92,6 +93,7 @@ class StdlibExecutorTests(unittest.TestCase):
         self.assertIn("src/task_board.py", result.files)
         self.assertIn("tests/test_task_board.py", result.files)
         self.assertIn("architecture.json", result.files)
+        self.assertIn("requirements.txt", result.files)
         self.assertIn("def add_task", result.files["src/task_board.py"])
         self.assertNotIn("scripts/factory_advance.py", result.files)
 
@@ -188,35 +190,27 @@ class DefaultExecutorTests(unittest.TestCase):
 
 class TaskBoardBenchmarkTests(unittest.TestCase):
     def test_clean_workbench_mission_reaches_complete(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            _bootstrap_repo(root)
-            ca.startproject("board", "apps/board", root=root)
-            project = ca.resolve_project(ca.load_registry(root), "board")
-            ca.install_seed(project, str(SEED), root)
-            cwd = Path.cwd()
-            try:
-                os.chdir(root)
-                with (
-                    patch(
-                        "factory_advance.find_repo_root",
-                        return_value=root,
-                    ),
-                    patch("factory_advance.Path.cwd", return_value=root),
-                    patch.dict(
-                        os.environ,
-                        {"CRAZY_FACTORY_EXECUTOR": "stdlib_web"},
-                    ),
-                ):
-                    result = run_mission(
-                        project,
-                        root,
-                        max_beats=3,
-                        apply_profile=True,
-                    )
-            finally:
-                os.chdir(cwd)
-            app = root / "apps/board"
+        pid = "p4a_stdlib_board"
+        app = ROOT / "apps" / pid
+        registry = ROOT / "config" / "projects.yaml"
+        backup = registry.read_text(encoding="utf-8")
+        if app.exists():
+            shutil.rmtree(app)
+        try:
+            ca.startproject(
+                pid, f"apps/{pid}", root=ROOT, force=True, reuse=True
+            )
+            project = ca.resolve_project(ca.load_registry(ROOT), pid)
+            ca.install_seed(project, str(SEED), root=ROOT)
+            with patch.dict(
+                os.environ, {"CRAZY_FACTORY_EXECUTOR": "stdlib_web"}
+            ):
+                result = run_mission(
+                    project,
+                    ROOT,
+                    max_beats=3,
+                    apply_profile=True,
+                )
             validation = app / "factory_tasks/validation_result.json"
             detail = ""
             if validation.is_file():
@@ -229,6 +223,10 @@ class TaskBoardBenchmarkTests(unittest.TestCase):
             self.assertTrue((app / "src/task_board.py").is_file())
             self.assertTrue((app / "tests/test_task_board.py").is_file())
             self.assertIn("runtime", result.reason)
+        finally:
+            if app.exists():
+                shutil.rmtree(app, ignore_errors=True)
+            registry.write_text(backup, encoding="utf-8")
 
 
 if __name__ == "__main__":

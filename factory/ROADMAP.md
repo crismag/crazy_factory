@@ -9,10 +9,10 @@ below is retained as ancestry; it is not the current execution plan.
 | Pri | Outcome | Status |
 | --- | --- | --- |
 | **P0** | Closed loop: `crazy-admin run` keeps executing until COMPLETE / HUMAN / BUDGET | `done` |
-| **P1** | Runnable output: install/build/start on the tool executor; observe runtime | `done` (observer; live seed needs P4) |
+| **P1** | Runnable output: install/build/start on the tool executor; observe runtime | `done` |
 | **P2** | Convergence: remaining product gaps become the next objective | `done` (engine) |
 | **P3** | MCP wraps the working engine (`start` / `status` / `continue` / `stop`) | `done` (engine) |
-| **P4** (current) | Coding-agent adapter; specialized roles only where they improve completion | `active` |
+| **P4** | Coding-agent adapter; specialized roles only where they improve completion | `done` (P4a); later providers deferred |
 | **P5** | Broader product intelligence, dynamic teams, self-improving capabilities | `deferred` |
 
 Living checklists:
@@ -22,9 +22,9 @@ Living checklists:
 
 Inspect/assess/MCP from Slice A shipped alongside P0 as inventory.
 P2 wires remaining-gap objectives into EXECUTE. P3 wraps that engine:
-`start` takes context + target in one call. P4a is the capable
-implementation actuator so `context → Crazy Factory → runnable
-accepted application` can be proven on `task_board_web`.
+`start_mission` takes context + target in one call. P4a is the capable
+implementation actuator: `context → Crazy Factory → runnable accepted
+application` on `task_board_web`. Do not start P5.
 
 ## Ancestry (documentation bootstrap → local apprentice)
 

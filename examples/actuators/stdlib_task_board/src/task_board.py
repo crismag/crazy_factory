@@ -144,7 +144,7 @@ class TaskBoardHandler(BaseHTTPRequestHandler):
         self.send_header("Location", "/")
         self.end_headers()
 
-    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+    def do_GET(self) -> None:
         page = render_index(load_tasks())
         blob = page.encode("utf-8")
         self.send_response(200)
@@ -153,7 +153,7 @@ class TaskBoardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(blob)
 
-    def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+    def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length") or "0")
         raw = self.rfile.read(length).decode("utf-8") if length else ""
         fields = {k: v[0] for k, v in parse_qs(raw).items() if v}
