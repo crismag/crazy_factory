@@ -23,7 +23,8 @@ director_brief [id]      → intended product + mission + one next command
                            (the Director names the tool; the client calls it)
 start_mission            → prompt or bounded context in, autonomous
                            loop until COMPLETE / HUMAN_REQUIRED / BUDGET
-continue_mission         → keep going after MORE_WORK / budget
+continue_mission         → keep going after MORE_WORK / budget;
+                           optional prompt is a follow-up delta
 stop_mission             → owner halt (never auto-recommended)
 get_status               → pipeline + mission snapshot without a brief
 ```
@@ -109,7 +110,7 @@ inventory, not featured commands.
 | `director_brief` | `crazy-admin brief [id] [--json]` |
 | `list_projects` | `crazy-admin brief` with no id (catalog / pick) |
 | `start_mission` | `crazy-admin run [id] --prompt TEXT` or `--seed FILE` |
-| `continue_mission` | `crazy-admin run [id]` |
+| `continue_mission` | `crazy-admin run [id] [--prompt TEXT]` |
 | `stop_mission` | `crazy-admin stop [id]` |
 | `get_status` | `crazy-admin status [id]` |
 

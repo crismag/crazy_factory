@@ -438,6 +438,40 @@ brief include the preview URL.
 
 ---
 
+## L0-05 — Conversational deltas on a running preview
+
+### Objective
+
+A follow-up `--prompt` / `continue_mission.prompt` on a specified
+product is a change request, not a new product. Goal and
+`architecture.json` stay put. The assignment carries the latest
+deltas with stance `implement` when `src/app.py` already exists.
+
+### New
+
+`scripts/conversation_delta.py`, `tests/test_conversation_delta.py`.
+
+### Changed
+
+`ingest_start_context` (compile vs append), MCP `continue_mission.prompt`,
+`execution_assignment` (`## Owner deltas`), stdlib preview reads
+`data/change_requests.json` so a no-key HTTP probe can show the
+follow-up.
+
+### Acceptance
+
+- First prompt still compiles Goal/Success + architecture.
+- Second prompt does not replace Goal or architecture.
+- Assignment includes the delta; stance is `implement` when the
+  preview file exists.
+- `continue_mission.prompt` appends a delta without re-applying the
+  profile.
+- Task-board fixture and existing `src/app.py` on `implement` stay
+  unclobbered.
+- No npm, no KAE-Memory, no LangChain.
+
+---
+
 ## Slice A — Product intelligence service (P2/P5 inventory)
 
 ### Objective

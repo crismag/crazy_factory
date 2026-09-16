@@ -77,6 +77,7 @@ def generate_stdlib_preview(app: Path, seed: str) -> dict[str, str]:
         "tests/test_model.py": _TEST_MODEL,
         "tests/test_app.py": _TEST_APP,
         "data/items.json": "[]\n",
+        "data/change_requests.json": "[]\n",
         "requirements.txt": "# Python 3 standard library only\n",
         "README.md": (
             f"# {title}\n\n"
@@ -168,7 +169,9 @@ _APP = '''"""Stdlib-web preview application."""
 from __future__ import annotations
 
 import html
+import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs
 
 from src.model import (
@@ -181,11 +184,38 @@ from src.model import (
 
 TITLE = __TITLE__
 DEFAULT_PORT = __PORT__
+ROOT = Path(__file__).resolve().parents[1]
+CHANGE_PATH = ROOT / "data" / "change_requests.json"
+
+
+def load_change_requests(path: Path = CHANGE_PATH) -> list[str]:
+    """Return owner follow-up prompts persisted beside the item store."""
+    if not path.is_file():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    if isinstance(payload, list):
+        return [str(item).strip() for item in payload if str(item).strip()]
+    return []
 
 
 def render_index(items: list[dict]) -> str:
     """Return a narrow-viewport HTML UI for the item list."""
     heading = html.escape(TITLE)
+    requests = load_change_requests()
+    banner = ""
+    if requests:
+        items_html = "".join(
+            f"<li>{html.escape(req)}</li>" for req in requests[-5:]
+        )
+        banner = (
+            "<aside class='owner-deltas'><!-- owner-deltas -->"
+            "<p>Requested changes</p>"
+            f"<ul>{items_html}</ul>"
+            "<!-- /owner-deltas --></aside>"
+        )
     rows: list[str] = []
     for item in items:
         iid = html.escape(str(item.get("id") or ""))
@@ -227,8 +257,11 @@ def render_index(items: list[dict]) -> str:
         "border:1px solid #ccc;padding:8px;margin:0 0 8px;}"
         "li.done input[name=title]{text-decoration:line-through;}"
         "button{min-height:2rem;}"
+        "aside.owner-deltas{border:1px dashed #888;padding:8px;"
+        "margin:0 0 12px;font-size:0.9rem;}"
         "</style></head><body>"
         f"<h1>{heading}</h1>"
+        f"{banner}"
         "<form method='post' action='/add'>"
         "<input name='title' placeholder='New item' required/>"
         "<button type='submit'>Add</button>"

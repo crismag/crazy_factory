@@ -1021,7 +1021,9 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=(
             "Raw owner prompt compiled into docs/seed.md and "
-            "architecture.json (stdlib-web default stack)."
+            "architecture.json (stdlib-web). On a specified product, "
+            "the prompt is a follow-up delta and does not replace "
+            "the Goal."
         ),
     )
     runp.add_argument(
@@ -1356,10 +1358,16 @@ def ingest_start_context(
     ``seed`` is a filesystem path. ``context`` is either a path (file,
     directory, or archive) or inline markdown written to ``docs/seed.md``
     when no seed path was given. ``prompt`` is a raw owner sentence
-    compiled into a specified seed + architecture (stdlib-web). The
-    startproject scaffold is never compiled unless the owner supplied
-    a prompt, seed, or inline context.
+    compiled into a specified seed + architecture (stdlib-web). When
+    the seed is already specified, ``prompt`` is a conversational
+    delta and does not replace Goal or architecture. The startproject
+    scaffold is never compiled unless the owner supplied a prompt,
+    seed, or inline context.
     """
+    from conversation_delta import (
+        append_delta,
+        has_specified_product,
+    )
     from prompt_compiler import (
         compile_into_workbench,
         maybe_compile_workbench,
@@ -1370,6 +1378,7 @@ def ingest_start_context(
         "context": None,
         "prompt": None,
         "compiled": None,
+        "delta": None,
     }
     wrote_seed = False
     if seed:
@@ -1415,7 +1424,11 @@ def ingest_start_context(
     compiled: dict[str, str] | None = None
     if raw_prompt:
         summary["prompt"] = raw_prompt
-        compiled = compile_into_workbench(project, root, raw_prompt)
+        if has_specified_product(project, root):
+            written = append_delta(project, root, raw_prompt)
+            summary["delta"] = written.get("delta")
+        else:
+            compiled = compile_into_workbench(project, root, raw_prompt)
     elif wrote_seed:
         compiled = maybe_compile_workbench(project, root)
     if compiled:

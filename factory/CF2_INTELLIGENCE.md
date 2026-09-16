@@ -96,6 +96,7 @@ evidence.
 | Write application files | `CloudCodingExecutor` | **Yes** — Claude preferred |
 | Inner Architect / Planner | `_chat_backend` cloud then Ollama | **Yes** (Ollama if no key) |
 | Prompt → seed + architecture | `prompt_compiler.compile_prompt` | **Yes** (fallback if no key) |
+| Follow-up prompt on specified product | `conversation_delta.append_delta` | No extra model call |
 | Task-board proof with no keys | `StdlibWebExecutor` | Fixture fallback only |
 
 ## Near-term boundary (not this slice)

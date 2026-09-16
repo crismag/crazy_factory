@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 from control_intelligence import load_decision
+from conversation_delta import delta_prompts
 from diagnosis_packet import DiagnosisPacket, executor_slice
 
 ALLOWED_TOPS = (
@@ -86,6 +87,7 @@ class ExecutionAssignment:
     evidence: str = ""
     seed_excerpt: str = ""
     architecture_excerpt: str = ""
+    owner_deltas: list[str] = field(default_factory=list)
     previous_executor: str = ""
     constraints: tuple[str, ...] = (
         (
@@ -290,6 +292,10 @@ def compile_assignment(
         }
     ):
         stance = control.stance
+    deltas = delta_prompts(project, root)
+    preview = app / "src" / "app.py"
+    if deltas and preview.is_file() and stance == STANCE_BIRTH:
+        stance = STANCE_IMPLEMENT
     success: list[str] = []
     verification: list[str] = []
     missing: list[str] = []
@@ -334,6 +340,7 @@ def compile_assignment(
         evidence=evidence,
         seed_excerpt=_seed_excerpt(project, root),
         architecture_excerpt=_architecture_excerpt(app),
+        owner_deltas=deltas[-5:],
         previous_executor=prev_note,
     )
 
@@ -373,6 +380,16 @@ def render_assignment(assignment: ExecutionAssignment) -> str:
         "## Missing required files",
         bullets(assignment.missing),
     ]
+    if assignment.owner_deltas:
+        sections.extend(
+            [
+                "",
+                "## Owner deltas",
+                "The Goal is already specified. Apply these follow-up "
+                "changes; do not replace the product.",
+                bullets(assignment.owner_deltas),
+            ]
+        )
     if assignment.validation_summary:
         sections.extend(
             ["", "## Validation evidence", assignment.validation_summary]

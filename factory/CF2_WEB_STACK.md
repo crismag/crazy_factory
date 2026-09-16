@@ -28,8 +28,14 @@ Each probe persists `factory_tasks/preview.json` with the localhost
 URL. The process is still killed after the probe — this is evidence,
 not a long-running dev server.
 
+A follow-up owner prompt on a specified product is a conversational
+delta (`factory_tasks/deltas.jsonl`, `docs/deltas.md`). It does not
+recompile Goal or architecture. The stdlib preview reads
+`data/change_requests.json` so the HTTP page can show the requested
+change without a coding-plugin key.
+
 Evidence: `scripts/web_stack.py`, `scripts/prompt_compiler.py`,
-`scripts/stdlib_preview.py`.
+`scripts/stdlib_preview.py`, `scripts/conversation_delta.py`.
 
 ## Recorded successor: `vite-react`
 

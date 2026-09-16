@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** L0-04 — preview-first stdlib-web (`done`)
+**Current phase:** L0-05 — conversational deltas (`done`)
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -165,9 +165,9 @@ Acceptance (P5a):
 
 | | |
 | --- | --- |
-| Status | **done** (compiler + default stack). Preview UX and vite-react remain later. |
+| Status | **done** (compiler + default stack + preview + deltas). Vite-react remains later. |
 | Target | A raw owner sentence becomes a specified factory seed on one executable web stack. |
-| Success | `crazy-admin run id --prompt "…"` and MCP `start_mission.prompt` write Goal/Success + `architecture.json` instead of parking on `specify_intent`. |
+| Success | `crazy-admin run id --prompt "…"` and MCP `start_mission.prompt` write Goal/Success + `architecture.json` instead of parking on `specify_intent`. Follow-up prompts on a specified product are deltas. |
 | Evidence | `scripts/prompt_compiler.py`, `scripts/web_stack.py`, `tests/test_prompt_compiler.py`, [CF2_WEB_STACK.md](CF2_WEB_STACK.md) |
 
 Acceptance:
@@ -180,5 +180,5 @@ Acceptance:
 - [x] Claude/OpenAI fill screens when a key is present; pytest uses fallback
 - [x] Hand-authored `architecture.json` is not overwritten
 - [x] Preview-first: compiled `stdlib-web` workbenches get a reachable HTTP UI and `preview.json`
-- [ ] Conversational deltas on a running preview (L0-05)
+- [x] Conversational deltas on a running preview (L0-05)
 - [ ] npm / Vite executable stack (P1-07 / L0-07)

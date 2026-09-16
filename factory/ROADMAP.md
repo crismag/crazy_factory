@@ -14,7 +14,7 @@ below is retained as ancestry; it is not the current execution plan.
 | **P3** | MCP wraps the working engine (`start` / `status` / `continue` / `stop`) | `done` (engine) |
 | **P4** | Coding-agent adapter; factory-owned assignment; specialized roles later | `done` (P4a–P4f); agentic control; Cursor/Codex deferred |
 | **P5** | Broader product intelligence, dynamic teams, self-improving capabilities | `done` (P5-01 Director + P5b module loop); P5-02/P5-03 deferred |
-| **L0** | Prompt compiler + default `stdlib-web` stack + preview | `done` (compiler, stack, HTTP preview); vite-react / deltas later |
+| **L0** | Prompt compiler + default `stdlib-web` stack + preview | `done` (compiler, stack, HTTP preview, deltas); vite-react later |
 
 Living checklists:
 
@@ -35,6 +35,7 @@ not the default. P5a is the Director: `crazy-admin brief` / MCP
 module loop: finish one module before opening the next. L0 compiles
 a raw owner prompt into a specified seed on the default
 `stdlib-web` stack ([CF2_WEB_STACK.md](CF2_WEB_STACK.md)).
+Follow-up prompts on a specified product are conversational deltas.
 Intelligence map: [CF2_INTELLIGENCE.md](CF2_INTELLIGENCE.md). MCP
 surface: [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md).
 

@@ -66,7 +66,7 @@ They must not be the thing the owner cranks with `advance`.
 | **P3** | External invocation: MCP wraps the working engine | `done` (`start` + seed; inspect/status report mission) |
 | **P4** | Better agents: coding-agent adapter, then specialized roles | **done (P4a–P4f)**; agentic control active |
 | **P5** | Broader product intelligence, dynamic teams, self-improve | **done (P5-01 Director)**; P5-02/P5-03 deferred |
-| **L0** | Prompt compiler + default `stdlib-web` stack | **done**; [CF2_WEB_STACK.md](CF2_WEB_STACK.md) |
+| **L0** | Prompt compiler + default `stdlib-web` stack | **done** (through L0-05 deltas); [CF2_WEB_STACK.md](CF2_WEB_STACK.md) |
 
 P5-01 is the Director (owner-facing brief + featured MCP). Do not
 start dynamic teams, factory self-mutation, or UI from this slice.
