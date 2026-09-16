@@ -30,6 +30,7 @@ from flags import flag_active, set_flag
 from mission_state import load_state
 from owner_controls import set_capability
 from objective_generator import (
+    load_focus_module,
     load_objective,
     next_execute_objective,
     persist_objective,
@@ -415,6 +416,8 @@ def load_mission_snapshot(
         "trace": str(trace_path) if trace_path.is_file() else None,
         "objective": None,
         "current_objective": None,
+        "focus_module": None,
+        "current_module": None,
     }
     if result_path.is_file():
         try:
@@ -434,6 +437,10 @@ def load_mission_snapshot(
         if current is not None:
             snapshot["objective"] = f"{current.id}:{current.kind}"
             snapshot["current_objective"] = asdict(current)
+        module = load_focus_module(Path(str(task_root)))
+        if module:
+            snapshot["current_module"] = module
+            snapshot["focus_module"] = module.get("id")
     return snapshot
 
 
@@ -450,4 +457,5 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
         f"- Artifact: `{snapshot.get('artifact') or ''}`\n"
         f"- Trace: `{snapshot.get('trace') or ''}`\n"
         f"- Objective: `{obj}`\n"
+        f"- Module: `{snapshot.get('focus_module') or 'none'}`\n"
     )

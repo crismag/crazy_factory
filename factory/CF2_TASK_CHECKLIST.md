@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** P5-02/P5-03 deferred (P5-01 Director + featured MCP landed)
+**Current focus:** P5-02/P5-03 deferred (P5b nested module loop landed)
 **Last updated:** 2026-09-16
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -49,7 +49,7 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-P2-02 | DONE | Wire product-kernel objectives into `advance` / mission | `factory_advance` + `mission_runner._select_objective` |
 | CF2-P2-03 | DONE | Repair objective from validation/runtime failure | runtime/validation outrank product gaps |
 | CF2-P2-04 | DONE | Replace silent `NO_PROGRESS` park with recover-or-human | first trip retry + `HUMAN_REQUIRED` |
-| CF2-P2-05 | DEFERRED | Nested module/product loops | |
+| CF2-P2-05 | DONE | Nested module loop (one module to VERIFIED, then the next) | `select_focus_module`, `current_module.json` |
 
 ---
 
@@ -88,6 +88,7 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-P5-03 | DEFERRED | Factory self-improvement that writes `scripts/` | |
 | CF2-P5-04 | DONE | `inspect` / `assess` inventory; featured MCP mapped | [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md) |
 | CF2-P5-05 | DONE | Featured MCP: `director_brief`, `list_projects`; inventory stays | `scripts/mcp_server.py` |
+| CF2-P5-06 | DONE | Nested module loop in Director + EXECUTE | `focus_module` in brief; execute stays on one module |
 
 ---
 

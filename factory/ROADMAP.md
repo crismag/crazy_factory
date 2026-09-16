@@ -10,10 +10,10 @@ below is retained as ancestry; it is not the current execution plan.
 | --- | --- | --- |
 | **P0** | Closed loop: `crazy-admin run` keeps executing until COMPLETE / HUMAN / BUDGET | `done` |
 | **P1** | Runnable output: install/build/start on the tool executor; observe runtime | `done` |
-| **P2** | Convergence: remaining product gaps become the next objective | `done` (engine) |
+| **P2** | Convergence: remaining product gaps become the next objective | `done` (engine + module loop) |
 | **P3** | MCP wraps the working engine (`start` / `status` / `continue` / `stop`) | `done` (engine) |
 | **P4** | Coding-agent adapter; specialized roles only where they improve completion | `done` (P4a+P4b); later providers deferred |
-| **P5** | Broader product intelligence, dynamic teams, self-improving capabilities | `done` (P5-01 Director); P5-02/P5-03 deferred |
+| **P5** | Broader product intelligence, dynamic teams, self-improving capabilities | `done` (P5-01 Director + P5b module loop); P5-02/P5-03 deferred |
 
 Living checklists:
 
@@ -26,7 +26,8 @@ P2 wires remaining-gap objectives into EXECUTE. P3 wraps that engine:
 implementation actuator: `context → Crazy Factory → runnable accepted
 application` on `task_board_web`. P5a is the Director: `crazy-admin
 brief` / MCP `director_brief` names the next featured command.
-See [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md).
+P5b is the nested module loop: finish one module before opening the
+next. See [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md).
 
 ## Ancestry (documentation bootstrap → local apprentice)
 

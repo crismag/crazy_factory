@@ -17,6 +17,7 @@ from product_kernel import (  # noqa: E402
     inspect_project,
     load_persisted,
     render_assessment,
+    select_focus_module,
 )
 
 CLI_TODO_SEED = (ROOT / "examples/seeds/cli_todo_tracker.md").read_text(
@@ -140,6 +141,11 @@ class PartialProductTests(unittest.TestCase):
             )
             self.assertEqual(demo.status, "partial")
             self.assertFalse(assessment.convergence.demo_ready)
+            focus = select_focus_module(assessment.model)
+            assert focus is not None
+            self.assertEqual(focus.id, "todo")
+            snap = assessment_to_dict(assessment)
+            self.assertEqual(snap["focus_module"]["id"], "todo")
 
     def test_assess_persists_and_reloads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

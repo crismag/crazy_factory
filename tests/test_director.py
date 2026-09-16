@@ -247,6 +247,40 @@ class RenderAndSurfaceTests(unittest.TestCase):
             self.assertNotIn("call_coder", surface["inventory"])
 
 
+class FocusModuleBriefTests(unittest.TestCase):
+    def test_brief_names_first_open_module(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("todo", "apps/todo", root=root)
+            app = root / "apps/todo"
+            (app / "docs/seed.md").write_text(CLI_TODO_SEED, encoding="utf-8")
+            _write(
+                app / "architecture.json",
+                json.dumps(
+                    {
+                        "required_files": [
+                            "src/todo.py",
+                            "src/storage.py",
+                            "tests/test_todo.py",
+                            "tests/test_storage.py",
+                        ]
+                    }
+                ),
+            )
+            _write(app / "src/todo.py", "def add(item):\n    return item\n")
+            _write(
+                app / "src/storage.py",
+                "def save_data(data):\n    pass\n",
+            )
+            payload = director_brief(root, project_id="todo")
+            assert payload["focus_module"] is not None
+            self.assertEqual(payload["focus_module"]["id"], "todo")
+            text = render_brief(payload)
+            self.assertIn("Focus module", text)
+            self.assertIn("`todo`", text)
+
+
 class CliBriefTests(unittest.TestCase):
     def test_brief_json_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

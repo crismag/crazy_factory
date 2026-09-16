@@ -212,6 +212,36 @@ first), `scripts/crazy_admin.py` (`brief`).
 
 ---
 
+## P5b — Nested module loop
+
+### Objective
+
+Product intelligence already lists every module. EXECUTE used to jump
+to the first *blocking* gap anywhere, so a stub in module B could
+pre-empt finishing module A. The inner loop is now: stay on the first
+open module until it is VERIFIED, then open the next. Repair still
+outranks. Product-level gaps (placeholder, code birth, architecture,
+validation) still outrank.
+
+Do **not** build dynamic teams, factory self-mutation, or UI.
+
+### Changed
+
+`scripts/product_kernel.py` (`select_focus_module`),
+`scripts/objective_generator.py` (`current_module.json`, execute
+`module=`), `scripts/director.py` (`focus_module` in the brief),
+`scripts/mission_runner.py` (snapshot).
+
+### Acceptance
+
+- Two-module workbench: first open module is `todo` even when `storage`
+  is a blocking stub.
+- After `todo` is VERIFIED, EXECUTE moves to `storage`.
+- Director brief names `focus_module`.
+- Inspect still lists every module's objectives (inventory stays complete).
+
+---
+
 ## Slice A — Product intelligence service (P2/P5 inventory)
 
 ### Objective

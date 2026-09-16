@@ -40,12 +40,13 @@ The MCP surface map is [CF2_MCP_SURFACE.md](../CF2_MCP_SURFACE.md).
   file-map) writes workbench files under path confinement
 - P5a Director (`crazy-admin brief`, MCP `director_brief` /
   `list_projects`; featured vs inventory MCP)
+- P5b nested module loop (`focus_module`, `current_module.json`)
 - tests (unit; live Ollama product builds are not in CI)
 
 ## Not Yet Available
 
 - npm / node / browser journey inspection (P1 deferred)
-- nested module/product loops (P2-05 deferred)
+- nested product-of-products (P2-05 remainder)
 - Cursor / Codex / Claude executor adapters (P4-03)
 - dynamic role/skill acquisition (P5-02)
 - factory self-improvement that writes `scripts/` (P5-03)
@@ -53,11 +54,9 @@ The MCP surface map is [CF2_MCP_SURFACE.md](../CF2_MCP_SURFACE.md).
 
 ## Next State Transition
 
-P5a is landed ([CF2_P5_COMPLETION.md](../CF2_P5_COMPLETION.md)):
-the owner talks to the Director; featured MCP is start / continue /
-stop / status / brief / list. Remaining P5 is dynamic teams and
-self-improve — do not start those, UI, or network MCP from this
-slice. Later P4 providers (Cursor/Codex/Claude) only where they
-measurably help.
+P5b is landed: the nested **module** loop finishes one module
+(`focus_module` / `current_module.json`) before opening the next.
+Remaining P5 is dynamic teams and self-improve — do not start those,
+UI, or network MCP from this slice.
 See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and
 [CF2_TASK_CHECKLIST.md](../CF2_TASK_CHECKLIST.md).

@@ -30,7 +30,12 @@ from mission_runner import (
     RECOVERABLE,
     load_mission_snapshot,
 )
-from product_kernel import assessment_to_dict, inspect_project
+from product_kernel import (
+    assessment_to_dict,
+    inspect_project,
+    select_focus_module,
+    focus_module_payload,
+)
 from project_registry import (
     RegistryError,
     all_project_ids,
@@ -200,6 +205,7 @@ def build_director_brief(
     pid = str(project.get("name") or "")
     nxt = _next_for_assessment(pid, assessment, mission)
     snap = assessment_to_dict(assessment)
+    focus = focus_module_payload(select_focus_module(assessment.model))
     modules = [
         {
             "id": m["id"],
@@ -224,6 +230,7 @@ def build_director_brief(
             for o in snap.get("objectives") or []
         ],
         "modules": modules,
+        "focus_module": focus,
         "mission": {
             "outcome": mission.get("outcome"),
             "reason": mission.get("reason"),
@@ -259,6 +266,7 @@ def unregistered_brief(project_id: str | None) -> dict[str, Any]:
         "material_gaps": ["project is not registered"],
         "objectives": [],
         "modules": [],
+        "focus_module": None,
         "mission": {
             "outcome": None,
             "reason": None,
@@ -313,6 +321,7 @@ def catalog_brief(root: Any) -> dict[str, Any]:
         "material_gaps": [],
         "objectives": [],
         "modules": [],
+        "focus_module": None,
         "mission": {
             "outcome": None,
             "reason": None,
@@ -369,6 +378,17 @@ def render_brief(payload: dict[str, Any]) -> str:
     if nxt.get("cli"):
         lines.append(f"- CLI: `{nxt['cli']}`")
     lines.append(f"- Why: {nxt.get('why') or ''}")
+    focus = payload.get("focus_module")
+    if focus:
+        lines.extend(
+            [
+                "",
+                "## Focus module",
+                f"- `{focus.get('id')}` maturity={focus.get('maturity')}",
+            ]
+        )
+        for gap in focus.get("gaps") or []:
+            lines.append(f"  - gap: {gap}")
     if payload.get("projects"):
         lines.extend(["", "## Projects"])
         for row in payload["projects"]:

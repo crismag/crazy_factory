@@ -16,6 +16,8 @@ from objective_generator import (  # noqa: E402
     KIND_REPAIR_PROGRESS,
     KIND_REPAIR_RUNTIME,
     KIND_REPAIR_VALIDATION,
+    MODULE_FILE,
+    load_focus_module,
     load_objective,
     next_execute_objective,
     persist_objective,
@@ -131,3 +133,80 @@ class GeneratorTests(unittest.TestCase):
             obj = next_execute_objective(_project(app), Path(tmp))
             self.assertEqual(obj.kind, KIND_REPAIR_RUNTIME)
             self.assertEqual(obj.id, "OBJ-RUNTIME-UNSAFE")
+
+
+class NestedModuleLoopTests(unittest.TestCase):
+    def test_execute_stays_on_first_open_module(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            _write(
+                app / "docs/seed.md",
+                "Goal:\nBuild a todo tracker.\n\nSuccess:\nAdd tasks.\n",
+            )
+            _write(
+                app / "architecture.json",
+                json.dumps(
+                    {
+                        "required_files": [
+                            "src/todo.py",
+                            "src/storage.py",
+                            "tests/test_todo.py",
+                            "tests/test_storage.py",
+                        ]
+                    }
+                ),
+            )
+            _write(app / "src/todo.py", "def add(item):\n    return item\n")
+            _write(
+                app / "src/storage.py",
+                "def save_data(data):\n    pass\n",
+            )
+            obj = next_execute_objective(_project(app), Path(tmp))
+            self.assertEqual(obj.module, "todo")
+            self.assertIn("todo", obj.title.lower())
+            self.assertNotIn("storage", obj.title.lower())
+            persisted = load_focus_module(app / "factory_tasks")
+            assert persisted is not None
+            self.assertEqual(persisted["id"], "todo")
+            self.assertTrue((app / "factory_tasks" / MODULE_FILE).is_file())
+
+    def test_verified_module_releases_the_next(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            _write(
+                app / "docs/seed.md",
+                "Goal:\nBuild a todo tracker.\n\nSuccess:\nAdd tasks.\n",
+            )
+            _write(
+                app / "architecture.json",
+                json.dumps(
+                    {
+                        "required_files": [
+                            "src/todo.py",
+                            "src/storage.py",
+                            "tests/test_todo.py",
+                            "tests/test_storage.py",
+                        ]
+                    }
+                ),
+            )
+            _write(
+                app / "src/todo.py",
+                "def add(item, items):\n"
+                "    items.append(item)\n"
+                "    return items\n",
+            )
+            _write(
+                app / "tests/test_todo.py",
+                "from src.todo import add\n\n"
+                "def test_add():\n    assert add('a', []) == ['a']\n",
+            )
+            _write(
+                app / "src/storage.py",
+                "def save_data(data):\n    pass\n",
+            )
+            obj = next_execute_objective(_project(app), Path(tmp))
+            self.assertEqual(obj.module, "storage")
+            self.assertIn("storage", obj.title.lower())
+            text = render_objective_focus(obj)
+            self.assertIn("module: `storage`", text)

@@ -29,3 +29,7 @@ P0–P4 already close `context → Crazy Factory → runnable accepted
 application`. P5a makes the owner-facing layer name the next command
 instead of dumping inspect JSON. Later providers (Cursor/Codex/Claude)
 and nested product loops remain deferred.
+
+P5b (2026-09-16): nested **module** loop. Director `focus_module` and
+EXECUTE `current_module.json` finish one module to VERIFIED before
+opening the next. P5-02/P5-03 still deferred.

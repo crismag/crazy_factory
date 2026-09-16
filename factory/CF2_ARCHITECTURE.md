@@ -114,7 +114,7 @@ grow a multi-agent org in this slice.
 | Loop | Cycle | When |
 | --- | --- | --- |
 | Task | implement → test → review → repair | existing `factory_advance` under EXECUTE |
-| Module | discover → specify → … → verify | P2 |
+| Module | discover → specify → … → verify | P5b (`select_focus_module`) |
 | Product | understand → assess → objectives → inspect | P2/P5 |
 | Factory | capability gap → acquire → validate | postponed; owner-gated |
 

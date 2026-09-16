@@ -45,6 +45,10 @@ MATURITY_ORDER: tuple[str, ...] = (
     "DEMO_READY",
 )
 
+# Nested module loop: a module is closed only when verified (or later)
+# and it has no remaining gaps. Mixed VERIFIED+stub still needs work.
+_CLOSED_MATURITY = frozenset({"INTEGRATED", "DEMO_READY"})
+
 DIMENSIONS: tuple[str, ...] = (
     "product_completeness",
     "requirements_coverage",
@@ -302,6 +306,43 @@ def _derive_maturity(mod: Module, app: Path, planned: set[str]) -> None:
     mod.evidence.append("real source exists: " + ", ".join(real or existing))
     if not tests:
         mod.gaps.append("no tests on disk for this module")
+
+
+def module_is_open(mod: Module) -> bool:
+    """True when the nested module loop should still sit on this module."""
+    if mod.maturity in _CLOSED_MATURITY and not mod.gaps:
+        return False
+    if mod.maturity == "VERIFIED" and not mod.gaps:
+        return False
+    return True
+
+
+def select_focus_module(model: ProductModel) -> Module | None:
+    """First incomplete module in declaration order.
+
+    Nested module loop: finish this module (paths, non-stub body, tests)
+    before opening the next. Product-level gaps (placeholder seed, no
+    code, missing architecture) still outrank this selection in EXECUTE.
+    """
+    for mod in model.modules:
+        if module_is_open(mod):
+            return mod
+    return None
+
+
+def focus_module_payload(mod: Module | None) -> dict[str, Any] | None:
+    """JSON-ready snapshot of the module currently in the inner loop."""
+    if mod is None:
+        return None
+    return {
+        "id": mod.id,
+        "name": mod.name,
+        "maturity": mod.maturity,
+        "gaps": list(mod.gaps),
+        "paths": list(mod.paths),
+        "test_paths": list(mod.test_paths),
+        "open": module_is_open(mod),
+    }
 
 
 def build_product_model(project: dict[str, Any], root: Path) -> ProductModel:
@@ -841,6 +882,9 @@ def assessment_to_dict(assessment: Assessment) -> dict[str, Any]:
         "success_criteria": assessment.model.success_criteria,
         "constraints": assessment.model.constraints,
         "assessed_at": assessment.convergence.assessed_at,
+        "focus_module": focus_module_payload(
+            select_focus_module(assessment.model)
+        ),
     }
 
 

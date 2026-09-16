@@ -72,7 +72,7 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **done** (engine). Nested module loops remain deferred. |
+| Status | **done** (engine + module loop). Nested *product-of-products* remains out of scope. |
 | Target | After success or failure, the Factory knows what remains and selects the next meaningful objective. |
 | Success | Incomplete output does not look finished. Next work is a product gap, not merely “next file.” |
 | Evidence | `scripts/objective_generator.py`, `tests/test_objective_generator.py`, mission `current_objective.json` |
@@ -84,10 +84,11 @@ Acceptance:
 - [x] Checklist-as-filename is not the only progress signal (`current_objective.json` + planner block)
 - [x] Repair objectives are created from observed failures (build/test/runtime)
 - [x] `NO_PROGRESS` park produces a new objective or a justified HUMAN_REQUIRED, not a silent no-op
+- [x] Nested module loop: EXECUTE stays on the first open module until VERIFIED
 
 Not in this P2 slice:
 
-- [ ] Nested module/product loops (P2-05, deferred)
+- [ ] Nested product-of-products (multiple workbenches as one product)
 
 ---
 
@@ -134,7 +135,7 @@ P5a completion baseline: [CF2_P5_COMPLETION.md](CF2_P5_COMPLETION.md).
 
 | | |
 | --- | --- |
-| Status | **done (P5-01 / P5a)**. Dynamic teams and factory self-improve stay deferred. |
+| Status | **done (P5-01 / P5b)**. Dynamic teams and factory self-improve stay deferred. |
 | Target | Product-level convergence. The Director is what the owner talks to. |
 | Rule | P0/P1 are finished; this slice does **not** include P5-02/P5-03, UI, or network MCP. |
 
@@ -146,5 +147,6 @@ Acceptance (P5a):
 - [x] Featured vs inventory documented in [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md)
 - [x] `HUMAN_REQUIRED` does not recommend continue/start
 - [x] `COMPLETE` is `done` (remaining product gaps are caveats)
+- [x] Nested module loop: Director names `focus_module`; EXECUTE finishes it before the next
 - [ ] Dynamic teams / skill registry (P5-02)
 - [ ] Factory self-improvement that writes `scripts/` (P5-03)
