@@ -14,7 +14,7 @@ below is retained as ancestry; it is not the current execution plan.
 | **P3** | MCP wraps the working engine (`start` / `status` / `continue` / `stop`) | `done` (engine) |
 | **P4** | Coding-agent adapter; factory-owned assignment; specialized roles later | `done` (P4a–P4f); agentic control; Cursor/Codex deferred |
 | **P5** | Broader product intelligence, dynamic teams, self-improving capabilities | `done` (P5-01 Director + P5b module loop); P5-02/P5-03 deferred |
-| **L0** | Prompt compiler + default `stdlib-web` stack + preview | `done` through L0-05; live no-key prompt COMPLETE’d generic CRUD; L0-08/09 next |
+| **L0** | Prompt compiler + default `stdlib-web` stack + preview | `done` through L0-09; generic CRUD is `RUNNABLE_PREVIEW`; keyed product benchmark next |
 
 Living checklists:
 

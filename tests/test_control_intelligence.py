@@ -17,6 +17,7 @@ from control_intelligence import (  # noqa: E402
     COMPLETE,
     HUMAN_REQUIRED,
     MORE_WORK,
+    RUNNABLE_PREVIEW,
     ControlDecision,
     apply_rails,
     assemble_monitor,
@@ -88,6 +89,24 @@ class RailsTests(unittest.TestCase):
         )
         self.assertEqual(status, MORE_WORK)
         self.assertIn("ZERO_CODE", reason)
+
+    def test_runnable_preview_is_not_upgraded(self) -> None:
+        decision = ControlDecision(
+            outcome=COMPLETE,
+            quality_ok=True,
+            kind="complete",
+            stance="implement",
+            source="model",
+        )
+        status, reason = apply_rails(
+            decision,
+            candidate_outcome=RUNNABLE_PREVIEW,
+            candidate_reason="product claims unsatisfied",
+            accepted=False,
+            runtime_safe=True,
+        )
+        self.assertEqual(status, RUNNABLE_PREVIEW)
+        self.assertIn("product claims", reason)
 
     def test_budget_and_human_are_vetoes(self) -> None:
         decision = ControlDecision(

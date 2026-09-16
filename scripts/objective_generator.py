@@ -28,6 +28,7 @@ MODULE_FILE = "current_module.json"
 KIND_CODE_BIRTH = "code_birth"
 KIND_SPECIFY = "specify_intent"
 KIND_IMPLEMENT = "implement"
+KIND_IMPLEMENT_DELTA = "implement_delta"
 KIND_REPAIR_RUNTIME = "repair_runtime"
 KIND_REPAIR_VALIDATION = "repair_validation"
 KIND_REPAIR_PROGRESS = "repair_progress"
@@ -324,6 +325,7 @@ def _overlay_control(
         KIND_CODE_BIRTH,
         KIND_SPECIFY,
         KIND_IMPLEMENT,
+        KIND_IMPLEMENT_DELTA,
         KIND_REPAIR_RUNTIME,
         KIND_REPAIR_VALIDATION,
         KIND_REPAIR_PROGRESS,
@@ -369,6 +371,69 @@ def progress_repair_objective(reason: str = "") -> ExecuteObjective:
     )
 
 
+def _from_owner_delta(
+    project: dict[str, Any], root: Path
+) -> ExecuteObjective | None:
+    """Open owner deltas are unsatisfied product intent, not a new Goal."""
+    from conversation_delta import open_deltas
+
+    entries = open_deltas(project, root)
+    if not entries:
+        return None
+    entry = entries[-1]
+    prompt = str(entry.get("prompt") or "").strip()
+    if not prompt:
+        return None
+    claims = [
+        str(item.get("claim") or "").strip()
+        for item in (entry.get("capabilities") or [])
+        if isinstance(item, dict) and str(item.get("claim") or "").strip()
+    ]
+    delta_id = str(entry.get("id") or "open")
+    focus = (
+        "Implement these product claims without replacing the Goal: "
+        + "; ".join(claims)
+        if claims
+        else prompt
+    )
+    return ExecuteObjective(
+        id=f"OBJ-DELTA-{delta_id}",
+        kind=KIND_IMPLEMENT_DELTA,
+        title=f"Implement owner delta: {prompt[:72]}",
+        gap=prompt,
+        why=(
+            "An accepted owner delta changed requested product behavior. "
+            "Prior acceptance is stale until this revision is evidenced."
+        ),
+        focus=focus,
+        source="owner_delta",
+    )
+
+
+def _from_product_claims(
+    project: dict[str, Any], root: Path
+) -> ExecuteObjective | None:
+    """Compile-time product claims that the workbench does not evidence."""
+    from product_intent import unsatisfied_claims
+
+    gaps = unsatisfied_claims(project, root)
+    if not gaps:
+        return None
+    claims = [cap.claim for cap in gaps]
+    return ExecuteObjective(
+        id="OBJ-PRODUCT",
+        kind=KIND_IMPLEMENT,
+        title="Implement requested product capabilities",
+        gap="; ".join(claims[:4]),
+        why=(
+            "Mechanical and runtime evidence do not satisfy the current "
+            "product intent."
+        ),
+        focus="Implement: " + "; ".join(claims),
+        source="product_intent",
+    )
+
+
 def next_execute_objective(
     project: dict[str, Any],
     root: Path,
@@ -383,6 +448,8 @@ def next_execute_objective(
         obj = (
             _from_runtime(task_root)
             or _from_validation(task_root)
+            or _from_owner_delta(project, root)
+            or _from_product_claims(project, root)
             or _from_product(project, root)
         )
         if obj is None:

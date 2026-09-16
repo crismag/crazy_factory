@@ -99,6 +99,40 @@ class AcceptanceTests(unittest.TestCase):
             self.assertFalse(report.validation_passed)
 
 
+class ProductLayerTests(unittest.TestCase):
+    def test_vacuous_product_ok_when_no_claims(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = evaluate_acceptance(_scaffold(root), root)
+            self.assertTrue(report.mechanical_ok)
+            self.assertTrue(report.product_ok)
+            self.assertTrue(report.accepted, report.reasons)
+
+    def test_habit_claims_block_generic_mechanical_success(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = _scaffold(root)
+            from product_intent import fallback_capabilities, persist_intent
+
+            persist_intent(
+                project,
+                root,
+                prompt="build a habit tracker",
+                capabilities=fallback_capabilities("build a habit tracker"),
+                source="fallback",
+                revision=1,
+            )
+            report = evaluate_acceptance(project, root)
+            self.assertTrue(report.mechanical_ok)
+            self.assertFalse(report.product_ok)
+            self.assertFalse(report.accepted)
+            self.assertTrue(report.unsatisfied_product)
+            self.assertTrue(
+                any("product claims" in r for r in report.reasons),
+                report.reasons,
+            )
+
+
 class RelativePathTests(unittest.TestCase):
     """Acceptance must resolve registry-relative paths against ``root``."""
 

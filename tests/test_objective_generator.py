@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from objective_generator import (  # noqa: E402
     KIND_CODE_BIRTH,
+    KIND_IMPLEMENT_DELTA,
     KIND_REPAIR_PROGRESS,
     KIND_REPAIR_RUNTIME,
     KIND_REPAIR_VALIDATION,
@@ -269,3 +270,22 @@ class NestedModuleLoopTests(unittest.TestCase):
             self.assertIn("storage", obj.title.lower())
             text = render_objective_focus(obj)
             self.assertIn("module: `storage`", text)
+
+
+class OwnerDeltaObjectiveTests(unittest.TestCase):
+    def test_pending_delta_becomes_implement_delta(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            app = root / "apps" / "habit"
+            project = _project(app)
+            from conversation_delta import append_delta
+            from prompt_compiler import compile_into_workbench
+
+            compile_into_workbench(project, root, "build a habit tracker")
+            append_delta(
+                project, root, "add a streak counter and a weekly view"
+            )
+            obj = next_execute_objective(project, root)
+            self.assertEqual(obj.kind, KIND_IMPLEMENT_DELTA)
+            self.assertEqual(obj.source, "owner_delta")
+            self.assertIn("streak", obj.gap.lower())

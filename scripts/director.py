@@ -12,7 +12,7 @@ Recommended actions:
 * ``pick_project`` — several projects exist; the owner must choose
 * ``provide_context`` — placeholder intent; start needs a prompt or seed
 * ``start`` — bounded context exists; no mission has run
-* ``continue`` — MORE_WORK / recoverable / budget; keep the loop going
+* ``continue`` — MORE_WORK / recoverable / budget / runnable preview
 * ``done`` — evaluator COMPLETE (remaining product gaps are caveats)
 * ``human`` — HUMAN_REQUIRED; do not continue blindly
 """
@@ -30,13 +30,14 @@ from mission_runner import (
     HUMAN_REQUIRED,
     MORE_WORK,
     RECOVERABLE,
+    RUNNABLE_PREVIEW,
     load_mission_snapshot,
 )
 from product_kernel import (
     assessment_to_dict,
+    focus_module_payload,
     inspect_project,
     select_focus_module,
-    focus_module_payload,
 )
 from project_registry import (
     RegistryError,
@@ -53,7 +54,9 @@ ACTION_CONTINUE = "continue"
 ACTION_DONE = "done"
 ACTION_HUMAN = "human"
 
-CONTINUE_OUTCOMES = frozenset({MORE_WORK, RECOVERABLE, BUDGET_EXHAUSTED})
+CONTINUE_OUTCOMES = frozenset(
+    {MORE_WORK, RECOVERABLE, BUDGET_EXHAUSTED, RUNNABLE_PREVIEW}
+)
 
 FEATURED_MCP = (
     "director_brief",
@@ -149,6 +152,12 @@ def _next_for_assessment(
         if outcome == BUDGET_EXHAUSTED:
             why = (
                 f"{why} Raise --max-beats if the budget was the only stop."
+            )
+        if outcome == RUNNABLE_PREVIEW:
+            why = (
+                f"{why} Configure a coding plugin to implement the "
+                "outstanding product claims; do not treat the preview "
+                "as COMPLETE."
             )
         return NextAction(
             action=ACTION_CONTINUE,

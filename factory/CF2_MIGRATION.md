@@ -472,6 +472,60 @@ follow-up.
 
 ---
 
+## L0-08 — Owner delta reopens product work
+
+### Objective
+
+A new actionable owner delta must invalidate prior product
+acceptance and reopen the mission. COMPLETE describes satisfaction
+of a particular intent revision; it is not a tombstone.
+
+### Changed
+
+`scripts/conversation_delta.py` (PENDING / CLAIMED / VERIFIED /
+BLOCKED), `scripts/mission_runner.py` (mark claimed after a beat;
+MORE_WORK while PENDING), `scripts/objective_generator.py`
+(`implement_delta`).
+
+### Acceptance
+
+- Goal and architecture stay put.
+- The delta is persisted and becomes unsatisfied product intent.
+- The next `run` executes at least one beat.
+- Only VERIFIED deltas contribute to COMPLETE.
+- Banner text does not verify a delta.
+
+---
+
+## L0-09 — Product-intent acceptance
+
+### Objective
+
+Distinguish mechanical/runtime evidence from product evidence.
+Natural-language intent compiles into explicit claims. COMPLETE
+requires all applicable layers for the current intent revision.
+No-key generic CRUD is `RUNNABLE_PREVIEW`, not product COMPLETE.
+
+### New
+
+`scripts/product_intent.py`, `tests/test_product_intent.py`.
+
+### Changed
+
+Prompt compiler writes claims. `evaluate_acceptance` scores
+mechanical vs product. Evaluator emits `RUNNABLE_PREVIEW` when
+files/runtime pass, claims fail, and no coding plugin is configured.
+
+### Acceptance
+
+- `build a habit tracker` compiles define/record/date/persist claims.
+- Generic item CRUD does not satisfy those claims.
+- Title/banner string matching is not an acceptance rule.
+- No-key fallback does not manufacture COMPLETE.
+- `new actionable intent > last accepted intent` ⇒ not COMPLETE.
+
+---
+
 ## Slice A — Product intelligence service (P2/P5 inventory)
 
 ### Objective
