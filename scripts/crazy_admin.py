@@ -12,8 +12,11 @@ under ``apps/<id>`` (embedded), a sibling folder, or a separate repo (external).
 Commands:
     crazy-admin startproject <id> [target_path]   scaffold a new app + register
     crazy-admin attachproject <id> <existing_path> register an existing codebase
+    crazy-admin run [<id>] [--seed FILE]          closed-loop mission until done
+    crazy-admin stop [<id>]                       request the runner to halt
+    crazy-admin brief [<id>]                      Director next-command brief
     crazy-admin status [<id>] [--path DIR]        show a project's status
-    crazy-admin advance [<id>] [--path DIR] [--all] run build advance(s)
+    crazy-admin advance [<id>] [--path DIR] [--all] run one build beat
 
 This CLI only writes the app scaffold (owner-driven), the per-project factory
 state, and the registry. It never applies code, commits, pushes, or merges.
@@ -68,6 +71,21 @@ from owner_controls import (  # noqa: E402
     revoke_proposal,
     revoke_task,
     set_capability,
+)
+from product_kernel import (  # noqa: E402
+    assessment_to_dict,
+    assess_project,
+    inspect_project,
+    render_assessment,
+)
+from director import director_brief, render_brief  # noqa: E402
+from mission_runner import (  # noqa: E402
+    COMPLETE,
+    load_mission_snapshot,
+    render_mission,
+    render_mission_snapshot,
+    run_mission,
+    stop_mission,
 )
 from project_control import (  # noqa: E402
     ControlError,
@@ -759,6 +777,7 @@ def status(project: dict[str, Any], root: Path) -> dict[str, Any]:
                 load_project_factory_config(project["app_path"], root),
             )
         )
+    info["mission"] = load_mission_snapshot(project, root)
     return info
 
 
@@ -800,6 +819,15 @@ def _print_status(info: dict[str, Any]) -> None:
     )
     blocker = info.get("current_blocker")
     print(f"\nCurrent blocker:\n  {blocker or '(none — not blocked)'}")
+    mission = info.get("mission")
+    if not isinstance(mission, dict):
+        mission = {}
+    print("\nMission:")
+    print(f"  outcome:    {mission.get('outcome') or '(none)'}")
+    print(f"  reason:     {mission.get('reason') or '(none)'}")
+    print(f"  artifact:   {mission.get('artifact') or '(none)'}")
+    print(f"  trace:      {mission.get('trace') or '(none)'}")
+    print(f"  objective:  {mission.get('objective') or '(none)'}")
     print(f"\nNext:\n  bin/crazy-admin next {info['active_project']}")
 
 
@@ -938,6 +966,73 @@ def main(argv: list[str] | None = None) -> int:
     met.add_argument(
         "--json", action="store_true", help="emit machine-readable JSON"
     )
+    brf = sub.add_parser(
+        "brief",
+        help="Director: product + mission + recommended next command",
+    )
+    brf.add_argument("project_id", nargs="?", default=None)
+    brf.add_argument("--path", default=None)
+    brf.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
+    insp = sub.add_parser(
+        "inspect",
+        help="product intelligence: intended vs observable (no workers)",
+    )
+    insp.add_argument("project_id", nargs="?", default=None)
+    insp.add_argument("--path", default=None)
+    insp.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
+    assc = sub.add_parser(
+        "assess",
+        help="recompute product model, gaps, and Director objectives",
+    )
+    assc.add_argument("project_id", nargs="?", default=None)
+    assc.add_argument("--path", default=None)
+    assc.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
+    mcp = sub.add_parser(
+        "serve-mcp",
+        help="run Crazy Factory as an MCP stdio server",
+    )
+    mcp.add_argument(
+        "--jsonl",
+        action="store_true",
+        help="newline-delimited JSON instead of Content-Length framing",
+    )
+    runp = sub.add_parser(
+        "run",
+        help=(
+            "closed-loop mission: keep advancing until accepted, "
+            "blocked, or budget"
+        ),
+    )
+    runp.add_argument("project_id", nargs="?", default=None)
+    runp.add_argument("--path", default=None)
+    runp.add_argument(
+        "--seed",
+        default=None,
+        help="Install this seed as docs/seed.md and import it as context.",
+    )
+    runp.add_argument(
+        "--max-beats",
+        type=int,
+        default=12,
+        help="Maximum execution-kernel beats (default 12).",
+    )
+    runp.add_argument(
+        "--keep-gates",
+        action="store_true",
+        help="Do not enable the workbench autonomous profile.",
+    )
+    stopc = sub.add_parser(
+        "stop",
+        help="request the mission runner to halt at the next evaluation",
+    )
+    stopc.add_argument("project_id", nargs="?", default=None)
+    stopc.add_argument("--path", default=None)
     adv = sub.add_parser("advance")
     adv.add_argument("project_id", nargs="?", default=None)
     adv.add_argument("--path", default=None)
@@ -1118,10 +1213,161 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
         else:
             print(render_metrics_md(metrics))
         return 0
+    if args.command == "brief":
+        pid = args.project_id
+        path = args.path
+        payload: dict[str, Any]
+        if pid or path:
+            try:
+                project = _resolve_project_arg(root, pid, path=path)
+                payload = director_brief(root, project=project)
+            except RegistryError:
+                payload = director_brief(root, project_id=pid)
+        else:
+            try:
+                project = _resolve_project_arg(root, None, path=None)
+                payload = director_brief(root, project=project)
+            except RegistryError:
+                payload = director_brief(root)
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2))
+        else:
+            print(render_brief(payload), end="")
+        return 0
+    if args.command in ("inspect", "assess"):
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
+        assessment = (
+            assess_project(project, root)
+            if args.command == "assess"
+            else inspect_project(project, root)
+        )
+        payload = assessment_to_dict(assessment)
+        if args.command == "inspect":
+            payload["mission"] = load_mission_snapshot(project, root)
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2))
+        else:
+            print(render_assessment(assessment), end="")
+            if args.command == "inspect":
+                print()
+                print(render_mission_snapshot(payload["mission"]), end="")
+        return 0
+    if args.command == "run":
+        return _dispatch_run(args, root)
+    if args.command == "stop":
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
+        rel = stop_mission(project, root)
+        print(f"Stop requested for '{project['name']}' ({rel}).")
+        return 0
+    if args.command == "serve-mcp":
+        from mcp_server import serve as serve_mcp
+
+        return serve_mcp(root=root, jsonl=bool(getattr(args, "jsonl", False)))
     owner_result = _dispatch_owner(args, root)
     if owner_result is not None:
         return owner_result
     return _dispatch_advance(args, root)
+
+
+def _dispatch_run(args: argparse.Namespace, root: Path) -> int:
+    """Create-if-needed, optional seed ingest, then closed-loop run."""
+    pid = args.project_id
+    path = getattr(args, "path", None)
+    if pid:
+        project = ensure_project(pid, root, path=str(path) if path else None)
+    else:
+        project = _resolve_project_arg(root, None, path=path)
+    seed = getattr(args, "seed", None)
+    if seed:
+        ingest_start_context(project, root, seed=str(seed))
+    result = run_mission(
+        project,
+        root,
+        max_beats=int(getattr(args, "max_beats", 12) or 12),
+        apply_profile=not bool(getattr(args, "keep_gates", False)),
+    )
+    print(render_mission(result), end="")
+    return 0 if result.outcome == COMPLETE else 1
+
+
+def ensure_project(
+    project_id: str, root: Path, *, path: str | None = None
+) -> dict[str, Any]:
+    """Return a registered project, scaffolding it when missing."""
+    registry = load_registry(root)
+    if project_id not in registry["projects"]:
+        startproject(project_id, path, root=root)
+    return resolve_project(load_registry(root), project_id)
+
+
+def _resolve_seed_path(seed: str, root: Path) -> Path:
+    src = Path(seed)
+    if src.is_file():
+        return src
+    if not src.is_absolute():
+        alt = root / src
+        if alt.is_file():
+            return alt
+    raise AdminError(f"Seed file not found: {seed}")
+
+
+def install_seed(project: dict[str, Any], seed: str, root: Path) -> Path:
+    """Copy a seed into the workbench and ingest it as context."""
+    src = _resolve_seed_path(seed, root)
+    app = _abs_app_dir(str(project["app_path"]), root)
+    dest = app / "docs" / "seed.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    add_context(project=project, source=str(dest), root=root, now=_now())
+    return dest
+
+
+def ingest_start_context(
+    project: dict[str, Any],
+    root: Path,
+    *,
+    seed: str | None = None,
+    context: str | None = None,
+) -> dict[str, str | None]:
+    """Install seed and/or context for a one-call mission start.
+
+    ``seed`` is a filesystem path. ``context`` is either a path (file,
+    directory, or archive) or inline markdown written to ``docs/seed.md``
+    when no seed path was given.
+    """
+    summary: dict[str, str | None] = {"seed": None, "context": None}
+    if seed:
+        summary["seed"] = str(install_seed(project, seed, root))
+    if not context:
+        return summary
+    ctx_path = Path(context)
+    resolved = ctx_path
+    if not resolved.exists() and not ctx_path.is_absolute():
+        alt = root / ctx_path
+        if alt.exists():
+            resolved = alt
+    if resolved.exists():
+        if seed is None and resolved.is_file():
+            summary["seed"] = str(install_seed(project, str(resolved), root))
+        else:
+            add_context(
+                project=project,
+                source=str(resolved),
+                root=root,
+                now=_now(),
+            )
+            summary["context"] = str(resolved)
+        return summary
+    app = _abs_app_dir(str(project["app_path"]), root)
+    dest = app / "docs" / ("seed.md" if seed is None else "extra_context.md")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(context, encoding="utf-8")
+    add_context(project=project, source=str(dest), root=root, now=_now())
+    if seed is None:
+        summary["seed"] = str(dest)
+    else:
+        summary["context"] = str(dest)
+    return summary
 
 
 def _dispatch_advance(args: argparse.Namespace, root: Path) -> int:

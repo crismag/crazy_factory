@@ -99,6 +99,22 @@ class AcceptanceTests(unittest.TestCase):
             self.assertFalse(report.validation_passed)
 
 
+class RelativePathTests(unittest.TestCase):
+    """Acceptance must resolve registry-relative paths against ``root``."""
+
+    def test_relative_paths_resolve_against_root_not_cwd(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _scaffold(root)
+            project = {
+                "app_path": "app",
+                "task_root": "app/factory_tasks",
+                "name": "demo",
+            }
+            report = evaluate_acceptance(project, root)
+            self.assertTrue(report.accepted, report.reasons)
+
+
 class ContractEnforcementTests(unittest.TestCase):
     """9E ST9: a frozen file-contract's declared interfaces must be present."""
 
@@ -160,7 +176,8 @@ class EmptyProjectTests(unittest.TestCase):
             self.assertFalse(report.has_code)
             self.assertFalse(report.accepted)
             self.assertTrue(
-                any("no real source" in r for r in report.reasons), report.reasons
+                any("no real source" in r for r in report.reasons),
+                report.reasons,
             )
 
 

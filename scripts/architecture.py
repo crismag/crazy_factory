@@ -27,6 +27,8 @@ Contract schema (all keys optional)::
         "forbidden_names": ["models.py", "*.db", "*.sqlite"],
         "forbidden_imports": ["sqlalchemy", "django", "flask", "fastapi"],
         "required_files": ["src/task_model.py", "tests/test_task_model.py"],
+        "start_command": "python3 -m src.task_board",
+        "listen_port": 8000,
     }
 """
 
@@ -280,5 +282,7 @@ def coherence_commands(app_path: str, contract: dict[str, Any]) -> list[str]:
     commands = [f"python3 -m compileall -q {joined}"]
     if tests:
         commands.append(f"python3 -m pytest {' '.join(tests)}")
-    commands.append(f"ruff check {joined}")
+    commands.append(f"python3 -m ruff check {joined}")
+    if (base / "requirements.txt").is_file():
+        commands.insert(0, "python3 -m pip install -r requirements.txt")
     return commands

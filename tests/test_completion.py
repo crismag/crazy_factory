@@ -22,6 +22,7 @@ from completion import (  # noqa: E402
     initial_checklist_markdown,
     is_complete,
     items_from_required_files,
+    mark_all_open_done,
     mark_first_open_done,
     next_open_item,
     parse_checklist,
@@ -65,6 +66,14 @@ class ParseTickTests(unittest.TestCase):
         # Nothing left open -> no-op.
         md, done = mark_first_open_done(md)
         self.assertIsNone(done)
+
+    def test_mark_all_open_done_ticks_every_item(self) -> None:
+        md = "- [ ] a\n- [x] b\n- [ ] c\n"
+        md, done = mark_all_open_done(md)
+        self.assertEqual(done, ["a", "c"])
+        self.assertTrue(is_complete(parse_checklist(md)))
+        md, done = mark_all_open_done(md)
+        self.assertEqual(done, [])
 
     def test_render_roundtrip(self) -> None:
         items = parse_checklist("- [ ] x\n- [x] y\n")
@@ -121,10 +130,13 @@ class DecomposeTests(unittest.TestCase):
         # task_model + its test collapse into one item; storage stands alone.
         self.assertEqual(len(items), 2)
         self.assertIn("src/task_model.py", items[0])
-        self.assertIn("tests/test_task_model.py", items[0])  # paired in one item
-        self.assertTrue(items[0].index("src/task_model.py") < items[0].index(
-            "tests/test_task_model.py"
-        ))  # source leads, so focus resolves to the module
+        self.assertIn(
+            "tests/test_task_model.py", items[0]
+        )  # paired in one item
+        self.assertTrue(
+            items[0].index("src/task_model.py")
+            < items[0].index("tests/test_task_model.py")
+        )  # source leads, so focus resolves to the module
         self.assertIn("src/storage.py", items[1])
         # build_checklist_items prefers required_files over any AI call.
         with patch(
@@ -158,9 +170,7 @@ class DecomposeTests(unittest.TestCase):
         self.assertTrue(
             any("src/b.py" in i and "tests/" not in i for i in items)
         )
-        self.assertTrue(
-            any("tests/test_orphan.py" in i for i in items)
-        )
+        self.assertTrue(any("tests/test_orphan.py" in i for i in items))
 
     def test_initial_markdown_is_all_open(self) -> None:
         md = initial_checklist_markdown(
@@ -259,7 +269,9 @@ class FocusFileTokenTests(unittest.TestCase):
             status="blocked",
             interface_gaps=["src/storage.py: missing interface `save`"],
             is_stub=True,
-            block_reasons=["src/storage.py is a stub (all-placeholder bodies)"],
+            block_reasons=[
+                "src/storage.py is a stub (all-placeholder bodies)"
+            ],
         )
         self.assertEqual(rec["status"], "blocked")
         self.assertTrue(rec["evidence"]["is_stub"])
@@ -312,6 +324,29 @@ class NoProgressMonitorTests(unittest.TestCase):
             factory_state={}, project_state={"current_blocker": "no_progress"}
         )
         self.assertTrue(signal.stalled)
+
+    def test_first_no_progress_retries_second_parks(self) -> None:
+        import factory_advance as fa
+
+        state: dict[str, object] = {"beats_without_progress": 5}
+        self.assertEqual(fa.handle_no_progress(state), "retry")
+        self.assertEqual(state["beats_without_progress"], 0)
+        self.assertEqual(state["no_progress_recoveries"], 1)
+        self.assertEqual(fa.handle_no_progress(state), "park")
+
+    def test_real_progress_resets_no_progress_recoveries(self) -> None:
+        import factory_advance as fa
+
+        state: dict[str, object] = {
+            "beats_without_progress": 2,
+            "no_progress_recoveries": 1,
+        }
+        out = fa.progress_blocker(
+            state, progressed=True, current_blocker="application_rejected"
+        )
+        self.assertIsNone(out)
+        self.assertEqual(state["beats_without_progress"], 0)
+        self.assertEqual(state["no_progress_recoveries"], 0)
 
 
 if __name__ == "__main__":

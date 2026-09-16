@@ -32,7 +32,12 @@ The backlog is the canonical inventory of future work. It records outcomes to pu
 
 Select work by safety, dependency order, owner priority, value, scope size, and verifiability. Prefer one bounded task over several partially defined tasks. See [workflows/WORKFLOW_TASK_SELECTION.md](workflows/WORKFLOW_TASK_SELECTION.md).
 
-## Bootstrap Backlog
+## Bootstrap Backlog (historical)
+
+The CF-001…CF-010 rows below are ancestry from the documentation
+bootstrap. Active work is tracked in
+[CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) and
+[CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
 | ID | Priority | Status | Outcome | Depends On |
 | --- | --- | --- | --- | --- |

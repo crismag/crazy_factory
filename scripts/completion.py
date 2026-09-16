@@ -108,6 +108,20 @@ def mark_first_open_done(markdown: str) -> tuple[str, str | None]:
     return markdown, None
 
 
+def mark_all_open_done(markdown: str) -> tuple[str, list[str]]:
+    """Flip every open item to done.
+
+    Returns ``(updated_markdown, completed_texts)``. ``completed_texts``
+    is empty (markdown unchanged) when nothing is open.
+    """
+    items = parse_checklist(markdown)
+    completed = [item.text for item in items if not item.done]
+    if not completed:
+        return markdown, []
+    updated = [ChecklistItem(item.text, True) for item in items]
+    return render_checklist(updated), completed
+
+
 def _dedupe(texts: list[str]) -> list[str]:
     """Order-preserving de-duplication, capped at ``_MAX_ITEMS``."""
     seen: set[str] = set()

@@ -165,19 +165,30 @@ def is_stub_source(app_path: str, target_rel: str) -> bool:
     return path.exists() and _is_stub_file(path)
 
 
+def _resolved(value: object, root: Path) -> Path:
+    """Join a repository-relative workbench path to ``root``.
+
+    ``evaluate_acceptance`` must not depend on process CWD. Registry paths
+    such as ``apps/demo`` are relative to the factory root, not to wherever
+    the owner (or a unit test) happened to invoke the CLI.
+    """
+    path = Path(str(value))
+    return path if path.is_absolute() else (root / path)
+
+
 def evaluate_acceptance(
     project: dict[str, Any], root: Path
 ) -> AcceptanceReport:
     """Return the deterministic acceptance verdict for a project."""
-    app_path = str(project["app_path"])
-    task_root = Path(str(project["task_root"]))
+    app = _resolved(project["app_path"], root)
+    app_path = str(app)
+    task_root = _resolved(project["task_root"], root)
     arch = load_contract(app_path) or {}
 
     # Issue #38 #6: a run cannot be ACCEPTED if the application is empty. A
     # contract-less project would otherwise pass vacuously; require real source
-    # code to exist (resolve the workbench against root so it is CWD-independent).
-    wb = app_path if Path(app_path).is_absolute() else str(root / app_path)
-    has_code = workbench_metrics(wb).source_files >= 1
+    # code to exist (paths resolve against root, not process CWD).
+    has_code = workbench_metrics(app_path).source_files >= 1
 
     # 1. required files present
     missing = missing_required(app_path, arch) if arch else []
@@ -221,16 +232,17 @@ def evaluate_acceptance(
 
     # 5. the file-contracts we generated are met (declared interfaces present)
     context_root = str(
-        project.get("context_root") or (Path(app_path) / "factory_context")
+        _resolved(
+            project.get("context_root") or (app / "factory_context"),
+            root,
+        )
     )
     contract_gaps = _contract_interface_gaps(app_path, context_root)
     contracts_satisfied = not contract_gaps
 
     reasons: list[str] = []
     if not has_code:
-        reasons.append(
-            "application has no real source files (empty project)"
-        )
+        reasons.append("application has no real source files (empty project)")
     if not required_present:
         reasons.append(f"missing required files: {', '.join(missing)}")
     if not no_stub_sources:

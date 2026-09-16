@@ -45,6 +45,10 @@ ALLOWED_COMMANDS: tuple[tuple[str, ...], ...] = (
     ("php", "-v"),
     ("composer", "test"),
     ("phpunit",),
+    # Workbench-scoped install: requirements.txt only. Arbitrary
+    # `pip install pkg` / `pip install -U` stays blocked.
+    ("python3", "-m", "pip", "install", "-r", "requirements.txt"),
+    ("python", "-m", "pip", "install", "-r", "requirements.txt"),
 )
 
 # Tokens that are never allowed anywhere in a check, for clear messaging.

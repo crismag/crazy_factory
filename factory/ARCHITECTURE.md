@@ -2,9 +2,15 @@
 
 ## Status
 
-This document defines the conceptual architecture for Crazy Factory planning and
-guarded execution. Runtime details live in `scripts/`, `bin/`, `config/`, and
-`docs/USAGE.md`; this file describes the intended system shape and boundaries.
+This document is the **historical** conceptual architecture for the
+guarded execution kernel. Crazy Factory 2.0 (P0 closed loop first;
+product intelligence and MCP later) is specified in
+[CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md) and audited in
+[docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
+
+Runtime details live in `scripts/`, `bin/`, `config/`, and
+`docs/USAGE.md`. This file still describes the execution-kernel shape
+and boundaries that the P0 runner **keeps**.
 
 ## System Shape
 
@@ -70,8 +76,10 @@ The memory system preserves:
 
 ## Future Capability Boundaries
 
-Ollama/local model access, cron-style mission invocation, project registries,
-and multi-project targeting now have initial runtime support. MCP integration,
-Codex/Claude oversight, richer multi-model collaboration, and production-grade
-unattended operation remain roadmap items whose contracts must be planned and
-approved before implementation.
+Ollama/local model access, cron-style mission invocation, project
+registries, and multi-project targeting have runtime support. P0 adds
+an in-process mission runner (`crazy-admin run`). Inspect/assess and a
+stdio MCP server exist as inventory. Codex/Claude as *implementation*
+providers, richer multi-model collaboration, and production-grade
+unattended operation remain later priorities. See [ROADMAP.md](ROADMAP.md)
+and [CF2_MIGRATION.md](CF2_MIGRATION.md).

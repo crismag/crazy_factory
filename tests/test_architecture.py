@@ -117,7 +117,9 @@ class CommandsAndLoadTests(unittest.TestCase):
             self.assertTrue(
                 any(c.startswith("python3 -m pytest") for c in cmds)
             )
-            self.assertTrue(any(c.startswith("ruff check") for c in cmds))
+            self.assertTrue(
+                any("python3 -m ruff check" in c for c in cmds)
+            )
             self.assertTrue(all("src" in c or "tests" in c for c in cmds))
 
     def test_coherence_commands_empty_without_declared_or_existing_dirs(

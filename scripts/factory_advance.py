@@ -84,9 +84,15 @@ from completion import (  # noqa: E402
     CHECKLIST_FILENAME,
     checklist_focus,
     initial_checklist_markdown,
+    mark_all_open_done,
     mark_first_open_done,
     open_items,
     parse_checklist,
+)
+from agent_executor import (  # noqa: E402
+    apply_executor_result,
+    build_request,
+    default_executor,
 )
 from test_builder import (  # noqa: E402
     run_test_builder_stage,
@@ -115,6 +121,12 @@ from project_contract import (  # noqa: E402
     derive_and_write_seed_contract,
 )
 from workbench_growth import workbench_metrics  # noqa: E402
+from objective_generator import (  # noqa: E402
+    next_execute_objective,
+    persist_objective,
+    progress_repair_objective,
+    render_objective_focus,
+)
 from mission_state import (  # noqa: E402
     load_state,
     persist_state,
@@ -159,6 +171,7 @@ from settings import load_engine_settings  # noqa: E402
 # item completed, the loop is active but not advancing — stop churning and park.
 NO_PROGRESS = "no_progress"
 NO_PROGRESS_BEATS = 5
+NO_PROGRESS_RETRIES = 1
 _PROGRESS_TERMINAL_BLOCKERS = frozenset(
     {"recovery_exhausted", "self_rejection", "needs_owner_decision"}
 )
@@ -175,6 +188,7 @@ def progress_blocker(
     """
     if progressed:
         project_state["beats_without_progress"] = 0
+        project_state["no_progress_recoveries"] = 0
         return None
     streak = int(project_state.get("beats_without_progress", 0) or 0) + 1
     project_state["beats_without_progress"] = streak
@@ -184,6 +198,28 @@ def progress_blocker(
     ):
         return NO_PROGRESS
     return None
+
+
+def handle_no_progress(project_state: dict[str, Any]) -> str:
+    """Convert a tripped no-progress streak into retry or park.
+
+    The first trip emits a repair retry (reset the streak). A second
+    trip parks with ``no_progress`` so the mission runner can escalate
+    to a justified HUMAN_REQUIRED instead of silently no-op'ing.
+    """
+    recoveries = int(project_state.get("no_progress_recoveries") or 0)
+    if recoveries < NO_PROGRESS_RETRIES:
+        project_state["no_progress_recoveries"] = recoveries + 1
+        project_state["beats_without_progress"] = 0
+        if project_state.get("current_blocker") == NO_PROGRESS:
+            project_state["current_blocker"] = None
+        return "retry"
+    return "park"
+
+
+def _absolute_task_root(task_root: str, root: Path) -> Path:
+    path = Path(str(task_root))
+    return path if path.is_absolute() else (root / path)
 
 
 def _read_text_or_empty(rel_path: str, root: Path) -> str:
@@ -479,6 +515,10 @@ def main(project: dict[str, Any] | None = None) -> int:
             f"checklist item(s) -> {CHECKLIST_FILENAME}"
         )
     focus = checklist_focus(checklist_md)
+    execute_obj = next_execute_objective(project, root)
+    persist_objective(execute_obj, _absolute_task_root(str(task_root), root))
+    obj_focus = render_objective_focus(execute_obj)
+    msg.info(f"Execute objective {execute_obj.id} ({execute_obj.kind})")
     # 9D Layer 1: enrich the focus with a seed-derived, frozen per-file behavior
     # contract so planner/contract/coder/patch-plan all see concrete behaviors
     # instead of a generic "implement <file>". The deterministic checklist
@@ -507,7 +547,9 @@ def main(project: dict[str, Any] | None = None) -> int:
                 f"requirement expansion unavailable for {focus_file}: {exc}"
             )
     planning_context = "\n\n".join(
-        part for part in (context_bundle.text, arch_brief, focus) if part
+        part
+        for part in (context_bundle.text, arch_brief, obj_focus, focus)
+        if part
     )
 
     architect_result = request_architect_result(
@@ -750,14 +792,59 @@ def main(project: dict[str, Any] | None = None) -> int:
             # WHAT was rejected, not just that it was — the rejection checklist.
             msg.rejection("application", application_result.verdict.reasons)
 
+    # P4a: capable implementation actuator. The in-process coder may have
+    # skipped or been rejected; this still writes workbench files when
+    # apply is enabled. Path confinement is enforced by apply_executor_result.
+    executor_written: list[str] = []
+    proposal_application = factory_config.get("proposal_application") or {}
+    if bool(proposal_application.get("allow_apply")):
+        exec_out = default_executor().execute(
+            build_request(project, root, objective=execute_obj)
+        )
+        executor_written, exec_err = apply_executor_result(
+            exec_out, project, root
+        )
+        try:
+            safe_write_json(
+                f"{task_root}/executor_result.json",
+                {
+                    "ok": exec_out.ok,
+                    "provider": exec_out.provider,
+                    "summary": exec_out.summary,
+                    "reason": exec_err or exec_out.reason,
+                    "files": executor_written,
+                },
+                repo_root=root,
+                allowed_roots=[task_root],
+            )
+        except (OSError, ValueError):
+            pass
+        if executor_written:
+            msg.info(
+                f"AgentExecutor ({exec_out.provider}): {exec_out.summary} "
+                f"({len(executor_written)} file(s))"
+            )
+            abs_app = (
+                app_path
+                if Path(app_path).is_absolute()
+                else str(root / app_path)
+            )
+            reloaded = load_contract(abs_app) or load_contract(app_path)
+            if reloaded:
+                arch_contract = reloaded
+        elif exec_out.reason:
+            msg.detail(f"AgentExecutor skipped: {exec_out.reason}")
+
     # SELF_REJECTION: the factory produced work (activated) that its OWN gate
     # rejected for violating the architecture contract. That is a governance
     # contradiction, not a coder failure — do not loop the coder; pause for
     # upstream correction (regenerate the task plan / adjust the contract).
+    # An executor-delivered app is not a self-rejection.
     self_rejection = bool(
         arch_contract
         and application_result.activated
         and not application_result.applied
+        and not executor_written
         and is_contract_conflict(application_result.verdict.reasons)
     )
 
@@ -792,7 +879,9 @@ def main(project: dict[str, Any] | None = None) -> int:
     # against a project that was never applied. Skip execution this beat; the
     # blocker stays application_rejected and recovery owns it.
     apply_rejected = (
-        application_result.activated and not application_result.applied
+        application_result.activated
+        and not application_result.applied
+        and not executor_written
     )
     if apply_rejected:
         msg.detail(
@@ -909,11 +998,10 @@ def main(project: dict[str, Any] | None = None) -> int:
     # the next beat targets the next open item and the project converges. A
     # preserved/green re-validation does no new work and must not over-tick.
     item_completed = False
-    if (
-        application_result.applied
-        and application_result.source != "preserved"
-        and validation_status_label(validation_result) == "passed"
-    ):
+    fresh_apply = (
+        application_result.applied and application_result.source != "preserved"
+    ) or bool(executor_written)
+    if fresh_apply and validation_status_label(validation_result) == "passed":
         # 9D.5: do not retire an item whose declared required file still does
         # not exist. Whole-project coherence can pass without the item's file
         # having been created (the project was already coherent), which would
@@ -924,6 +1012,48 @@ def main(project: dict[str, Any] | None = None) -> int:
         still_missing = set(
             missing_required(app_path, arch_contract) if arch_contract else []
         )
+        applied_files = list(application_result.applied_files) + list(
+            executor_written
+        )
+        delivered = bool(executor_written) and not still_missing
+        if delivered:
+            required = (arch_contract or {}).get("required_files") or []
+            stubby = [
+                rel
+                for rel in required
+                if isinstance(rel, str)
+                and not str(rel).startswith("tests/")
+                and is_stub_source(app_path, rel)
+            ]
+            if not stubby:
+                updated_checklist, completed_names = mark_all_open_done(
+                    checklist_now
+                )
+                if completed_names:
+                    item_completed = True
+                    safe_write_text(
+                        checklist_rel,
+                        updated_checklist,
+                        repo_root=root,
+                        allowed_roots=[task_root],
+                    )
+                    msg.info(
+                        "checklist: executor delivered the application; "
+                        f"completed {len(completed_names)} item(s)"
+                    )
+                    _append_item_evidence(
+                        task_root,
+                        root,
+                        build_item_evidence(
+                            item="; ".join(completed_names),
+                            focus_file=focus_file or "",
+                            validation_status=validation_status_label(
+                                validation_result
+                            ),
+                            applied_files=applied_files,
+                            missing_required_files=sorted(still_missing),
+                        ),
+                    )
         # Issue #35: retire on ACCEPTANCE EVIDENCE, not just coherence-green. The
         # item's deliverable must (1) exist, (2) not be a hollow stub, and (3)
         # satisfy the interfaces its file-contract declares (ST9, per-item).
@@ -933,7 +1063,9 @@ def main(project: dict[str, Any] | None = None) -> int:
         interface_gaps: list[str] = []
         is_stub = False
         block_reasons: list[str] = []
-        if focus_file is not None and focus_file in still_missing:
+        if item_completed:
+            pass
+        elif focus_file is not None and focus_file in still_missing:
             block_reasons.append(
                 f"required file '{focus_file}' does not exist yet (the applied "
                 f"patch did not create it)"
@@ -950,7 +1082,9 @@ def main(project: dict[str, Any] | None = None) -> int:
             block_reasons.extend(
                 f"{focus_file}: {gap}" for gap in interface_gaps
             )
-        if block_reasons:
+        if item_completed:
+            pass
+        elif block_reasons:
             msg.warn(
                 "Not retiring the current item (acceptance evidence missing): "
                 + "; ".join(block_reasons)
@@ -966,7 +1100,7 @@ def main(project: dict[str, Any] | None = None) -> int:
                     validation_status=validation_status_label(
                         validation_result
                     ),
-                    applied_files=list(application_result.applied_files),
+                    applied_files=applied_files,
                     missing_required_files=sorted(still_missing),
                     status="blocked",
                     interface_gaps=interface_gaps,
@@ -979,45 +1113,44 @@ def main(project: dict[str, Any] | None = None) -> int:
             updated_checklist, completed_item = mark_first_open_done(
                 checklist_now
             )
-        if completed_item is not None:
-            item_completed = True
-            safe_write_text(
-                checklist_rel,
-                updated_checklist,
-                repo_root=root,
-                allowed_roots=[task_root],
-            )
-            msg.info(f"checklist: completed item -> {completed_item}")
-            # 9D.5: record acceptance evidence for the retired item so "done"
-            # is auditable (what validated, which files were delivered).
-            _append_item_evidence(
-                task_root,
-                root,
-                build_item_evidence(
-                    item=completed_item,
-                    focus_file=focus_file or "",
-                    validation_status=validation_status_label(
-                        validation_result
-                    ),
-                    applied_files=list(application_result.applied_files),
-                    missing_required_files=sorted(still_missing),
-                ),
-            )
-            # Retire the finished task so the next advance plans the NEXT open
-            # item. Without this the authorized contract is preserved and the
-            # loop never moves past the completed item. If nothing remains open,
-            # leave artifacts in place — the project is satisfied.
-            if open_items(parse_checklist(updated_checklist)):
-                _retire_task_artifacts(task_root)
-                msg.info(
-                    "retired completed task; next advance plans the next item."
+            if completed_item is not None:
+                item_completed = True
+                safe_write_text(
+                    checklist_rel,
+                    updated_checklist,
+                    repo_root=root,
+                    allowed_roots=[task_root],
                 )
+                msg.info(f"checklist: completed item -> {completed_item}")
+                _append_item_evidence(
+                    task_root,
+                    root,
+                    build_item_evidence(
+                        item=completed_item,
+                        focus_file=focus_file or "",
+                        validation_status=validation_status_label(
+                            validation_result
+                        ),
+                        applied_files=applied_files,
+                        missing_required_files=sorted(still_missing),
+                    ),
+                )
+                if open_items(parse_checklist(updated_checklist)):
+                    _retire_task_artifacts(task_root)
+                    msg.info(
+                        "retired completed task; next advance plans the next "
+                        "item."
+                    )
 
     # Issue #37 §6 — no-progress monitor. A beat advances state only if it
     # applied code or completed a checklist item; "recovery succeeded" is NOT
     # progress. After NO_PROGRESS_BEATS of neither, stop the churn and park with
     # a diagnosis instead of looping until the per-trigger budgets run out.
-    progressed = bool(application_result.applied) or item_completed
+    progressed = (
+        bool(application_result.applied)
+        or item_completed
+        or bool(executor_written)
+    )
     if (
         progress_blocker(
             project_state,
@@ -1026,14 +1159,26 @@ def main(project: dict[str, Any] | None = None) -> int:
         )
         == NO_PROGRESS
     ):
-        project_state["current_blocker"] = NO_PROGRESS
-        active_run["current_blocker"] = NO_PROGRESS
-        msg.warn(
-            f"NO_PROGRESS: {project_state['beats_without_progress']} beats with "
-            f"no applied code and no checklist item completed. The loop is "
-            f"active but not advancing project state — parking for owner review "
-            f"rather than continuing to churn recovery."
-        )
+        policy = handle_no_progress(project_state)
+        if policy == "retry":
+            repair = progress_repair_objective(
+                f"{NO_PROGRESS_BEATS} beats with no applied code"
+            )
+            persist_objective(
+                repair, _absolute_task_root(str(task_root), root)
+            )
+            msg.warn(
+                "NO_PROGRESS: streak tripped — emitting repair objective "
+                f"{repair.id} and retrying once instead of parking."
+            )
+        else:
+            project_state["current_blocker"] = NO_PROGRESS
+            active_run["current_blocker"] = NO_PROGRESS
+            msg.warn(
+                f"NO_PROGRESS: {project_state['beats_without_progress']} beats "
+                "with no applied code and no checklist item completed after a "
+                "repair retry — parking for owner review."
+            )
     persist_state(
         root=root,
         state_dir=state_dir,
@@ -1095,7 +1240,8 @@ def main(project: dict[str, Any] | None = None) -> int:
             if application_result.activated
             else []
         ),
-        application_written_files=list(application_result.applied_files),
+        application_written_files=list(application_result.applied_files)
+        + list(executor_written),
         test_plan_status=test_plan_status_label(test_plan_result),
         test_plan_id=test_plan.test_plan_id if test_plan else None,
         validation_status=validation_status_label(validation_result),
