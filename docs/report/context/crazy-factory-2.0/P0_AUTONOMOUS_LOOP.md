@@ -286,8 +286,8 @@ the same command on that seed yields a runnable app.
 | **P0** | Closed loop: context → work → observe → continue | `mission_runner` + `crazy-admin run` |
 | **P1** | Runnable output (build/start/install tools) | observer landed |
 | **P2** | Convergence (objectives from remaining gaps) | `objective_generator` wired into EXECUTE |
-| **P3** | MCP exposes `start/status/continue/stop` | thin wrap of P0; seed-in-start open |
-| **P4** | Better agents / executor adapter | later |
+| **P3** | MCP exposes `start/status/continue/stop` | seed-in-start + mission on inspect/status |
+| **P4** | Better agents / executor adapter | next |
 | **P5** | Broader product intelligence | postpone |
 
 ---
@@ -306,6 +306,6 @@ the same command on that seed yields a runnable app.
 Landed on this branch. Acceptance evaluation now resolves workbench
 paths against the factory root (CWD-independent).
 
-P1 observer and P2 objective generator landed on this branch (see
-`factory/CF2_TASK_CHECKLIST.md`). Remaining: P3 seed-in-start, P4
+P1 observer, P2 objective generator, and P3 MCP seed-in-start landed
+on this branch (see `factory/CF2_TASK_CHECKLIST.md`). Remaining: P4
 coding-agent adapter for a live task-board build.
