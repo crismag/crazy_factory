@@ -1,0 +1,266 @@
+"""Protocol tests for the Crazy Factory MCP server (Slice A)."""
+
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+import unittest
+from io import StringIO
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import mcp_server  # noqa: E402
+from crazy_admin import startproject  # noqa: E402
+from mcp_server import (  # noqa: E402
+    PROTOCOL,
+    TOOLS,
+    call_tool,
+    handle_message,
+    list_resources,
+    serve,
+)
+
+
+def _bootstrap_repo(root: Path) -> None:
+    (root / "config").mkdir(parents=True, exist_ok=True)
+    (root / "apps").mkdir(parents=True, exist_ok=True)
+    (root / "config/projects.yaml").write_text("projects:\n", encoding="utf-8")
+    (root / "config/factory.yaml").write_text(
+        "factory:\n"
+        '  mode: "dry_run"\n'
+        '  state_dir: "state"\n'
+        "  max_lines_per_file: 200\n"
+        "  max_files_per_run: 5\n"
+        "proposal_application:\n  allow_apply: false\n"
+        "validation:\n  allow_run: false\n"
+        "git:\n  allow_auto_commit: false\n",
+        encoding="utf-8",
+    )
+    (root / "config/models.yaml").write_text(
+        "models:\n  planner: x\n", encoding="utf-8"
+    )
+
+
+class ProtocolTests(unittest.TestCase):
+    def test_initialize_and_tool_list(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            init = handle_message(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {"protocolVersion": PROTOCOL},
+                },
+                root,
+            )
+            assert init is not None
+            self.assertEqual(init["result"]["protocolVersion"], PROTOCOL)
+            self.assertEqual(
+                init["result"]["serverInfo"]["name"], "crazy-factory"
+            )
+            listed = handle_message(
+                {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+                root,
+            )
+            assert listed is not None
+            names = [t["name"] for t in listed["result"]["tools"]]
+            self.assertIn("inspect_project", names)
+            self.assertIn("assess_project", names)
+            self.assertNotIn("call_coder", names)
+            self.assertNotIn("call_architect", names)
+            self.assertEqual(len(TOOLS), 12)
+
+    def test_notification_has_no_reply(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            self.assertIsNone(
+                handle_message(
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "notifications/initialized",
+                    },
+                    root,
+                )
+            )
+
+
+class InspectViaMcpTests(unittest.TestCase):
+    def test_import_inspect_assess_resources(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            created = call_tool(
+                "import_project",
+                {"project_id": "todo", "path": "apps/todo"},
+                root,
+            )
+            self.assertFalse(created["isError"], created)
+            seed = (ROOT / "examples/seeds/cli_todo_tracker.md").read_text(
+                encoding="utf-8"
+            )
+            (root / "apps/todo/docs/seed.md").write_text(
+                seed, encoding="utf-8"
+            )
+            inspected = call_tool(
+                "inspect_project", {"project_id": "todo"}, root
+            )
+            self.assertFalse(inspected["isError"], inspected)
+            body = json.loads(inspected["content"][0]["text"])
+            self.assertFalse(body["demo_ready"])
+            self.assertIn("ZERO_CODE_OUTPUT", body["blocking_question"])
+            self.assertTrue(body["objectives"])
+
+            assessed = call_tool(
+                "assess_project", {"project_id": "todo"}, root
+            )
+            self.assertFalse(assessed["isError"], assessed)
+            persist = root / "apps/todo/factory_state/product_model.json"
+            self.assertTrue(persist.is_file(), persist)
+
+            resources = handle_message(
+                {"jsonrpc": "2.0", "id": 3, "method": "resources/list"},
+                root,
+            )
+            assert resources is not None
+            uris = [r["uri"] for r in resources["result"]["resources"]]
+            self.assertIn("crazy://projects/todo/product", uris)
+            read = handle_message(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 4,
+                    "method": "resources/read",
+                    "params": {"uri": "crazy://projects/todo/findings"},
+                },
+                root,
+            )
+            assert read is not None
+            text = read["result"]["contents"][0]["text"]
+            findings = json.loads(text)
+            self.assertIn("blocking_question", findings)
+            self.assertTrue(findings["material_gaps"])
+
+            listed = list_resources(root)
+            self.assertTrue(
+                any(r["uri"] == "crazy://projects" for r in listed)
+            )
+
+    def test_unknown_tool_is_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            result = call_tool("call_coder", {}, root)
+            self.assertTrue(result["isError"])
+
+    def test_jsonl_stdio_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            startproject("todo", "apps/todo", root=root)
+            stdin = StringIO(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "initialize",
+                        "params": {},
+                    }
+                )
+                + "\n"
+                + json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 2,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "inspect_project",
+                            "arguments": {"project_id": "todo"},
+                        },
+                    }
+                )
+                + "\n"
+            )
+            stdout = StringIO()
+            code = serve(root=root, stdin=stdin, stdout=stdout, jsonl=True)
+            self.assertEqual(code, 0)
+            lines = [ln for ln in stdout.getvalue().splitlines() if ln]
+            self.assertEqual(len(lines), 2)
+            init = json.loads(lines[0])
+            self.assertEqual(init["id"], 1)
+            called = json.loads(lines[1])
+            payload = json.loads(called["result"]["content"][0]["text"])
+            self.assertIn("blocking_question", payload)
+
+
+class NoWorkerLeakTests(unittest.TestCase):
+    def test_public_tools_are_intent_shaped(self) -> None:
+        names = {t["name"] for t in TOOLS}
+        for forbidden in (
+            "call_architect",
+            "call_planner",
+            "call_coder",
+            "call_reviewer",
+        ):
+            self.assertNotIn(forbidden, names)
+        self.assertIn("start_mission", names)
+        self.assertIn("continue_mission", names)
+        self.assertIn("stop_mission", names)
+        # Silence unused import lint on mcp_server helper access.
+        self.assertTrue(mcp_server.SERVER_NAME)
+
+
+class MissionToolTests(unittest.TestCase):
+    def test_start_mission_completes_when_already_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            startproject("demo", "apps/demo", root=root)
+            app = root / "apps/demo"
+            (app / "README.md").write_text("# Todo\n", encoding="utf-8")
+            (app / "architecture.json").write_text(
+                json.dumps(
+                    {"required_files": ["src/todo.py", "tests/test_todo.py"]}
+                ),
+                encoding="utf-8",
+            )
+            src = app / "src"
+            src.mkdir(parents=True, exist_ok=True)
+            (src / "todo.py").write_text(
+                "def add(item, items):\n"
+                "    items.append(item)\n"
+                "    return items\n",
+                encoding="utf-8",
+            )
+            tests = app / "tests"
+            tests.mkdir(parents=True, exist_ok=True)
+            (tests / "test_todo.py").write_text(
+                "from src.todo import add\n\n"
+                "def test_add():\n    assert add('a', []) == ['a']\n",
+                encoding="utf-8",
+            )
+            tasks = app / "factory_tasks"
+            tasks.mkdir(parents=True, exist_ok=True)
+            (tasks / "MASTER_CHECKLIST.md").write_text(
+                "- [x] Implement src/todo.py\n"
+                "- [x] Write tests/test_todo.py\n",
+                encoding="utf-8",
+            )
+            (tasks / "validation_result.json").write_text(
+                json.dumps({"status": "passed", "checks": []}),
+                encoding="utf-8",
+            )
+            (tasks / "planned_task.json").write_text("{}", encoding="utf-8")
+            result = call_tool(
+                "start_mission",
+                {"project_id": "demo", "max_beats": 2},
+                root,
+            )
+            self.assertFalse(result["isError"], result)
+            body = json.loads(result["content"][0]["text"])
+            self.assertEqual(body["outcome"], "COMPLETE")
+            self.assertEqual(body["beats"], 0)

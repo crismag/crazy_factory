@@ -8,11 +8,26 @@ that gate every action. For the design rationale behind each layer see
 and [../factory/SEED_GROWN_CONTEXT.md](../factory/SEED_GROWN_CONTEXT.md).
 
 The golden rule: **the model proposes, Python validates, and nothing acts
-without an owner switch.** Every capability is off by default.
+without an owner switch.** Every capability is off by default. `crazy-admin
+run` is the exception that enables an *isolated workbench profile* for one
+project (apply + validation + remediation + autonomy) while the safety floor
+(no push, merge, delete, or engine writes) stays in place.
 
 ---
 
 ## 1. Quick start
+
+Closed-loop mission (P0 — keep working until accepted, blocked, or budget):
+
+```bash
+# Create (if needed), install a seed, and run until a terminal evaluation.
+bin/crazy-admin run todo_app --seed examples/seeds/task_board_web.md
+
+# Request a halt at the next evaluation.
+bin/crazy-admin stop todo_app
+```
+
+One-beat kernel (the owner still cranks each step):
 
 ```bash
 # 1. Create an app to work on (scaffolds a workbench, registers it).
@@ -28,10 +43,11 @@ bin/crazy-admin status todo_app
 bin/crazy-admin advance todo_app
 ```
 
-After step 4 the factory has produced a **planned task** with
+After a single `advance` the factory has produced a **planned task** with
 `authorized: false`. Nothing was written to your app, committed, or pushed. You
-move it forward by flipping switches (Section 5); the Coder proposes only after
-the owner authorizes a valid task and runs another advance.
+move it forward by flipping switches (Section 5), or skip that ritual with
+`run`, which enables the workbench profile and keeps calling `advance` until
+acceptance evidence, a genuine human blocker, or the beat budget.
 
 ---
 
@@ -150,6 +166,10 @@ All commands are `bin/crazy-admin <command>` (a thin wrapper over
 | `add-context <id> <source>` | Ingest a file, directory, or archive (`zip`/`tar`/`tar.gz`/`tgz`/`gz`) into the project's context store. |
 | `migrate-project-runtime <id>` | Bring a pre-relocation project forward: non-destructively copy legacy root `state/`, `factory_state/projects/<id>/`, and `reports/` into the workbench, and materialize `config/factory.yaml` if missing. Leaves the old root folders in place. |
 | `status [id] [--path DIR]` | Show one project: contract validation/authorization, proposal/approval, effective capabilities, current blocker. With no id/path, discover the project from the current workbench. |
+| `inspect [id] [--path DIR] [--json]` | Product intelligence: intended vs observable product, modules, readiness dimensions, Director objectives. Does not run workers or apply code. |
+| `assess [id] [--path DIR] [--json]` | Recompute product intelligence, persist it under `factory_state/`, and print the Director queue. |
+| `run [id] [--path DIR] [--seed FILE] [--max-beats N] [--keep-gates]` | Closed-loop mission: enable the isolated workbench profile (unless `--keep-gates`) and keep advancing until accepted, a genuine human blocker, or the beat budget. Writes `MISSION_TRACE.md`. |
+| `stop [id] [--path DIR]` | Request the mission runner to halt at the next evaluation. |
 | `next [id] [--path DIR]` | Tell you exactly what to do next for a project. With no id/path, discover the project from the current workbench. |
 | `advance [id] [--path DIR] [--all]` | Run one factory advance for a targeted project, discovered workbench, or every registered project. |
 
@@ -165,6 +185,8 @@ the command discovers the project from the current workbench:
 | `revoke-proposal [id]` | Clear proposal approval. |
 | `enable-apply` / `disable-apply [id]` | Toggle whether approved patch plans may be applied. |
 | `enable-validation` / `disable-validation [id]` | Toggle running the allow-listed validation checks. |
+| `enable-remediation` / `disable-remediation [id]` | Toggle automated repair after validation failure. |
+| `enable-autonomous` / `disable-autonomous [id]` | Toggle self-authorize / self-approve inside a beat (does not create a persistent mission by itself). |
 | `enable-commit` / `disable-commit [id]` | Toggle checkpoint auto-commit (never push/merge). |
 
 These edit the project-local control file `apps/<id>/crazy_project.yaml` (and
@@ -176,6 +198,7 @@ Other entry points:
 
 - `bin/factory-advance` — run a advance directly (same as `crazy-admin advance`).
 - `bin/factory-status` / `bin/factory-report` / `bin/factory-watch` — inspect state and reports.
+- `bin/crazy-factory-mcp` / `crazy-admin serve-mcp` — stdio MCP server (intent tools + `crazy://` resources). `--jsonl` for newline-delimited JSON.
 - `scripts/mission_loop.py` — the guarded, cron-friendly continuous entry point (Section 6).
 - `scripts/context_growth.py start|grow|promote` — grow a project from a seed and promote it into the pipeline (see SEED_GROWN_CONTEXT.md).
 
@@ -183,8 +206,11 @@ Other entry points:
 
 ## 4. Execution flow (one advance)
 
-A advance is a single planning-and-proposal pass. Stages run in order; each later
-stage only escalates if the matching owner switch is on.
+A advance is a single planning-and-proposal pass of the **execution
+kernel** (the task loop). `crazy-admin run` is the continuation
+controller that keeps calling that beat. Product-level inspect/assess
+is a separate control-plane operation. See
+[CF2_ARCHITECTURE.md](../factory/CF2_ARCHITECTURE.md).
 
 ```text
 crazy-admin advance <id>

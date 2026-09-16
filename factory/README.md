@@ -7,8 +7,8 @@ repository root.
 
 Implementation now lives outside this directory, mainly in `scripts/`, `bin/`,
 `tests/`, `config/`, and `docs/`. Treat `factory/` as the durable operating
-manual and policy layer that explains how autonomous advances are supposed to
-behave.
+manual and policy layer. The 2.0 plan of record is
+[CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 
 ## Purpose
 
@@ -19,6 +19,7 @@ specialized workers:
 
 | Worker | Primary responsibility |
 | --- | --- |
+| Director | Name the product-level gap and the next objective (P2/P5 inventory) |
 | Architect | Expand goals into architecture and bounded work areas |
 | Planner | Select and define the next smallest valuable task |
 | Coder | Propose and apply owner-approved implementation changes within guarded paths |
@@ -31,13 +32,16 @@ specialized workers:
 
 Start with:
 
-1. [FACTORY_CONTRACT.md](FACTORY_CONTRACT.md)
-2. [MISSION.md](MISSION.md)
-3. [PRINCIPLES.md](PRINCIPLES.md)
-4. [FACTORY_LIFECYCLE.md](FACTORY_LIFECYCLE.md)
-5. [ARCHITECTURE.md](ARCHITECTURE.md)
-6. [context/CURRENT_STATE.md](context/CURRENT_STATE.md)
-7. [BACKLOG.md](BACKLOG.md)
+1. [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md) — current plan of record (P0 loop first)
+2. [CF2_MIGRATION.md](CF2_MIGRATION.md) — slices and task cards
+3. [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md) — why prompt→output fails today
+4. [FACTORY_CONTRACT.md](FACTORY_CONTRACT.md)
+4. [MISSION.md](MISSION.md)
+5. [PRINCIPLES.md](PRINCIPLES.md)
+6. [FACTORY_LIFECYCLE.md](FACTORY_LIFECYCLE.md) — execution-kernel phases
+7. [ARCHITECTURE.md](ARCHITECTURE.md) — historical kernel shape
+8. [context/CURRENT_STATE.md](context/CURRENT_STATE.md)
+9. [BACKLOG.md](BACKLOG.md)
 
 Before autonomous work, load the applicable worker file in [roles/](roles/), the
 shared rules in [instructions/](instructions/), and the relevant phase guide in
@@ -58,8 +62,7 @@ shared rules in [instructions/](instructions/), and the relevant phase guide in
 ## Current Status
 
 The repository has moved beyond documentation bootstrap. It now includes a
-Python CLI and guarded advance pipeline, with owner-controlled stages for
-planning, contracts, coder proposals, patch application, validation, and
-checkpoint commits. This operating package remains the policy and memory layer;
-when it conflicts with the current CLI/runtime, update the documentation or the
-runtime so the contract is explicit again.
+Python CLI, a guarded one-beat advance pipeline, and a P0 closed-loop
+mission runner (`crazy-admin run`). This operating package remains the
+policy and memory layer; when it conflicts with the current CLI/runtime,
+update the documentation or the runtime so the contract is explicit again.
