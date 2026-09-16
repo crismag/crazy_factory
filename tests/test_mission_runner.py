@@ -211,6 +211,36 @@ class LoopTests(unittest.TestCase):
             self.assertEqual(result.beats, 1)
             self.assertIn("allow_apply", result.profile_enabled)
 
+    def test_declared_start_without_module_is_more_work(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("demo", "apps/demo", root=root)
+            _make_accepted(root / "apps/demo")
+            arch_path = root / "apps/demo/architecture.json"
+            arch = json.loads(arch_path.read_text(encoding="utf-8"))
+            arch["start_command"] = "python3 -m src.task_board"
+            arch_path.write_text(json.dumps(arch), encoding="utf-8")
+            calls: list[int] = []
+
+            def tick(_project: dict) -> int:
+                calls.append(1)
+                return 0
+
+            result = run_mission(
+                project=ca.resolve_project(ca.load_registry(root), "demo"),
+                root=root,
+                max_beats=2,
+                apply_profile=False,
+                advance=tick,
+            )
+            self.assertEqual(result.outcome, BUDGET_EXHAUSTED)
+            self.assertIn("not in the workbench", result.reason)
+            self.assertEqual(len(calls), 2)
+            runtime_path = root / "apps/demo/factory_tasks/runtime_result.json"
+            runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+            self.assertEqual(runtime["status"], "missing")
+
 
 class CliRunTests(unittest.TestCase):
     def test_run_cli_completes_without_advance_when_accepted(self) -> None:

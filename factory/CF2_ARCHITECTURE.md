@@ -58,13 +58,15 @@ They must not be the thing the owner cranks with `advance`.
 | Pri | Meaning | Status on this branch |
 | --- | --- | --- |
 | **P0** | Closed loop: context → work → observe → repair → continue | `scripts/mission_runner.py`, `crazy-admin run` |
-| **P1** | Runnable output (install/build/start tools + inspect) | next |
+| **P1** | Runnable output (install/build/start tools + inspect) | **active** |
 | **P2** | Convergence: remaining gaps become the next objective | product kernel inspect helps; not yet wired into EXECUTE |
 | **P3** | External invocation: MCP wraps the working engine | thin `start_mission` / `status` / `continue` / `stop` |
 | **P4** | Better agents: coding-agent adapter, then specialized roles | later |
 | **P5** | Broader product intelligence, dynamic teams, self-improve | postpone |
 
-Do not begin P5 while P0 is unsolved.
+Do not begin P5 while P0/P1 remain unfinished. Phase and task
+checklists: [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md),
+[CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md).
 
 ## P0 shape (what this slice owns)
 
@@ -77,7 +79,7 @@ crazy-admin run <id> [--seed FILE]
       EVALUATE (acceptance, growth, blocker)
       if not terminal:
           EXECUTE = one factory_advance beat (existing kernel)
-          OBSERVE = validation_result + workbench_metrics + blocker
+          OBSERVE = validation_result + workbench_metrics + runtime_observer
           TRACE   append MISSION_TRACE.md
   report artifact or justified blocker
 ```

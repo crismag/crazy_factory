@@ -29,6 +29,7 @@ from acceptance_check import evaluate_acceptance
 from flags import flag_active, set_flag
 from mission_state import load_state
 from owner_controls import set_capability
+from runtime_observer import observe_runtime, persist_runtime
 from workbench_growth import workbench_metrics
 
 COMPLETE = "COMPLETE"
@@ -141,7 +142,24 @@ def evaluate_mission(
         return BUDGET_EXHAUSTED, f"blocker={blocker} (loop produced no code)"
     acceptance = evaluate_acceptance(project, root)
     if acceptance.accepted:
-        return COMPLETE, "acceptance evidence is complete"
+        app = Path(str(project["app_path"]))
+        runtime = observe_runtime(app)
+        task_root = project.get("task_root")
+        if task_root:
+            persist_runtime(runtime, Path(str(task_root)))
+        if not runtime.safe:
+            return HUMAN_REQUIRED, f"runtime unsafe: {runtime.reason}"
+        if runtime.required and not runtime.ok:
+            if beat >= max_beats:
+                return (
+                    BUDGET_EXHAUSTED,
+                    f"beat budget {max_beats} exhausted ({runtime.reason})",
+                )
+            return MORE_WORK, f"runtime: {runtime.reason}"
+        extra = ""
+        if runtime.required:
+            extra = f" (runtime {runtime.status})"
+        return COMPLETE, "acceptance evidence is complete" + extra
     if beat >= max_beats:
         return BUDGET_EXHAUSTED, f"beat budget {max_beats} exhausted"
     if blocker:
@@ -163,6 +181,7 @@ class BeatRecord:
     source_files: int
     test_files: int
     accepted: bool
+    runtime: str = ""
     at: str = field(default_factory=_now)
 
 
@@ -196,6 +215,16 @@ def _record(
 ) -> BeatRecord:
     src, tests = _growth(project, root)
     accepted = evaluate_acceptance(project, root).accepted
+    runtime = ""
+    task_root = project.get("task_root")
+    if task_root:
+        result_path = Path(str(task_root)) / "runtime_result.json"
+        if result_path.is_file():
+            try:
+                payload = json.loads(result_path.read_text(encoding="utf-8"))
+                runtime = str(payload.get("status") or "")
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                runtime = ""
     return BeatRecord(
         index=index,
         evaluation=status,
@@ -204,6 +233,7 @@ def _record(
         source_files=src,
         test_files=tests,
         accepted=accepted,
+        runtime=runtime,
     )
 
 
@@ -227,6 +257,7 @@ def _trace_lines(result: MissionResult) -> str:
             f"- beat {rec.index}: `{rec.evaluation}` "
             f"src={rec.source_files} tests={rec.test_files} "
             f"accepted={str(rec.accepted).lower()} "
+            f"runtime={rec.runtime or 'none'} "
             f"blocker={rec.blocker or 'none'} — {rec.reason}"
         )
     lines.append("")

@@ -7,9 +7,10 @@ kernel** plus a P0 **closed-loop mission runner**. It can keep
 calling the kernel until acceptance evidence, a genuine human
 blocker, or a beat budget — without the owner cranking `advance`.
 
-It is not yet a prompt → working-application engine: validation
-cannot install/build/start apps, and the in-process Coder still
-depends on Ollama for real implementation.
+It is not yet a prompt → working-application engine: a live coding
+agent is still required to *write* the app. The factory can now
+observe a workbench start command and refuse COMPLETE when that
+command is declared but does not run.
 
 The execution audit is
 [docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
@@ -24,6 +25,7 @@ The plan of record is [CF2_ARCHITECTURE.md](../CF2_ARCHITECTURE.md).
   validation, checkpoint, recovery/adjudication
 - P0 mission runner (`crazy-admin run` / `stop`, workbench profile,
   `MISSION_TRACE.md`)
+- P1 runtime observer (workbench-scoped start probe + `runtime_result.json`)
 - product kernel: inspect/assess (P2/P5 inventory, not the loop)
 - MCP stdio server including `start_mission` / `continue_mission` /
   `stop_mission` as wrappers around the runner
@@ -31,14 +33,13 @@ The plan of record is [CF2_ARCHITECTURE.md](../CF2_ARCHITECTURE.md).
 
 ## Not Yet Available
 
-- install / build / start on the validation allowlist (P1)
-- running-product / journey inspection (P1)
+- npm / node / browser journey inspection (P1 deferred)
 - remaining-gap objectives driving EXECUTE (P2)
 - coding-agent executor adapter (P4)
 - dynamic role/skill acquisition (P5)
 
 ## Next State Transition
 
-P1: expand the tool executor so a mission can install dependencies
-where authorized, build, start, and observe runtime failure — then
-feed that back into the same loop.
+P1 (active): runtime observer + workbench-scoped start/install.
+See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and
+[CF2_TASK_CHECKLIST.md](../CF2_TASK_CHECKLIST.md).

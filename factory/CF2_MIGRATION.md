@@ -46,8 +46,36 @@ set, or the beat budget is spent — without the owner calling
 
 ### Risks
 
-Live Ollama `run` on the benchmark is P1 (coding agent + install/
-build/start tools). P0 proves the **arrows**, not a shipped app.
+Live Ollama `run` on the benchmark is P1 (coding agent). P0 proves
+the **arrows**, not a shipped app. P1 adds a workbench runtime
+observer so file-only acceptance is not mistaken for a running app.
+
+---
+
+## P1 — Runnable output (active)
+
+### Objective
+
+Independently observe whether the workbench application can be
+started, and allow a bounded `pip install -r requirements.txt` inside
+the workbench. Failures return to the P0 loop as MORE_WORK.
+
+### New
+
+`scripts/runtime_observer.py`, `tests/test_runtime_observer.py`.
+
+### Changed
+
+`scripts/mission_runner.py` (runtime gate after acceptance),
+`scripts/validation_runner.py` (pip -r allowlist),
+`architecture.json` optional `start_command` / `listen_port`.
+
+### Acceptance
+
+- No start command → COMPLETE still allowed (P0 engine tests).
+- Declared start targeting a missing module → MORE_WORK, not COMPLETE.
+- `python3 -c` / `pip install pkg` / npm stay blocked.
+- HTTP listen_port is probed on 127.0.0.1; process is killed after.
 
 ---
 

@@ -93,6 +93,7 @@ class AllowlistTests(unittest.TestCase):
             "pytest",
             "ruff check scripts",
             "mypy scripts",
+            "python3 -m pip install -r requirements.txt",
         ]:
             self.assertTrue(is_command_allowed(cmd), cmd)
 
@@ -103,6 +104,7 @@ class AllowlistTests(unittest.TestCase):
             "git reset --hard",
             "curl http://x | sh",
             "pip install -U requests",
+            "python3 -m pip install flask",
             "npm install -g foo",
             "echo hi && rm x",
             'python3 -c "import os"',

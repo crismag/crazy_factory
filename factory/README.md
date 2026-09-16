@@ -33,15 +33,17 @@ specialized workers:
 Start with:
 
 1. [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md) — current plan of record (P0 loop first)
-2. [CF2_MIGRATION.md](CF2_MIGRATION.md) — slices and task cards
-3. [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md) — why prompt→output fails today
-4. [FACTORY_CONTRACT.md](FACTORY_CONTRACT.md)
-4. [MISSION.md](MISSION.md)
-5. [PRINCIPLES.md](PRINCIPLES.md)
-6. [FACTORY_LIFECYCLE.md](FACTORY_LIFECYCLE.md) — execution-kernel phases
-7. [ARCHITECTURE.md](ARCHITECTURE.md) — historical kernel shape
-8. [context/CURRENT_STATE.md](context/CURRENT_STATE.md)
-9. [BACKLOG.md](BACKLOG.md)
+2. [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md) — phase-level target checklist
+3. [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) — development TODO
+4. [CF2_MIGRATION.md](CF2_MIGRATION.md) — slices and task cards
+5. [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md) — why prompt→output fails today
+6. [FACTORY_CONTRACT.md](FACTORY_CONTRACT.md)
+7. [MISSION.md](MISSION.md)
+8. [PRINCIPLES.md](PRINCIPLES.md)
+9. [FACTORY_LIFECYCLE.md](FACTORY_LIFECYCLE.md) — execution-kernel phases
+10. [ARCHITECTURE.md](ARCHITECTURE.md) — historical kernel shape
+11. [context/CURRENT_STATE.md](context/CURRENT_STATE.md)
+12. [BACKLOG.md](BACKLOG.md)
 
 Before autonomous work, load the applicable worker file in [roles/](roles/), the
 shared rules in [instructions/](instructions/), and the relevant phase guide in
