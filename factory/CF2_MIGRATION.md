@@ -66,7 +66,7 @@ the workbench. Failures return to the P0 loop as MORE_WORK.
 
 ### Changed
 
-`scripts/mission_runner.py` (runtime gate after acceptance),
+`scripts/mission_runner.py` (runtime probe every evaluation),
 `scripts/validation_runner.py` (pip -r allowlist),
 `architecture.json` optional `start_command` / `listen_port`.
 
@@ -242,6 +242,33 @@ LangChain, or new MCP verbs.
 - Placeholder / specify_intent → `need_context`.
 - Assignment includes constraints, inventory, success, verification.
 - No new dependencies. No new MCP tools.
+
+---
+
+## P4e — Runtime every beat + executor feedback
+
+### Objective
+
+Observe a declared start command on every evaluation, not only after
+file acceptance, so `repair_runtime` can fire mid-loop. Annotate the
+next execute objective with the files (or skip reason) the coding
+plugin actually wrote. Do not add KAE-Memory, LangChain, UI, or new
+MCP verbs.
+
+### Changed
+
+`scripts/mission_runner.py` (`_probe_runtime` before acceptance),
+`scripts/objective_generator.py` (`_annotate_with_executor`),
+`load_mission_snapshot` includes `runtime`.
+
+### Acceptance
+
+- Non-accepted workbench with a declared missing start module persists
+  `runtime_result.json` and the next objective is `repair_runtime`.
+- Greenfield without `architecture.json` stays `code_birth` /
+  `specify_intent` (runtime `unspecified`).
+- Validation repair focus names the previous executor files.
+- No new MCP verbs. Snapshot `runtime` is visible to status/inspect.
 
 ---
 

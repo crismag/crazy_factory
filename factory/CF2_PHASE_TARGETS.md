@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** P4d — execution assignment (`done`)
+**Current phase:** P4e — observe every beat (`done`)
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -59,6 +59,7 @@ Acceptance:
 - [x] Start commands outside the workbench, `python3 -c`, pip-except-requirements, npm, curl, sudo are refused
 - [x] `python3 -m pip install -r requirements.txt` is allowlisted (requirements file must sit in the workbench); arbitrary `pip install pkg` stays blocked
 - [x] Runtime result is persisted (`runtime_result.json`) and appears in the mission trace
+- [x] Runtime is probed every evaluation beat, not only after file acceptance
 - [x] Accepted files **plus** a failing start command → MORE_WORK (not COMPLETE)
 - [x] Accepted files **without** a start command still COMPLETE (P0 engine tests)
 - [x] Documented listen port is probed over HTTP on 127.0.0.1
@@ -113,7 +114,7 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **done** (P4a–P4d). Cursor/Codex IDE adapters and specialized roles remain deferred. |
+| Status | **done** (P4a–P4e). Cursor/Codex IDE adapters and specialized roles remain deferred. |
 | Target | Put strong coding systems in a position to succeed; independently judge the result. |
 | Success | Crazy Factory owns mission/context/assignment/evaluate; the adapter owns implementation. |
 
@@ -125,6 +126,7 @@ Acceptance:
 - [x] Independent evaluator still decides PASS / MORE_WORK / BLOCKED
 - [x] `examples/seeds/task_board_web.md` from a clean workbench → COMPLETE + runtime
 - [x] Purpose-built execution assignment from evidence (not “implement this”)
+- [x] Runtime is observed every evaluation beat; next objective reads executor files
 - [ ] Specialized roles only where they measurably improve completion
 - [ ] Cursor / Codex IDE adapters (P4-09)
 

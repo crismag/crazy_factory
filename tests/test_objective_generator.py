@@ -111,6 +111,65 @@ class GeneratorTests(unittest.TestCase):
             self.assertIn("OBJ-PROGRESS", text)
             self.assertTrue(path.is_file())
 
+    def test_validation_repair_mentions_executor_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            tasks = app / "factory_tasks"
+            _write(
+                tasks / "validation_result.json",
+                json.dumps(
+                    {
+                        "status": "failed",
+                        "checks": [
+                            {
+                                "command": "python3 -m pytest",
+                                "status": "failed",
+                            }
+                        ],
+                    }
+                ),
+            )
+            _write(
+                tasks / "executor_result.json",
+                json.dumps(
+                    {
+                        "ok": True,
+                        "provider": "openai",
+                        "stance": "repair",
+                        "files": ["src/todo.py", "tests/test_todo.py"],
+                    }
+                ),
+            )
+            obj = next_execute_objective(_project(app), Path(tmp))
+            self.assertEqual(obj.kind, KIND_REPAIR_VALIDATION)
+            self.assertIn("src/todo.py", obj.focus)
+            self.assertIn("openai", obj.focus)
+            self.assertIn("do not emit the same files", obj.focus)
+            self.assertIn("repair", obj.focus)
+
+    def test_executor_skip_annotates_focus(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "app"
+            _write(
+                app / "docs/seed.md",
+                "Goal:\nBuild a todo tracker.\n\nSuccess:\nAdd tasks.\n",
+            )
+            _write(
+                app / "factory_tasks/executor_result.json",
+                json.dumps(
+                    {
+                        "ok": False,
+                        "provider": "anthropic",
+                        "reason": "no API key",
+                        "files": [],
+                    }
+                ),
+            )
+            obj = next_execute_objective(_project(app), Path(tmp))
+            self.assertEqual(obj.kind, KIND_CODE_BIRTH)
+            self.assertIn("anthropic", obj.focus)
+            self.assertIn("no API key", obj.focus)
+
     def test_unsafe_runtime_outranks_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             app = Path(tmp) / "app"

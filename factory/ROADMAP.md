@@ -12,7 +12,7 @@ below is retained as ancestry; it is not the current execution plan.
 | **P1** | Runnable output: install/build/start on the tool executor; observe runtime | `done` |
 | **P2** | Convergence: remaining product gaps become the next objective | `done` (engine + module loop) |
 | **P3** | MCP wraps the working engine (`start` / `status` / `continue` / `stop`) | `done` (engine) |
-| **P4** | Coding-agent adapter; factory-owned assignment; specialized roles later | `done` (P4a–P4d); Cursor/Codex IDE adapters deferred |
+| **P4** | Coding-agent adapter; factory-owned assignment; specialized roles later | `done` (P4a–P4e); Cursor/Codex IDE adapters deferred |
 | **P5** | Broader product intelligence, dynamic teams, self-improving capabilities | `done` (P5-01 Director + P5b module loop); P5-02/P5-03 deferred |
 
 Living checklists:
@@ -27,7 +27,8 @@ implementation actuator: `context → Crazy Factory → runnable accepted
 application` on `task_board_web`. P4c is the starting coding
 plugins (Claude/OpenAI; skip when no API key). P4d compiles a
 purpose-built execution assignment from evidence; executor `ok` is
-not acceptance. Ollama is opt-in, not the default. P5a is the
+not acceptance. P4e observes runtime every beat and feeds
+`executor_result.json` into the next objective. Ollama is opt-in, not the default. P5a is the
 Director: `crazy-admin brief` / MCP `director_brief` names the next
 featured command. P5b is the nested module loop: finish one module
 before opening the next. Intelligence map:

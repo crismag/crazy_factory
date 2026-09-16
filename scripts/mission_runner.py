@@ -36,7 +36,7 @@ from objective_generator import (
     persist_objective,
 )
 from owner_controls import set_capability
-from runtime_observer import observe_runtime, persist_runtime
+from runtime_observer import RuntimeReport, observe_runtime, persist_runtime
 from workbench_growth import workbench_metrics
 
 COMPLETE = "COMPLETE"
@@ -132,6 +132,16 @@ def _blocker(project: dict[str, Any], root: Path) -> str:
     return str(raw) if raw else ""
 
 
+def _probe_runtime(project: dict[str, Any]) -> RuntimeReport:
+    """Start-probe the workbench and persist evidence every beat."""
+    app = Path(str(project["app_path"]))
+    runtime = observe_runtime(app)
+    task_root = project.get("task_root")
+    if task_root:
+        persist_runtime(runtime, Path(str(task_root)))
+    return runtime
+
+
 def evaluate_mission(
     project: dict[str, Any], root: Path, *, beat: int, max_beats: int
 ) -> tuple[str, str]:
@@ -150,13 +160,9 @@ def evaluate_mission(
             HUMAN_REQUIRED,
             f"blocker={blocker} (no product change after repair retry)",
         )
+    runtime = _probe_runtime(project)
     acceptance = evaluate_acceptance(project, root)
     if acceptance.accepted:
-        app = Path(str(project["app_path"]))
-        runtime = observe_runtime(app)
-        task_root = project.get("task_root")
-        if task_root:
-            persist_runtime(runtime, Path(str(task_root)))
         if not runtime.safe:
             return HUMAN_REQUIRED, f"runtime unsafe: {runtime.reason}"
         if runtime.required and not runtime.ok:
@@ -431,6 +437,7 @@ def load_mission_snapshot(
         "current_objective": None,
         "focus_module": None,
         "current_module": None,
+        "runtime": None,
     }
     if result_path.is_file():
         try:
@@ -454,6 +461,21 @@ def load_mission_snapshot(
         if module:
             snapshot["current_module"] = module
             snapshot["focus_module"] = module.get("id")
+        runtime_path = Path(str(task_root)) / "runtime_result.json"
+        if runtime_path.is_file():
+            try:
+                runtime = json.loads(
+                    runtime_path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                runtime = None
+            if isinstance(runtime, dict):
+                snapshot["runtime"] = {
+                    "status": runtime.get("status"),
+                    "ok": runtime.get("ok"),
+                    "required": runtime.get("required"),
+                    "reason": runtime.get("reason"),
+                }
     return snapshot
 
 
@@ -462,6 +484,10 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
     if not snapshot.get("outcome"):
         return "## Mission\n\n(no mission has been run)\n"
     obj = snapshot.get("objective") or "none"
+    runtime = snapshot.get("runtime") or {}
+    runtime_status = "none"
+    if isinstance(runtime, dict) and runtime.get("status"):
+        runtime_status = str(runtime.get("status"))
     return (
         "## Mission\n"
         f"- Outcome: `{snapshot.get('outcome')}`\n"
@@ -471,4 +497,5 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
         f"- Trace: `{snapshot.get('trace') or ''}`\n"
         f"- Objective: `{obj}`\n"
         f"- Module: `{snapshot.get('focus_module') or 'none'}`\n"
+        f"- Runtime: `{runtime_status}`\n"
     )

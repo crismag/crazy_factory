@@ -104,7 +104,7 @@ The assignment stance is not “fix the errors”:
 | PLAN | `next_execute_objective`, factory_advance | one objective per beat | assignment names that objective |
 | EQUIP | workbench profile, capability gates | isolated | no new tools; confinement in assignment |
 | EXECUTE | `AgentExecutor` + Claude/OpenAI | provider-neutral | quality assignment, not a thin prompt |
-| OBSERVE | validation + runtime + metrics | structured | assignment + judgment artifacts |
+| OBSERVE | validation + runtime + metrics | every beat | `runtime_result.json` before acceptance; executor files feed the next objective |
 | JUDGE | `evaluate_acceptance`, `evaluate_mission` | multi-gate | `judgment.json`; executor ok ≠ accepted |
 | RECONSIDER | repair objectives, no-progress retry | kinds exist | `investigate` vs blind rewrite |
 | DELIVER | mission trace, Director, MCP | owner-facing | no new MCP verbs |
@@ -113,7 +113,5 @@ The assignment stance is not “fix the errors”:
 
 - KAE-Memory / durable memory (discover need first)
 - specialized tool plugins (browser, security, a11y)
-- runtime observe every beat (not only on acceptance)
-- reading `executor_result.json` into objective selection
 - Cursor/Codex IDE adapters
 - network MCP

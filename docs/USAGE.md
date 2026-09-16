@@ -208,7 +208,7 @@ All commands are `bin/crazy-admin <command>` (a thin wrapper over
 | `brief [id] [--path DIR] [--json]` | Director: intended product + latest mission + one recommended next command. No workers. With no id, catalogs registered projects or briefs the only one. |
 | `inspect [id] [--path DIR] [--json]` | Product intelligence inventory: intended vs observable product, modules, readiness dimensions, Director objectives, plus the latest mission outcome/artifact/trace. Does not run workers or apply code. |
 | `assess [id] [--path DIR] [--json]` | Recompute product intelligence, persist it under `factory_state/`, and print the Director queue. |
-| `run [id] [--path DIR] [--seed FILE] [--max-beats N] [--keep-gates]` | Closed-loop mission: enable the isolated workbench profile (unless `--keep-gates`) and keep advancing until accepted, a genuine human blocker, or the beat budget. After file acceptance, a declared `start_command` is started and probed. Writes `MISSION_TRACE.md`. |
+| `run [id] [--path DIR] [--seed FILE] [--max-beats N] [--keep-gates]` | Closed-loop mission: enable the isolated workbench profile (unless `--keep-gates`) and keep advancing until accepted, a genuine human blocker, or the beat budget. Every evaluation probes a declared `start_command` (not only after file acceptance) and persists `runtime_result.json`. Writes `MISSION_TRACE.md`. |
 | `stop [id] [--path DIR]` | Request the mission runner to halt at the next evaluation. |
 | `next [id] [--path DIR]` | Tell you exactly what to do next for a project. With no id/path, discover the project from the current workbench. |
 | `advance [id] [--path DIR] [--all]` | Run one factory advance for a targeted project, discovered workbench, or every registered project. |

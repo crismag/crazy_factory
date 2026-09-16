@@ -17,8 +17,10 @@ human blocker, or a beat budget — without the owner cranking
 clean workbench reaches COMPLETE with runtime evidence. P4c makes
 Claude and OpenAI the starting coding plugins. P4d compiles a
 purpose-built execution assignment from evidence so the plugin is
-not asked to “implement this task.” P5a names the next MCP/CLI
-verb instead of dumping inspect JSON.
+not asked to “implement this task.” P4e observes runtime every
+evaluation beat (not only after file acceptance) and annotates the
+next execute objective with what the coding plugin actually wrote.
+P5a names the next MCP/CLI verb instead of dumping inspect JSON.
 
 The execution audit is
 [docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
@@ -35,14 +37,16 @@ The MCP surface map is [CF2_MCP_SURFACE.md](../CF2_MCP_SURFACE.md).
   validation, checkpoint, recovery/adjudication
 - P0 mission runner (`crazy-admin run` / `stop`, workbench profile,
   `MISSION_TRACE.md`)
-- P1 runtime observer (workbench-scoped start probe + `runtime_result.json`)
+- P1 runtime observer (workbench-scoped start probe + `runtime_result.json`
+  on every evaluation beat)
 - P2 execute-objective generator (`current_objective.json`; wired into
   `advance` and the mission loop)
 - product kernel: inspect/assess (inventory; also feeds P2 objectives)
 - P3 MCP `start_mission` accepts seed/context + target in one call;
   `get_status` / `inspect` include mission outcome, artifact, and trace
 - P4 `AgentExecutor` plus `execution_assignment` (purpose-built
-  assignment from evidence; Claude/OpenAI plugins; stdlib actuator)
+  assignment from evidence; Claude/OpenAI plugins; stdlib actuator;
+  next objective reads `executor_result.json`)
 - P5a Director (`crazy-admin brief`, MCP `director_brief` /
   `list_projects`; featured vs inventory MCP)
 - P5b nested module loop (`focus_module`, `current_module.json`)
@@ -62,10 +66,10 @@ The MCP surface map is [CF2_MCP_SURFACE.md](../CF2_MCP_SURFACE.md).
 
 ## Next State Transition
 
-P4d is landed: the factory compiles a purpose-built execution
-assignment from existing evidence before a coding plugin runs.
-Executor `ok` is not acceptance. Remaining work is Cursor/Codex
-IDE adapters, specialized roles, and deferred P5 — do not start
-those, UI, network MCP, or KAE-Memory from this slice.
+P4e is landed: every evaluation probes a declared start command, and
+the next execute objective is annotated with the files (or skip
+reason) the coding plugin actually wrote. Remaining work is
+Cursor/Codex IDE adapters, specialized roles, and deferred P5 — do
+not start those, UI, network MCP, or KAE-Memory from this slice.
 See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and
 [CF2_TASK_CHECKLIST.md](../CF2_TASK_CHECKLIST.md).

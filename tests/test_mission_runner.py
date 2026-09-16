@@ -23,6 +23,10 @@ from mission_runner import (  # noqa: E402
     load_mission_snapshot,
     run_mission,
 )
+from objective_generator import (  # noqa: E402
+    KIND_REPAIR_RUNTIME,
+    next_execute_objective,
+)
 from project_control import read_control  # noqa: E402
 
 
@@ -344,3 +348,47 @@ class EvaluateTests(unittest.TestCase):
             )
             self.assertEqual(status, "MORE_WORK")
             self.assertIn("ZERO_CODE_OUTPUT", reason)
+            runtime_path = root / "apps/demo/factory_tasks/runtime_result.json"
+            runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+            self.assertEqual(runtime["status"], "unspecified")
+
+    def test_runtime_is_observed_before_acceptance(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("demo", "apps/demo", root=root)
+            app = root / "apps/demo"
+            _write(
+                app / "architecture.json",
+                json.dumps(
+                    {
+                        "required_files": [
+                            "src/todo.py",
+                            "tests/test_todo.py",
+                        ],
+                        "start_command": "python3 -m src.task_board",
+                    }
+                ),
+            )
+            _write(
+                app / "src/todo.py",
+                "def add(item, items):\n"
+                "    items.append(item)\n"
+                "    return items\n",
+            )
+            project = ca.resolve_project(ca.load_registry(root), "demo")
+            status, reason = evaluate_mission(
+                project, root, beat=0, max_beats=5
+            )
+            self.assertEqual(status, "MORE_WORK")
+            self.assertNotEqual(status, "COMPLETE")
+            runtime_path = app / "factory_tasks/runtime_result.json"
+            self.assertTrue(runtime_path.is_file())
+            runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+            self.assertEqual(runtime["status"], "missing")
+            self.assertTrue(runtime["required"])
+            self.assertFalse(runtime["ok"])
+            obj = next_execute_objective(project, root)
+            self.assertEqual(obj.kind, KIND_REPAIR_RUNTIME)
+            snap = load_mission_snapshot(project, root)
+            self.assertEqual(snap["runtime"]["status"], "missing")

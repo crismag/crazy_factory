@@ -64,7 +64,7 @@ They must not be the thing the owner cranks with `advance`.
 | **P1** | Runnable output (install/build/start tools + inspect) | `done` (observer) |
 | **P2** | Convergence: remaining gaps become the next objective | `done` (engine; `objective_generator`) |
 | **P3** | External invocation: MCP wraps the working engine | `done` (`start` + seed; inspect/status report mission) |
-| **P4** | Better agents: coding-agent adapter, then specialized roles | **done (P4a–P4c)**; P4d assignment compiler active |
+| **P4** | Better agents: coding-agent adapter, then specialized roles | **done (P4a–P4e)**; Cursor/Codex IDE adapters deferred |
 | **P5** | Broader product intelligence, dynamic teams, self-improve | **done (P5-01 Director)**; P5-02/P5-03 deferred |
 
 P5-01 is the Director (owner-facing brief + featured MCP). Do not
@@ -81,7 +81,7 @@ crazy-admin run <id> [--seed FILE]
                                        # safety floor intact (no push/merge/
                                        # delete, no engine writes, path confine)
   loop until COMPLETE | HUMAN_REQUIRED | BUDGET:
-      EVALUATE (acceptance, growth, blocker)
+      EVALUATE (acceptance, growth, blocker, runtime probe)
       if not terminal:
           EXECUTE = one factory_advance beat (existing kernel)
           OBSERVE = validation_result + workbench_metrics + runtime_observer
