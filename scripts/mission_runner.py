@@ -479,6 +479,7 @@ def load_mission_snapshot(
         "focus_module": None,
         "current_module": None,
         "runtime": None,
+        "preview": None,
         "control": None,
     }
     if result_path.is_file():
@@ -518,6 +519,22 @@ def load_mission_snapshot(
                     "required": runtime.get("required"),
                     "reason": runtime.get("reason"),
                 }
+        preview_path = Path(str(task_root)) / "preview.json"
+        if preview_path.is_file():
+            try:
+                preview = json.loads(
+                    preview_path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                preview = None
+            if isinstance(preview, dict):
+                snapshot["preview"] = {
+                    "url": preview.get("url"),
+                    "ok": preview.get("ok"),
+                    "http_status": preview.get("http_status"),
+                    "listen_port": preview.get("listen_port"),
+                    "status": preview.get("status"),
+                }
         decision = load_decision(Path(str(task_root)))
         if decision is not None:
             snapshot["control"] = {
@@ -537,9 +554,13 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
         return "## Mission\n\n(no mission has been run)\n"
     obj = snapshot.get("objective") or "none"
     runtime = snapshot.get("runtime") or {}
+    preview = snapshot.get("preview") or {}
     runtime_status = "none"
     if isinstance(runtime, dict) and runtime.get("status"):
         runtime_status = str(runtime.get("status"))
+    preview_url = ""
+    if isinstance(preview, dict) and preview.get("url"):
+        preview_url = str(preview.get("url"))
     return (
         "## Mission\n"
         f"- Outcome: `{snapshot.get('outcome')}`\n"
@@ -550,6 +571,7 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
         f"- Objective: `{obj}`\n"
         f"- Module: `{snapshot.get('focus_module') or 'none'}`\n"
         f"- Runtime: `{runtime_status}`\n"
+        f"- Preview: `{preview_url or 'none'}`\n"
         f"- Control: `{_control_label(snapshot)}`\n"
     )
 

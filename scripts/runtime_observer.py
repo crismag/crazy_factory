@@ -320,9 +320,32 @@ def observe_runtime(app: Path) -> RuntimeReport:
 
 
 def persist_runtime(report: RuntimeReport, task_root: Path) -> Path:
-    """Write ``runtime_result.json`` under the workbench task root."""
+    """Write runtime and preview evidence under the workbench task root."""
     task_root.mkdir(parents=True, exist_ok=True)
     path = task_root / "runtime_result.json"
     payload: dict[str, Any] = asdict(report)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    preview_path = task_root / "preview.json"
+    preview_path.write_text(
+        json.dumps(preview_record(report), indent=2) + "\n",
+        encoding="utf-8",
+    )
     return path
+
+
+def preview_record(report: RuntimeReport) -> dict[str, Any]:
+    """First-class preview URL for Director / MCP / the owner."""
+    port = report.listen_port
+    url = None
+    if isinstance(port, int) and 1 <= port <= 65535:
+        url = f"http://127.0.0.1:{port}/"
+    http_ok = report.ok and report.http_status is not None
+    return {
+        "url": url,
+        "ok": bool(http_ok),
+        "http_status": report.http_status,
+        "listen_port": port,
+        "status": report.status,
+        "reason": report.reason,
+        "command": list(report.command),
+    }

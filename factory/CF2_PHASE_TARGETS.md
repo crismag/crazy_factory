@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** L0 — prompt compiler + `stdlib-web` (`done`)
+**Current phase:** L0-04 — preview-first stdlib-web (`done`)
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -179,5 +179,6 @@ Acceptance:
 - [x] `vite-react` is recorded and not executable (npm still forbidden)
 - [x] Claude/OpenAI fill screens when a key is present; pytest uses fallback
 - [x] Hand-authored `architecture.json` is not overwritten
-- [ ] Preview-first product UX (L0-04)
+- [x] Preview-first: compiled `stdlib-web` workbenches get a reachable HTTP UI and `preview.json`
+- [ ] Conversational deltas on a running preview (L0-05)
 - [ ] npm / Vite executable stack (P1-07 / L0-07)

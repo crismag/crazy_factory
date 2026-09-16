@@ -20,7 +20,8 @@ Default chain:
 1. ``CloudCodingExecutor`` — Claude (Anthropic) or OpenAI file map.
    Skips immediately when no API key is set (no network).
 2. ``StdlibWebExecutor`` — last-resort fixture for the task-board
-   proof when no API key is set. Live missions use the cloud plugin.
+   proof, or a generic stdlib-web HTTP preview when the compiler
+   locked that stack. Live missions still prefer the cloud plugin.
 
 ``LlmFileExecutor`` (Ollama) is opt-in via
 ``CRAZY_FACTORY_EXECUTOR=ollama``. None of the backends write engine
@@ -40,6 +41,7 @@ from execution_assignment import compile_assignment, render_assignment
 from llm_interaction import structured_call
 from ollama_client import OllamaClient
 from repo_tools import RepoSafetyError, safe_write_text
+from stdlib_preview import generate_stdlib_preview, wants_stdlib_preview
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ACTUATOR_DIR = REPO_ROOT / "examples" / "actuators" / "stdlib_task_board"
@@ -361,19 +363,52 @@ def seed_looks_like_stdlib_task_board(seed: str) -> bool:
     return "task" in text and "python" in text
 
 
+_PREVIEW_KINDS = frozenset(
+    {
+        "code_birth",
+        "repair_runtime",
+        "repair_progress",
+        "repair_validation",
+    }
+)
+
+
 class StdlibWebExecutor:
-    """Capable actuator for the stdlib task-board benchmark seed."""
+    """Stdlib HTTP actuator: task-board fixture, else generic preview."""
 
     name = "stdlib_web"
 
     def execute(self, request: ExecutorRequest) -> ExecutorResult:
-        if not seed_looks_like_stdlib_task_board(request.seed_text):
+        if seed_looks_like_stdlib_task_board(request.seed_text):
+            return self._task_board()
+        app = Path(request.app_path)
+        if not app.is_dir() or not wants_stdlib_preview(
+            app, request.seed_text
+        ):
             return ExecutorResult(
                 ok=False,
                 provider=self.name,
-                summary="seed is not the stdlib task-board proof",
+                summary="seed is not a stdlib-web preview target",
                 reason="seed mismatch",
             )
+        existing = app / "src" / "app.py"
+        overwrite = request.objective_kind in _PREVIEW_KINDS
+        if existing.is_file() and not overwrite:
+            return ExecutorResult(
+                ok=False,
+                provider=self.name,
+                summary="stdlib-web preview already present",
+                reason="preview already present",
+            )
+        files = generate_stdlib_preview(app, request.seed_text)
+        return ExecutorResult(
+            ok=True,
+            provider=self.name,
+            summary="stdlib-web preview actuator",
+            files=files,
+        )
+
+    def _task_board(self) -> ExecutorResult:
         if not ACTUATOR_DIR.is_dir():
             return ExecutorResult(
                 ok=False,
@@ -445,11 +480,11 @@ class ChainedExecutor:
 
 
 def default_executor() -> AgentExecutor:
-    """Cloud coding plugin first; stdlib web closes the proof seed.
+    """Cloud coding plugin first; stdlib web closes preview + proof seed.
 
     Ollama is not the starting coding model. Force it with
     ``CRAZY_FACTORY_EXECUTOR=ollama``. Force a vendor with
-    ``openai`` / ``anthropic``. Force the deterministic proof
+    ``openai`` / ``anthropic``. Force the deterministic stdlib
     actuator with ``stdlib_web``.
     """
     forced = (os.environ.get("CRAZY_FACTORY_EXECUTOR") or "").strip().lower()

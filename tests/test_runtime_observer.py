@@ -151,3 +151,8 @@ class ObserveTests(unittest.TestCase):
             self.assertTrue(path.is_file())
             payload = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(payload["status"], "unspecified")
+            preview = json.loads(
+                (tasks / "preview.json").read_text(encoding="utf-8")
+            )
+            self.assertIsNone(preview["url"])
+            self.assertFalse(preview["ok"])
