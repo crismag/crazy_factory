@@ -55,6 +55,8 @@ class InspectAssessCliTests(unittest.TestCase):
             self.assertEqual(payload["project_id"], "todo")
             self.assertFalse(payload["demo_ready"])
             self.assertTrue(payload["objectives"])
+            self.assertIn("mission", payload)
+            self.assertIsNone(payload["mission"]["outcome"])
 
             with (
                 patch("crazy_admin.find_repo_root", return_value=root),

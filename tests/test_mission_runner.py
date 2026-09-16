@@ -20,6 +20,7 @@ from mission_runner import (  # noqa: E402
     HUMAN_REQUIRED,
     enable_workbench_profile,
     evaluate_mission,
+    load_mission_snapshot,
     run_mission,
 )
 from project_control import read_control  # noqa: E402
@@ -210,6 +211,10 @@ class LoopTests(unittest.TestCase):
             self.assertEqual(result.outcome, COMPLETE, result.reason)
             self.assertEqual(result.beats, 1)
             self.assertIn("allow_apply", result.profile_enabled)
+            snap = load_mission_snapshot(project, root)
+            self.assertEqual(snap["outcome"], COMPLETE)
+            self.assertTrue(snap["trace"])
+            self.assertTrue(snap["artifact"])
 
     def test_declared_start_without_module_is_more_work(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -113,6 +113,33 @@ retry once with a repair objective, then escalate to HUMAN_REQUIRED.
 
 ---
 
+## P3 — MCP wraps the working engine
+
+### Objective
+
+External callers start a genuine mission with context + target in
+one call. Status and inspect report the mission outcome, artifact,
+and trace — not just pipeline capabilities or product-kernel gaps.
+
+### Changed
+
+`scripts/mcp_server.py` (`start_mission` seed/context/target;
+`inspect_project` / `get_status` include `mission`),
+`scripts/crazy_admin.py` (`ensure_project`, `ingest_start_context`;
+CLI inspect/status show mission), `scripts/mission_runner.py`
+(`load_mission_snapshot`).
+
+### Acceptance
+
+- Unregistered `project_id` is created; seed file or inline context
+  lands in `docs/seed.md` and is ingested before the loop starts.
+- Missing seed is an MCP error (mission does not run).
+- After a run, `get_status` and `inspect_project` (and CLI
+  `status` / `inspect --json`) include outcome, artifact, and trace.
+- Transport stays stdio JSON-RPC; no network auth.
+
+---
+
 ## Slice A — Product intelligence service (P2/P5 inventory)
 
 ### Objective

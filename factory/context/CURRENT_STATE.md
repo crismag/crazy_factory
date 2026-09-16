@@ -32,8 +32,8 @@ The plan of record is [CF2_ARCHITECTURE.md](../CF2_ARCHITECTURE.md).
 - P2 execute-objective generator (`current_objective.json`; wired into
   `advance` and the mission loop)
 - product kernel: inspect/assess (also feeds P2 objectives)
-- MCP stdio server including `start_mission` / `continue_mission` /
-  `stop_mission` as wrappers around the runner
+- P3 MCP `start_mission` accepts seed/context + target in one call;
+  `get_status` / `inspect` include mission outcome, artifact, and trace
 - tests (unit; live Ollama product builds are not in CI)
 
 ## Not Yet Available
@@ -45,7 +45,7 @@ The plan of record is [CF2_ARCHITECTURE.md](../CF2_ARCHITECTURE.md).
 
 ## Next State Transition
 
-P2 engine is landed. Next: P3 `start` accepts context + target
-(seed) in one call. Live Ollama task-board still needs P4.
+P3 engine is landed. Next: P4 agent executor adapter so a live
+coding agent can close the task-board benchmark.
 See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and
 [CF2_TASK_CHECKLIST.md](../CF2_TASK_CHECKLIST.md).

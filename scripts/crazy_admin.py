@@ -79,7 +79,9 @@ from product_kernel import (  # noqa: E402
 )
 from mission_runner import (  # noqa: E402
     COMPLETE,
+    load_mission_snapshot,
     render_mission,
+    render_mission_snapshot,
     run_mission,
     stop_mission,
 )
@@ -773,6 +775,7 @@ def status(project: dict[str, Any], root: Path) -> dict[str, Any]:
                 load_project_factory_config(project["app_path"], root),
             )
         )
+    info["mission"] = load_mission_snapshot(project, root)
     return info
 
 
@@ -814,6 +817,15 @@ def _print_status(info: dict[str, Any]) -> None:
     )
     blocker = info.get("current_blocker")
     print(f"\nCurrent blocker:\n  {blocker or '(none — not blocked)'}")
+    mission = info.get("mission")
+    if not isinstance(mission, dict):
+        mission = {}
+    print("\nMission:")
+    print(f"  outcome:    {mission.get('outcome') or '(none)'}")
+    print(f"  reason:     {mission.get('reason') or '(none)'}")
+    print(f"  artifact:   {mission.get('artifact') or '(none)'}")
+    print(f"  trace:      {mission.get('trace') or '(none)'}")
+    print(f"  objective:  {mission.get('objective') or '(none)'}")
     print(f"\nNext:\n  bin/crazy-admin next {info['active_project']}")
 
 
@@ -1197,10 +1209,16 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             if args.command == "assess"
             else inspect_project(project, root)
         )
+        payload = assessment_to_dict(assessment)
+        if args.command == "inspect":
+            payload["mission"] = load_mission_snapshot(project, root)
         if getattr(args, "json", False):
-            print(json.dumps(assessment_to_dict(assessment), indent=2))
+            print(json.dumps(payload, indent=2))
         else:
             print(render_assessment(assessment), end="")
+            if args.command == "inspect":
+                print()
+                print(render_mission_snapshot(payload["mission"]), end="")
         return 0
     if args.command == "run":
         return _dispatch_run(args, root)
@@ -1223,15 +1241,12 @@ def _dispatch_run(args: argparse.Namespace, root: Path) -> int:
     """Create-if-needed, optional seed ingest, then closed-loop run."""
     pid = args.project_id
     if pid:
-        registry = load_registry(root)
-        if pid not in registry["projects"]:
-            startproject(pid, None, root=root)
-        project = resolve_project(load_registry(root), pid)
+        project = ensure_project(pid, root)
     else:
         project = _resolve_project_arg(root, None, path=args.path)
     seed = getattr(args, "seed", None)
     if seed:
-        _install_seed(project, seed, root)
+        ingest_start_context(project, root, seed=str(seed))
     result = run_mission(
         project,
         root,
@@ -1242,16 +1257,84 @@ def _dispatch_run(args: argparse.Namespace, root: Path) -> int:
     return 0 if result.outcome == COMPLETE else 1
 
 
-def _install_seed(project: dict[str, Any], seed: str, root: Path) -> None:
-    """Copy a seed into the workbench and ingest it as context."""
+def ensure_project(
+    project_id: str, root: Path, *, path: str | None = None
+) -> dict[str, Any]:
+    """Return a registered project, scaffolding it when missing."""
+    registry = load_registry(root)
+    if project_id not in registry["projects"]:
+        startproject(project_id, path, root=root)
+    return resolve_project(load_registry(root), project_id)
+
+
+def _resolve_seed_path(seed: str, root: Path) -> Path:
     src = Path(seed)
-    if not src.is_file():
-        raise AdminError(f"Seed file not found: {seed}")
+    if src.is_file():
+        return src
+    if not src.is_absolute():
+        alt = root / src
+        if alt.is_file():
+            return alt
+    raise AdminError(f"Seed file not found: {seed}")
+
+
+def install_seed(project: dict[str, Any], seed: str, root: Path) -> Path:
+    """Copy a seed into the workbench and ingest it as context."""
+    src = _resolve_seed_path(seed, root)
     app = _abs_app_dir(str(project["app_path"]), root)
     dest = app / "docs" / "seed.md"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
     add_context(project=project, source=str(dest), root=root, now=_now())
+    return dest
+
+
+def ingest_start_context(
+    project: dict[str, Any],
+    root: Path,
+    *,
+    seed: str | None = None,
+    context: str | None = None,
+) -> dict[str, str | None]:
+    """Install seed and/or context for a one-call mission start.
+
+    ``seed`` is a filesystem path. ``context`` is either a path (file,
+    directory, or archive) or inline markdown written to ``docs/seed.md``
+    when no seed path was given.
+    """
+    summary: dict[str, str | None] = {"seed": None, "context": None}
+    if seed:
+        summary["seed"] = str(install_seed(project, seed, root))
+    if not context:
+        return summary
+    ctx_path = Path(context)
+    resolved = ctx_path
+    if not resolved.exists() and not ctx_path.is_absolute():
+        alt = root / ctx_path
+        if alt.exists():
+            resolved = alt
+    if resolved.exists():
+        if seed is None and resolved.is_file():
+            summary["seed"] = str(install_seed(project, str(resolved), root))
+        else:
+            add_context(
+                project=project,
+                source=str(resolved),
+                root=root,
+                now=_now(),
+            )
+            summary["context"] = str(resolved)
+        return summary
+    app = _abs_app_dir(str(project["app_path"]), root)
+    dest = app / "docs" / ("seed.md" if seed is None else "extra_context.md")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(context, encoding="utf-8")
+    add_context(project=project, source=str(dest), root=root, now=_now())
+    if seed is None:
+        summary["seed"] = str(dest)
+    else:
+        summary["context"] = str(dest)
+    return summary
 
 
 def _dispatch_advance(args: argparse.Namespace, root: Path) -> int:

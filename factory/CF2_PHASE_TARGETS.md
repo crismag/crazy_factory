@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** P2 — Reliable convergence (`done` engine); next P3
+**Current phase:** P3 — External invocation (`done` engine); next P4
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -95,16 +95,16 @@ Not in this P2 slice:
 
 | | |
 | --- | --- |
-| Status | **active** (thin wrappers exist; seed-in-start is the remaining gap) |
+| Status | **done** (engine). Network MCP/auth remains deferred. |
 | Target | MCP exposes the **working** engine. |
 | Success | `start()` initiates a genuine persistent mission. MCP is not a remote copy of the incomplete workflow. |
 
 Acceptance:
 
 - [x] `start_mission` / `continue_mission` / `stop_mission` / `get_status` exist
-- [ ] `start` can take context + target in one call (seed ingest)
-- [ ] `inspect` / `status` report mission outcome + artifact + trace
-- [ ] Stdio MCP remains the transport; no implied network auth story yet
+- [x] `start` can take context + target in one call (seed ingest)
+- [x] `inspect` / `status` report mission outcome + artifact + trace
+- [x] Stdio MCP remains the transport; no implied network auth story yet
 
 ---
 
@@ -112,7 +112,7 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | `deferred` until P1 proves the loop can observe a real app |
+| Status | **active** |
 | Target | Delegate low-level coding to a capable agent behind an adapter. |
 | Success | Crazy Factory owns mission/evaluate/tools; the adapter owns implementation. |
 

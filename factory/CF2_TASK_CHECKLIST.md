@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** `CF2-P3-02` MCP `start` accepts context + target (P2 engine landed)
+**Current focus:** `CF2-P4-01` Agent executor interface (P3 seed-in-start landed)
 **Last updated:** 2026-09-16
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -53,18 +53,18 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 
 ---
 
-## P3 — MCP around the working engine (active)
+## P3 — MCP around the working engine
 
-| ID | Status | Task |
-| --- | --- | --- |
-| CF2-P3-01 | DONE | Thin `start_mission` / `continue_mission` / `stop_mission` |
-| CF2-P3-02 | PLANNED | `start` accepts context + target (seed) in one call |
-| CF2-P3-03 | PLANNED | `status` / `inspect` return mission outcome, artifact, trace |
-| CF2-P3-04 | DEFERRED | Network MCP / auth |
+| ID | Status | Task | Evidence |
+| --- | --- | --- | --- |
+| CF2-P3-01 | DONE | Thin `start_mission` / `continue_mission` / `stop_mission` | `scripts/mcp_server.py` |
+| CF2-P3-02 | DONE | `start` accepts context + target (seed) in one call | `start_mission` seed/context/target |
+| CF2-P3-03 | DONE | `status` / `inspect` return mission outcome, artifact, trace | `load_mission_snapshot` |
+| CF2-P3-04 | DEFERRED | Network MCP / auth | |
 
 ---
 
-## P4 — Agent executor
+## P4 — Agent executor (active)
 
 | ID | Status | Task |
 | --- | --- | --- |

@@ -6,7 +6,11 @@ orchestrators) are clients. The public surface is intent-shaped.
 
 P0 mission tools wrap the closed-loop runner:
 
-    start_mission, continue_mission, stop_mission
+    start_mission(context, target), continue_mission, stop_mission
+
+``start_mission`` accepts a seed/context and target in one call.
+``inspect_project`` / ``get_status`` include mission outcome, artifact,
+and trace.
 
 Inspect/assess tools remain available as inventory:
 
@@ -25,15 +29,19 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TextIO
 
 sys.dont_write_bytecode = True
 
 import factory_advance  # noqa: E402
-from context_manager import add_context  # noqa: E402
+from context_manager import ContextError, add_context  # noqa: E402
 from crazy_admin import (  # noqa: E402
+    AdminError,
     attachproject,
+    ensure_project,
+    ingest_start_context,
     startproject,
     status as admin_status,
 )
@@ -45,6 +53,7 @@ from product_kernel import (  # noqa: E402
     load_persisted,
 )
 from mission_runner import (  # noqa: E402
+    load_mission_snapshot,
     run_mission as run_closed_mission,
     stop_mission as request_stop,
 )
@@ -100,8 +109,8 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "inspect_project",
         "description": (
-            "Live product intelligence: intended vs observable product, "
-            "modules, gaps, objectives. Does not run workers."
+            "Live product intelligence plus the latest mission outcome, "
+            "artifact, and trace. Does not run workers."
         ),
         "inputSchema": {
             "type": "object",
@@ -136,14 +145,42 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "start_mission",
         "description": (
-            "Start a persistent autonomous mission: enable the isolated "
-            "workbench profile and keep executing until accepted, blocked, "
-            "or the beat budget is spent."
+            "Start a persistent autonomous mission from context + target "
+            "in one call: create the workbench if needed, ingest a seed, "
+            "enable the isolated profile, and keep executing until "
+            "accepted, blocked, or the beat budget is spent."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "project_id": {"type": "string"},
+                "project_id": {
+                    "type": "string",
+                    "description": "Target project id (created if missing).",
+                },
+                "context": {
+                    "type": "string",
+                    "description": (
+                        "Inline seed markdown, or a path to a context "
+                        "source (file, directory, or archive)."
+                    ),
+                },
+                "seed": {
+                    "type": "string",
+                    "description": (
+                        "Path to a seed markdown file copied to "
+                        "docs/seed.md and ingested as context."
+                    ),
+                },
+                "target": {
+                    "type": "string",
+                    "description": (
+                        "Optional workbench path when creating the project."
+                    ),
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Alias for target.",
+                },
                 "max_beats": {"type": "integer"},
             },
             "required": ["project_id"],
@@ -174,7 +211,10 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "get_status",
-        "description": "Pipeline status and owner capability switches.",
+        "description": (
+            "Pipeline status, owner capabilities, and the latest mission "
+            "outcome, artifact, and trace."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {"project_id": {"type": "string"}},
@@ -214,6 +254,10 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
 ]
+
+
+def _stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _resource(uri: str, name: str, description: str) -> dict[str, Any]:
@@ -298,7 +342,14 @@ def call_tool(
     """Dispatch an MCP tool call to existing factory operations."""
     try:
         return _call_tool(name, arguments or {}, root)
-    except (RegistryError, OSError, ValueError, KeyError) as exc:
+    except (
+        RegistryError,
+        OSError,
+        ValueError,
+        KeyError,
+        AdminError,
+        ContextError,
+    ) as exc:
         return _text_result({"error": str(exc)}, is_error=True)
 
 
@@ -321,11 +372,14 @@ def _call_tool(
             project=project,
             source=str(arguments["source"]),
             root=root,
+            now=_stamp(),
         )
         return _text_result(result)
     if name == "inspect_project":
         project = _project(root, str(arguments["project_id"]))
-        return _text_result(assessment_to_dict(inspect_project(project, root)))
+        payload = assessment_to_dict(inspect_project(project, root))
+        payload["mission"] = load_mission_snapshot(project, root)
+        return _text_result(payload)
     if name in {"assess_project", "reconcile_project"}:
         project = _project(root, str(arguments["project_id"]))
         return _text_result(assessment_to_dict(assess_project(project, root)))
@@ -334,7 +388,19 @@ def _call_tool(
         code = factory_advance.main(project)
         return _text_result({"exit_code": code, "project": project["name"]})
     if name == "start_mission":
-        project = _project(root, str(arguments["project_id"]))
+        pid = str(arguments["project_id"])
+        target = arguments.get("target") or arguments.get("path")
+        project = ensure_project(
+            pid, root, path=str(target) if target else None
+        )
+        ingested = ingest_start_context(
+            project,
+            root,
+            seed=(str(arguments["seed"]) if arguments.get("seed") else None),
+            context=(
+                str(arguments["context"]) if arguments.get("context") else None
+            ),
+        )
         max_beats = int(arguments.get("max_beats") or 12)
         result = run_closed_mission(
             project, root, max_beats=max_beats, apply_profile=True
@@ -346,6 +412,7 @@ def _call_tool(
                 "beats": result.beats,
                 "trace": result.trace_path,
                 "artifact": result.artifact,
+                "ingested": ingested,
             }
         )
     if name == "continue_mission":
@@ -360,6 +427,7 @@ def _call_tool(
                 "reason": result.reason,
                 "beats": result.beats,
                 "trace": result.trace_path,
+                "artifact": result.artifact,
             }
         )
     if name == "stop_mission":

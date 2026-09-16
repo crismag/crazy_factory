@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -22,6 +23,7 @@ from mcp_server import (  # noqa: E402
     list_resources,
     serve,
 )
+from mission_runner import MissionResult  # noqa: E402
 
 
 def _bootstrap_repo(root: Path) -> None:
@@ -41,6 +43,51 @@ def _bootstrap_repo(root: Path) -> None:
     )
     (root / "config/models.yaml").write_text(
         "models:\n  planner: x\n", encoding="utf-8"
+    )
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _make_accepted(app: Path) -> None:
+    _write(app / "README.md", "# Todo\n")
+    _write(
+        app / "architecture.json",
+        json.dumps({"required_files": ["src/todo.py", "tests/test_todo.py"]}),
+    )
+    _write(
+        app / "src/todo.py",
+        "def add(item, items):\n    items.append(item)\n    return items\n",
+    )
+    _write(
+        app / "tests/test_todo.py",
+        "from src.todo import add\n\n"
+        "def test_add():\n    assert add('a', []) == ['a']\n",
+    )
+    _write(
+        app / "factory_tasks/MASTER_CHECKLIST.md",
+        "- [x] Implement src/todo.py\n- [x] Write tests/test_todo.py\n",
+    )
+    _write(
+        app / "factory_tasks/validation_result.json",
+        json.dumps({"status": "passed", "checks": []}),
+    )
+    _write(app / "factory_tasks/planned_task.json", "{}")
+
+
+def _fake_mission(project_id: str, artifact: str) -> MissionResult:
+    return MissionResult(
+        project_id=project_id,
+        outcome="BUDGET_EXHAUSTED",
+        reason="beat budget 1 exhausted",
+        beats=1,
+        max_beats=1,
+        profile_enabled=["allow_apply"],
+        records=[],
+        artifact=artifact,
+        trace_path=str(Path(artifact) / "factory_reports/MISSION_TRACE.md"),
     )
 
 
@@ -115,6 +162,8 @@ class InspectViaMcpTests(unittest.TestCase):
             self.assertFalse(body["demo_ready"])
             self.assertIn("ZERO_CODE_OUTPUT", body["blocking_question"])
             self.assertTrue(body["objectives"])
+            self.assertIn("mission", body)
+            self.assertIsNone(body["mission"]["outcome"])
 
             assessed = call_tool(
                 "assess_project", {"project_id": "todo"}, root
@@ -220,41 +269,7 @@ class MissionToolTests(unittest.TestCase):
             root = Path(tmp)
             _bootstrap_repo(root)
             startproject("demo", "apps/demo", root=root)
-            app = root / "apps/demo"
-            (app / "README.md").write_text("# Todo\n", encoding="utf-8")
-            (app / "architecture.json").write_text(
-                json.dumps(
-                    {"required_files": ["src/todo.py", "tests/test_todo.py"]}
-                ),
-                encoding="utf-8",
-            )
-            src = app / "src"
-            src.mkdir(parents=True, exist_ok=True)
-            (src / "todo.py").write_text(
-                "def add(item, items):\n"
-                "    items.append(item)\n"
-                "    return items\n",
-                encoding="utf-8",
-            )
-            tests = app / "tests"
-            tests.mkdir(parents=True, exist_ok=True)
-            (tests / "test_todo.py").write_text(
-                "from src.todo import add\n\n"
-                "def test_add():\n    assert add('a', []) == ['a']\n",
-                encoding="utf-8",
-            )
-            tasks = app / "factory_tasks"
-            tasks.mkdir(parents=True, exist_ok=True)
-            (tasks / "MASTER_CHECKLIST.md").write_text(
-                "- [x] Implement src/todo.py\n"
-                "- [x] Write tests/test_todo.py\n",
-                encoding="utf-8",
-            )
-            (tasks / "validation_result.json").write_text(
-                json.dumps({"status": "passed", "checks": []}),
-                encoding="utf-8",
-            )
-            (tasks / "planned_task.json").write_text("{}", encoding="utf-8")
+            _make_accepted(root / "apps/demo")
             result = call_tool(
                 "start_mission",
                 {"project_id": "demo", "max_beats": 2},
@@ -264,3 +279,106 @@ class MissionToolTests(unittest.TestCase):
             body = json.loads(result["content"][0]["text"])
             self.assertEqual(body["outcome"], "COMPLETE")
             self.assertEqual(body["beats"], 0)
+            self.assertTrue(body["artifact"])
+
+    def test_start_mission_ingests_seed_and_creates_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            seed = root / "brief.md"
+            seed.write_text(
+                "Goal:\nBuild a task board.\n\nSuccess:\nAdd tasks.\n",
+                encoding="utf-8",
+            )
+            fake = _fake_mission("board", str(root / "apps/board"))
+            with patch(
+                "mcp_server.run_closed_mission", return_value=fake
+            ) as run:
+                result = call_tool(
+                    "start_mission",
+                    {
+                        "project_id": "board",
+                        "seed": str(seed),
+                        "target": "apps/board",
+                        "max_beats": 1,
+                    },
+                    root,
+                )
+            self.assertFalse(result["isError"], result)
+            run.assert_called_once()
+            body = json.loads(result["content"][0]["text"])
+            self.assertEqual(body["outcome"], "BUDGET_EXHAUSTED")
+            self.assertEqual(
+                (root / "apps/board/docs/seed.md").read_text(encoding="utf-8"),
+                seed.read_text(encoding="utf-8"),
+            )
+            self.assertIsNotNone(body["ingested"]["seed"])
+
+    def test_start_mission_inline_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            text = "Goal:\nInline board.\n\nSuccess:\nShip it.\n"
+            fake = _fake_mission("inline", str(root / "apps/inline"))
+            with patch("mcp_server.run_closed_mission", return_value=fake):
+                result = call_tool(
+                    "start_mission",
+                    {
+                        "project_id": "inline",
+                        "context": text,
+                        "max_beats": 1,
+                    },
+                    root,
+                )
+            self.assertFalse(result["isError"], result)
+            written = (root / "apps/inline/docs/seed.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertEqual(written, text)
+
+    def test_start_mission_missing_seed_is_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            result = call_tool(
+                "start_mission",
+                {
+                    "project_id": "ghost",
+                    "seed": "no-such-seed.md",
+                    "max_beats": 1,
+                },
+                root,
+            )
+            self.assertTrue(result["isError"])
+            body = json.loads(result["content"][0]["text"])
+            self.assertIn("not found", body["error"])
+
+    def test_status_and_inspect_include_mission_after_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            startproject("demo", "apps/demo", root=root)
+            app = root / "apps/demo"
+            _make_accepted(app)
+            started = call_tool(
+                "start_mission",
+                {"project_id": "demo", "max_beats": 2},
+                root,
+            )
+            self.assertFalse(started["isError"], started)
+            status = call_tool("get_status", {"project_id": "demo"}, root)
+            self.assertFalse(status["isError"], status)
+            status_body = json.loads(status["content"][0]["text"])
+            mission = status_body["mission"]
+            self.assertEqual(mission["outcome"], "COMPLETE")
+            self.assertTrue(mission["artifact"])
+            self.assertTrue(mission["trace"])
+            self.assertTrue(Path(mission["trace"]).is_file())
+            inspected = call_tool(
+                "inspect_project", {"project_id": "demo"}, root
+            )
+            inspect_body = json.loads(inspected["content"][0]["text"])
+            self.assertEqual(inspect_body["mission"]["outcome"], "COMPLETE")
+            self.assertEqual(
+                inspect_body["mission"]["trace"], mission["trace"]
+            )

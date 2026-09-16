@@ -60,8 +60,8 @@ They must not be the thing the owner cranks with `advance`.
 | **P0** | Closed loop: context → work → observe → repair → continue | `scripts/mission_runner.py`, `crazy-admin run` |
 | **P1** | Runnable output (install/build/start tools + inspect) | `done` (observer) |
 | **P2** | Convergence: remaining gaps become the next objective | `done` (engine; `objective_generator`) |
-| **P3** | External invocation: MCP wraps the working engine | **active** (`start` + seed still open) |
-| **P4** | Better agents: coding-agent adapter, then specialized roles | later |
+| **P3** | External invocation: MCP wraps the working engine | `done` (`start` + seed; inspect/status report mission) |
+| **P4** | Better agents: coding-agent adapter, then specialized roles | **active** |
 | **P5** | Broader product intelligence, dynamic teams, self-improve | postpone |
 
 Do not begin P5 while P0/P1 remain unfinished. Phase and task
@@ -122,8 +122,10 @@ P0 CLI: `crazy-admin run|stop` (plus existing `advance` for one beat).
 P3 MCP, wrapping the engine, never replacing it:
 
 `crazy_factory.start(context, target)` → `start_mission`
+(seed path, inline context, and optional workbench path)
 
 `crazy_factory.status(project)` → `get_status` / `inspect_project`
+(includes mission outcome, artifact, trace)
 
 `crazy_factory.continue(project)` → `continue_mission`
 

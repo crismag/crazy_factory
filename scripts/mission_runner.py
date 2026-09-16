@@ -392,3 +392,62 @@ def render_mission(result: MissionResult) -> str:
         f"Artifact: {result.artifact}\n"
         f"Trace: {result.trace_path}\n"
     )
+
+
+def load_mission_snapshot(
+    project: dict[str, Any], root: Path
+) -> dict[str, Any]:
+    """Latest mission outcome, artifact, and trace for status/inspect.
+
+    Missing files are not an error: the keys are still present with
+    nulls so callers can rely on a stable shape.
+    """
+    view = _absolute_project(project, root)
+    report_root = _as_path(view.get("report_root") or "factory_reports", root)
+    result_path = report_root / RESULT_FILE
+    trace_path = report_root / TRACE_FILE
+    snapshot: dict[str, Any] = {
+        "outcome": None,
+        "reason": None,
+        "beats": None,
+        "max_beats": None,
+        "artifact": str(view.get("app_path") or ""),
+        "trace": str(trace_path) if trace_path.is_file() else None,
+        "objective": None,
+        "current_objective": None,
+    }
+    if result_path.is_file():
+        try:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict):
+            snapshot["outcome"] = payload.get("outcome")
+            snapshot["reason"] = payload.get("reason")
+            snapshot["beats"] = payload.get("beats")
+            snapshot["max_beats"] = payload.get("max_beats")
+            if payload.get("artifact"):
+                snapshot["artifact"] = str(payload["artifact"])
+    task_root = view.get("task_root")
+    if task_root:
+        current = load_objective(Path(str(task_root)))
+        if current is not None:
+            snapshot["objective"] = f"{current.id}:{current.kind}"
+            snapshot["current_objective"] = asdict(current)
+    return snapshot
+
+
+def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
+    """Markdown block for CLI inspect/status."""
+    if not snapshot.get("outcome"):
+        return "## Mission\n\n(no mission has been run)\n"
+    obj = snapshot.get("objective") or "none"
+    return (
+        "## Mission\n"
+        f"- Outcome: `{snapshot.get('outcome')}`\n"
+        f"- Reason: {snapshot.get('reason') or ''}\n"
+        f"- Beats: {snapshot.get('beats')}\n"
+        f"- Artifact: `{snapshot.get('artifact') or ''}`\n"
+        f"- Trace: `{snapshot.get('trace') or ''}`\n"
+        f"- Objective: `{obj}`\n"
+    )
