@@ -206,6 +206,8 @@ class BuildRequestTests(unittest.TestCase):
             )
             self.assertIn("http.server", req.seed_text)
             self.assertIn("pytest exploded", req.validation_failure)
+            self.assertIn("Engineering assignment", req.assignment_text)
+            self.assertEqual(req.stance, "birth")
 
 
 class LlmSkipTests(unittest.TestCase):

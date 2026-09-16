@@ -4,12 +4,12 @@
 Productization target is Lovable-like: a bounded prompt/seed becomes a
 runnable app through Crazy Factory's existing loop. Coding intelligence
 is a plugin behind ``AgentExecutor`` — Anthropic and OpenAI first,
-other providers later. The factory still owns mission, observation,
-evaluation, confinement, and continuation.
+other providers later. The same clients serve control intelligence
+(continuation, objective, stance, quality). Architect/Planner prefer
+this backend when a key is present; Ollama remains the local fallback.
 
-In-process Architect/Planner stay on the local Ollama client. This
-module is the coding actuator only. Live HTTP is skipped when no API
-key is present so CI never calls a vendor.
+Live HTTP is skipped when no API key is present so CI never calls a
+vendor.
 """
 
 from __future__ import annotations

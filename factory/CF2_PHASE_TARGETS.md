@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** P4c — Claude / OpenAI coding plugins (`done`)
+**Current phase:** L0 — prompt compiler + `stdlib-web` (`done`)
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -59,6 +59,7 @@ Acceptance:
 - [x] Start commands outside the workbench, `python3 -c`, pip-except-requirements, npm, curl, sudo are refused
 - [x] `python3 -m pip install -r requirements.txt` is allowlisted (requirements file must sit in the workbench); arbitrary `pip install pkg` stays blocked
 - [x] Runtime result is persisted (`runtime_result.json`) and appears in the mission trace
+- [x] Runtime is probed every evaluation beat, not only after file acceptance
 - [x] Accepted files **plus** a failing start command → MORE_WORK (not COMPLETE)
 - [x] Accepted files **without** a start command still COMPLETE (P0 engine tests)
 - [x] Documented listen port is probed over HTTP on 127.0.0.1
@@ -113,9 +114,9 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **done** (P4a + P4b + P4c). Cursor/Codex IDE adapters and specialized roles remain deferred. |
-| Target | Delegate low-level coding to a capable agent behind an adapter. |
-| Success | Crazy Factory owns mission/evaluate/tools; the adapter owns implementation. |
+| Status | **done** (P4a–P4f). Cursor/Codex IDE adapters and specialized roles remain deferred. |
+| Target | Put strong coding systems in a position to succeed; independently judge the result. |
+| Success | Crazy Factory owns mission/context/assignment/evaluate; the adapter owns implementation. |
 
 Acceptance:
 
@@ -124,12 +125,16 @@ Acceptance:
 - [x] Claude (Anthropic) and OpenAI are the starting coding plugins; skip when no API key
 - [x] Independent evaluator still decides PASS / MORE_WORK / BLOCKED
 - [x] `examples/seeds/task_board_web.md` from a clean workbench → COMPLETE + runtime
+- [x] Purpose-built execution assignment from evidence (not “implement this”)
+- [x] Runtime is observed every evaluation beat; next objective reads executor files
+- [x] Control intelligence persists attempts and decides outcome/kind/stance (rails veto)
 - [ ] Specialized roles only where they measurably improve completion
 - [ ] Cursor / Codex IDE adapters (P4-09)
 
 P3 completion baseline: [CF2_P3_COMPLETION.md](CF2_P3_COMPLETION.md).
 P4a completion baseline: [CF2_P4A_COMPLETION.md](CF2_P4A_COMPLETION.md).
 P4c completion baseline: [CF2_P4C_COMPLETION.md](CF2_P4C_COMPLETION.md).
+Intelligence map: [CF2_INTELLIGENCE.md](CF2_INTELLIGENCE.md).
 P5a completion baseline: [CF2_P5_COMPLETION.md](CF2_P5_COMPLETION.md).
 
 ---
@@ -153,3 +158,26 @@ Acceptance (P5a):
 - [x] Nested module loop: Director names `focus_module`; EXECUTE finishes it before the next
 - [ ] Dynamic teams / skill registry (P5-02)
 - [ ] Factory self-improvement that writes `scripts/` (P5-03)
+
+---
+
+## L0 — Prompt compiler + default web stack
+
+| | |
+| --- | --- |
+| Status | **done** (compiler + default stack). Preview UX and vite-react remain later. |
+| Target | A raw owner sentence becomes a specified factory seed on one executable web stack. |
+| Success | `crazy-admin run id --prompt "…"` and MCP `start_mission.prompt` write Goal/Success + `architecture.json` instead of parking on `specify_intent`. |
+| Evidence | `scripts/prompt_compiler.py`, `scripts/web_stack.py`, `tests/test_prompt_compiler.py`, [CF2_WEB_STACK.md](CF2_WEB_STACK.md) |
+
+Acceptance:
+
+- [x] Unspecified prompt compiles to a non-placeholder seed
+- [x] Structured Goal+Success seeds are left verbatim
+- [x] `startproject` scaffold is not compiled until the owner supplies a prompt
+- [x] Default stack is `stdlib-web` (`python3 -m src.app`, port 8765)
+- [x] `vite-react` is recorded and not executable (npm still forbidden)
+- [x] Claude/OpenAI fill screens when a key is present; pytest uses fallback
+- [x] Hand-authored `architecture.json` is not overwritten
+- [ ] Preview-first product UX (L0-04)
+- [ ] npm / Vite executable stack (P1-07 / L0-07)

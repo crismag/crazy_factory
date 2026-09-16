@@ -26,16 +26,18 @@ from typing import Any, Callable
 import factory_advance
 import factory_messaging as msg
 from acceptance_check import evaluate_acceptance
+from control_intelligence import apply_rails, load_decision, reason_control
+from execution_assignment import persist_judgment
 from flags import flag_active, set_flag
 from mission_state import load_state
-from owner_controls import set_capability
 from objective_generator import (
     load_focus_module,
     load_objective,
     next_execute_objective,
     persist_objective,
 )
-from runtime_observer import observe_runtime, persist_runtime
+from owner_controls import set_capability
+from runtime_observer import RuntimeReport, observe_runtime, persist_runtime
 from workbench_growth import workbench_metrics
 
 COMPLETE = "COMPLETE"
@@ -131,6 +133,16 @@ def _blocker(project: dict[str, Any], root: Path) -> str:
     return str(raw) if raw else ""
 
 
+def _probe_runtime(project: dict[str, Any]) -> RuntimeReport:
+    """Start-probe the workbench and persist evidence every beat."""
+    app = Path(str(project["app_path"]))
+    runtime = observe_runtime(app)
+    task_root = project.get("task_root")
+    if task_root:
+        persist_runtime(runtime, Path(str(task_root)))
+    return runtime
+
+
 def evaluate_mission(
     project: dict[str, Any], root: Path, *, beat: int, max_beats: int
 ) -> tuple[str, str]:
@@ -149,34 +161,70 @@ def evaluate_mission(
             HUMAN_REQUIRED,
             f"blocker={blocker} (no product change after repair retry)",
         )
+    runtime = _probe_runtime(project)
     acceptance = evaluate_acceptance(project, root)
     if acceptance.accepted:
-        app = Path(str(project["app_path"]))
-        runtime = observe_runtime(app)
-        task_root = project.get("task_root")
-        if task_root:
-            persist_runtime(runtime, Path(str(task_root)))
         if not runtime.safe:
-            return HUMAN_REQUIRED, f"runtime unsafe: {runtime.reason}"
-        if runtime.required and not runtime.ok:
+            candidate, why = HUMAN_REQUIRED, f"runtime unsafe: {runtime.reason}"
+        elif runtime.required and not runtime.ok:
             if beat >= max_beats:
-                return (
+                candidate, why = (
                     BUDGET_EXHAUSTED,
                     f"beat budget {max_beats} exhausted ({runtime.reason})",
                 )
-            return MORE_WORK, f"runtime: {runtime.reason}"
-        extra = ""
-        if runtime.required:
-            extra = f" (runtime {runtime.status})"
-        return COMPLETE, "acceptance evidence is complete" + extra
-    if beat >= max_beats:
-        return BUDGET_EXHAUSTED, f"beat budget {max_beats} exhausted"
-    if blocker:
-        return RECOVERABLE, f"blocker={blocker}"
-    growth = workbench_metrics(str(_as_path(project["app_path"], root)))
-    if growth.is_greenfield:
-        return MORE_WORK, "ZERO_CODE_OUTPUT: no source or tests yet"
-    return MORE_WORK, "; ".join(acceptance.reasons) or "work remains"
+            else:
+                candidate, why = MORE_WORK, f"runtime: {runtime.reason}"
+        else:
+            extra = ""
+            if runtime.required:
+                extra = f" (runtime {runtime.status})"
+            candidate, why = (
+                COMPLETE,
+                "acceptance evidence is complete" + extra,
+            )
+    elif beat >= max_beats:
+        candidate, why = (
+            BUDGET_EXHAUSTED,
+            f"beat budget {max_beats} exhausted",
+        )
+    elif blocker:
+        candidate, why = RECOVERABLE, f"blocker={blocker}"
+    else:
+        growth = workbench_metrics(str(_as_path(project["app_path"], root)))
+        if growth.is_greenfield:
+            candidate, why = (
+                MORE_WORK,
+                "ZERO_CODE_OUTPUT: no source or tests yet",
+            )
+        else:
+            candidate, why = (
+                MORE_WORK,
+                "; ".join(acceptance.reasons) or "work remains",
+            )
+    heuristic = None
+    task_root = project.get("task_root")
+    if task_root:
+        heuristic = load_objective(Path(str(task_root)))
+    decision = reason_control(
+        project,
+        root,
+        beat=beat,
+        max_beats=max_beats,
+        candidate_outcome=candidate,
+        candidate_reason=why,
+        accepted=acceptance.accepted,
+        runtime_status=runtime.status,
+        runtime_safe=runtime.safe,
+        heuristic_kind=heuristic.kind if heuristic else "implement",
+        heuristic_stance="implement",
+    )
+    return apply_rails(
+        decision,
+        candidate_outcome=candidate,
+        candidate_reason=why,
+        accepted=acceptance.accepted,
+        runtime_safe=runtime.safe,
+    )
 
 
 @dataclass
@@ -224,7 +272,8 @@ def _record(
     reason: str,
 ) -> BeatRecord:
     src, tests = _growth(project, root)
-    accepted = evaluate_acceptance(project, root).accepted
+    report = evaluate_acceptance(project, root)
+    accepted = report.accepted
     runtime = ""
     objective = ""
     task_root = project.get("task_root")
@@ -239,6 +288,17 @@ def _record(
         current = load_objective(Path(str(task_root)))
         if current is not None:
             objective = f"{current.id}:{current.kind}"
+        try:
+            persist_judgment(
+                Path(str(task_root)),
+                outcome=status,
+                reason=reason,
+                accepted=accepted,
+                validation_passed=report.validation_passed,
+                runtime_status=runtime,
+            )
+        except (OSError, ValueError):
+            pass
     return BeatRecord(
         index=index,
         evaluation=status,
@@ -418,6 +478,8 @@ def load_mission_snapshot(
         "current_objective": None,
         "focus_module": None,
         "current_module": None,
+        "runtime": None,
+        "control": None,
     }
     if result_path.is_file():
         try:
@@ -441,6 +503,31 @@ def load_mission_snapshot(
         if module:
             snapshot["current_module"] = module
             snapshot["focus_module"] = module.get("id")
+        runtime_path = Path(str(task_root)) / "runtime_result.json"
+        if runtime_path.is_file():
+            try:
+                runtime = json.loads(
+                    runtime_path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                runtime = None
+            if isinstance(runtime, dict):
+                snapshot["runtime"] = {
+                    "status": runtime.get("status"),
+                    "ok": runtime.get("ok"),
+                    "required": runtime.get("required"),
+                    "reason": runtime.get("reason"),
+                }
+        decision = load_decision(Path(str(task_root)))
+        if decision is not None:
+            snapshot["control"] = {
+                "outcome": decision.outcome,
+                "kind": decision.kind,
+                "stance": decision.stance,
+                "source": decision.source,
+                "rationale": decision.rationale,
+                "quality_ok": decision.quality_ok,
+            }
     return snapshot
 
 
@@ -449,6 +536,10 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
     if not snapshot.get("outcome"):
         return "## Mission\n\n(no mission has been run)\n"
     obj = snapshot.get("objective") or "none"
+    runtime = snapshot.get("runtime") or {}
+    runtime_status = "none"
+    if isinstance(runtime, dict) and runtime.get("status"):
+        runtime_status = str(runtime.get("status"))
     return (
         "## Mission\n"
         f"- Outcome: `{snapshot.get('outcome')}`\n"
@@ -458,4 +549,15 @@ def render_mission_snapshot(snapshot: dict[str, Any]) -> str:
         f"- Trace: `{snapshot.get('trace') or ''}`\n"
         f"- Objective: `{obj}`\n"
         f"- Module: `{snapshot.get('focus_module') or 'none'}`\n"
+        f"- Runtime: `{runtime_status}`\n"
+        f"- Control: `{_control_label(snapshot)}`\n"
     )
+
+
+def _control_label(snapshot: dict[str, Any]) -> str:
+    control = snapshot.get("control") or {}
+    if not isinstance(control, dict) or not control.get("source"):
+        return "none"
+    kind = control.get("kind") or "none"
+    source = control.get("source") or "none"
+    return f"{source}:{kind}"

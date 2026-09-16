@@ -23,16 +23,21 @@ Closed-loop mission (P0 — keep working until accepted, blocked, or budget):
 # Create (if needed), install a seed, and run until a terminal evaluation.
 bin/crazy-admin run todo_app --seed examples/seeds/task_board_web.md
 
+# Raw owner prompt (compiled onto the default stdlib-web stack).
+bin/crazy-admin run habit --prompt "build a habit tracker"
+
 # Request a halt at the next evaluation.
 bin/crazy-admin stop todo_app
 ```
 
 ### Coding intelligence plugins
 
-Productization is Lovable-like: a seed/prompt becomes a working app
-through the factory loop. Claude and OpenAI are the starting coding
-models behind `AgentExecutor`. Other intelligence plugins can join
-later under the same contract. Ollama is opt-in, not the default.
+The factory compiles a purpose-built engineering assignment from
+seed, architecture, workbench inventory, and observed failures, then
+hands that assignment to a coding plugin. Claude and OpenAI are the
+starting workers. Crazy Factory is not synonymous with either
+vendor. Ollama is opt-in, not the default. See
+[../factory/CF2_INTELLIGENCE.md](../factory/CF2_INTELLIGENCE.md).
 
 ```bash
 # Claude when ANTHROPIC_API_KEY is set (preferred if both keys exist)
@@ -60,6 +65,9 @@ values are ignored by the cloud plugins). Timeout:
 
 With no API key the cloud plugin skips without opening a socket.
 The known task-board seed still completes via the stdlib actuator.
+Each beat writes `factory_tasks/execution_assignment.md` (what the
+plugin was asked) and `factory_tasks/judgment.json` (acceptance vs
+executor/process success).
 
 One-beat kernel (the owner still cranks each step):
 
@@ -203,7 +211,7 @@ All commands are `bin/crazy-admin <command>` (a thin wrapper over
 | `brief [id] [--path DIR] [--json]` | Director: intended product + latest mission + one recommended next command. No workers. With no id, catalogs registered projects or briefs the only one. |
 | `inspect [id] [--path DIR] [--json]` | Product intelligence inventory: intended vs observable product, modules, readiness dimensions, Director objectives, plus the latest mission outcome/artifact/trace. Does not run workers or apply code. |
 | `assess [id] [--path DIR] [--json]` | Recompute product intelligence, persist it under `factory_state/`, and print the Director queue. |
-| `run [id] [--path DIR] [--seed FILE] [--max-beats N] [--keep-gates]` | Closed-loop mission: enable the isolated workbench profile (unless `--keep-gates`) and keep advancing until accepted, a genuine human blocker, or the beat budget. After file acceptance, a declared `start_command` is started and probed. Writes `MISSION_TRACE.md`. |
+| `run [id] [--path DIR] [--seed FILE] [--prompt TEXT] [--max-beats N] [--keep-gates]` | Closed-loop mission: enable the isolated workbench profile (unless `--keep-gates`) and keep advancing until accepted, a genuine human blocker, or the beat budget. `--prompt` compiles a raw sentence into `docs/seed.md` + `architecture.json` on the default `stdlib-web` stack. Every evaluation probes a declared `start_command` (not only after file acceptance) and persists `runtime_result.json`. Writes `MISSION_TRACE.md`. |
 | `stop [id] [--path DIR]` | Request the mission runner to halt at the next evaluation. |
 | `next [id] [--path DIR]` | Tell you exactly what to do next for a project. With no id/path, discover the project from the current workbench. |
 | `advance [id] [--path DIR] [--all]` | Run one factory advance for a targeted project, discovered workbench, or every registered project. |
@@ -233,7 +241,7 @@ Other entry points:
 
 - `bin/factory-advance` — run a advance directly (same as `crazy-admin advance`).
 - `bin/factory-status` / `bin/factory-report` / `bin/factory-watch` — inspect state and reports.
-- `bin/crazy-factory-mcp` / `crazy-admin serve-mcp` — stdio MCP server. Featured tools: `director_brief`, `list_projects`, `start_mission`, `continue_mission`, `stop_mission`, `get_status`. Inventory: inspect/assess/advance/import/context/findings/objectives/reconcile. See [CF2_MCP_SURFACE.md](../factory/CF2_MCP_SURFACE.md). `--jsonl` for newline-delimited JSON. `start_mission` accepts `seed` / `context` and `target` in one call.
+- `bin/crazy-factory-mcp` / `crazy-admin serve-mcp` — stdio MCP server. Featured tools: `director_brief`, `list_projects`, `start_mission`, `continue_mission`, `stop_mission`, `get_status`. Inventory: inspect/assess/advance/import/context/findings/objectives/reconcile. See [CF2_MCP_SURFACE.md](../factory/CF2_MCP_SURFACE.md). `--jsonl` for newline-delimited JSON. `start_mission` accepts `prompt` / `seed` / `context` and `target` in one call.
 - `scripts/mission_loop.py` — the guarded, cron-friendly continuous entry point (Section 6).
 - `scripts/context_growth.py start|grow|promote` — grow a project from a seed and promote it into the pipeline (see SEED_GROWN_CONTEXT.md).
 

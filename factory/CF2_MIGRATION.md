@@ -66,7 +66,7 @@ the workbench. Failures return to the P0 loop as MORE_WORK.
 
 ### Changed
 
-`scripts/mission_runner.py` (runtime gate after acceptance),
+`scripts/mission_runner.py` (runtime probe every evaluation),
 `scripts/validation_runner.py` (pip -r allowlist),
 `architecture.json` optional `start_command` / `listen_port`.
 
@@ -214,6 +214,96 @@ accepts cloud clients.
 
 ---
 
+## P4d — Execution assignment (intelligence-first vertical)
+
+### Objective
+
+The factory must understand the objective, assemble relevant
+context, and hand the coding plugin a purpose-built assignment.
+Executor completion is not product quality. Do not add KAE-Memory,
+LangChain, or new MCP verbs.
+
+### New
+
+`scripts/execution_assignment.py`, `diagnosis_packet.executor_slice`,
+`tests/test_execution_assignment.py`,
+`factory/CF2_INTELLIGENCE.md`.
+
+### Changed
+
+`build_request` compiles the assignment. `factory_advance` persists
+`execution_assignment.md` and records stance on
+`executor_result.json`. `mission_runner` persists `judgment.json`.
+
+### Acceptance
+
+- Validation evidence is failing-check detail, not a bare `failed`.
+- Repeat executor writes plus still-failing checks → `investigate`.
+- Placeholder / specify_intent → `need_context`.
+- Assignment includes constraints, inventory, success, verification.
+- No new dependencies. No new MCP tools.
+
+---
+
+## P4e — Runtime every beat + executor feedback
+
+### Objective
+
+Observe a declared start command on every evaluation, not only after
+file acceptance, so `repair_runtime` can fire mid-loop. Annotate the
+next execute objective with the files (or skip reason) the coding
+plugin actually wrote. Do not add KAE-Memory, LangChain, UI, or new
+MCP verbs.
+
+### Changed
+
+`scripts/mission_runner.py` (`_probe_runtime` before acceptance),
+`scripts/objective_generator.py` (`_annotate_with_executor`),
+`load_mission_snapshot` includes `runtime`.
+
+### Acceptance
+
+- Non-accepted workbench with a declared missing start module persists
+  `runtime_result.json` and the next objective is `repair_runtime`.
+- Greenfield without `architecture.json` stays `code_birth` /
+  `specify_intent` (runtime `unspecified`).
+- Validation repair focus names the previous executor files.
+- No new MCP verbs. Snapshot `runtime` is visible to status/inspect.
+
+---
+
+## P4f — Agentic control + persistent monitoring
+
+### Objective
+
+The control plane is a model. Claude/OpenAI monitor each beat against
+attempt history, then decide outcome, objective, stance, and recovery.
+Deterministic rails still veto owner stop, beat budget, unsafe start,
+and COMPLETE without acceptance evidence. Persistence is
+`attempts.jsonl` + `control_memory.json`, not a vector store.
+
+### New
+
+`scripts/control_intelligence.py`, `tests/test_control_intelligence.py`.
+
+### Changed
+
+`evaluate_mission` calls `reason_control` then `apply_rails`.
+`next_execute_objective` overlays a model kind/focus.
+`compile_assignment` takes model stance.
+Director brief includes `control`.
+Architect/Planner prefer the cloud backend when a key is present.
+
+### Acceptance
+
+- Model `quality_ok=false` turns COMPLETE into MORE_WORK.
+- Model cannot force COMPLETE when evidence is missing.
+- Attempt log and working memory persist across beats.
+- Pytest does not call a vendor unless `CRAZY_FACTORY_CONTROL=1`.
+- No LangChain, KAE-Memory, or new MCP verbs.
+
+---
+
 ## P5a — Director + featured MCP
 
 ### Objective
@@ -273,6 +363,44 @@ Do **not** build dynamic teams, factory self-mutation, or UI.
 - After `todo` is VERIFIED, EXECUTE moves to `storage`.
 - Director brief names `focus_module`.
 - Inspect still lists every module's objectives (inventory stays complete).
+
+---
+
+## L0 — Prompt compiler + default web stack
+
+### Objective
+
+A raw owner sentence becomes a specified factory seed and an
+architecture contract on **one** executable web stack. The factory
+stops parking on `specify_intent` / `provide_context` when the owner
+actually said what to build. Scaffold placeholders stay honest until
+that happens.
+
+### New
+
+`scripts/prompt_compiler.py`, `scripts/web_stack.py`,
+`factory/CF2_WEB_STACK.md`, `tests/test_prompt_compiler.py`.
+
+### Changed
+
+`scripts/crazy_admin.py` (`--prompt`, compile after owner ingest),
+`scripts/mcp_server.py` (`start_mission.prompt`; unstructured
+`context` compiles), `scripts/director.py` (placeholder still
+`provide_context`, CLI now `--prompt`).
+
+### Acceptance
+
+- `--prompt "build a habit tracker"` writes Goal/Success +
+  `architecture.json` (`stdlib-web`, `python3 -m src.app`, 8765).
+- Structured Goal+Success seeds (including MCP inline context) stay
+  verbatim.
+- `startproject` scaffold is not compiled; Director still asks for a
+  prompt.
+- `vite-react` is recorded, not executable. Unknown / non-executable
+  stacks fall back to `stdlib-web`.
+- Hand-authored `architecture.json` is not overwritten; compiler
+  output may replace a previous compiler write.
+- No npm allowlist, no KAE-Memory, no LangChain.
 
 ---
 

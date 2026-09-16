@@ -21,8 +21,8 @@ listed first), `tests/test_director.py`, `tests/test_mcp_server.py`.
 list_projects            → what workbenches exist
 director_brief [id]      → intended product + mission + one next command
                            (the Director names the tool; the client calls it)
-start_mission            → bounded context in, autonomous loop until
-                           COMPLETE / HUMAN_REQUIRED / BUDGET
+start_mission            → prompt or bounded context in, autonomous
+                           loop until COMPLETE / HUMAN_REQUIRED / BUDGET
 continue_mission         → keep going after MORE_WORK / budget
 stop_mission             → owner halt (never auto-recommended)
 get_status               → pipeline + mission snapshot without a brief
@@ -34,7 +34,7 @@ get_status               → pipeline + mission snapshot without a brief
 | --- | --- | --- |
 | `import_project` | Nothing registered, or unknown id | `import_project` then `start_mission` |
 | `pick_project` | Several workbenches; no id given | `list_projects`, then brief one |
-| `provide_context` | Placeholder seed (“describe what”) | `start_mission` with a real `seed`/`context` |
+| `provide_context` | Placeholder seed (“describe what”) | `start_mission` with `prompt` / `seed` / `context` |
 | `start` | Real context, no mission yet | `start_mission` |
 | `continue` | `MORE_WORK`, recoverable, or `BUDGET_EXHAUSTED` | `continue_mission` |
 | `done` | Mission `COMPLETE` | none — do not re-crank |
@@ -56,7 +56,7 @@ exit with zero beats).
 | --- | --- | --- |
 | `director_brief` | yes | The thing the owner talks to |
 | `list_projects` | yes | Discovery (registry + last mission outcome) |
-| `start_mission` | no | Create-if-needed + seed + closed loop |
+| `start_mission` | no | Create-if-needed + prompt/seed + closed loop |
 | `continue_mission` | no | Resume without re-applying the profile |
 | `stop_mission` | no | Owner halt |
 | `get_status` | yes | Thin pipeline + mission snapshot |
@@ -108,7 +108,7 @@ inventory, not featured commands.
 | --- | --- |
 | `director_brief` | `crazy-admin brief [id] [--json]` |
 | `list_projects` | `crazy-admin brief` with no id (catalog / pick) |
-| `start_mission` | `crazy-admin run [id] --seed FILE` |
+| `start_mission` | `crazy-admin run [id] --prompt TEXT` or `--seed FILE` |
 | `continue_mission` | `crazy-admin run [id]` |
 | `stop_mission` | `crazy-admin stop [id]` |
 | `get_status` | `crazy-admin status [id]` |

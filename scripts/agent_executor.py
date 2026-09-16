@@ -4,7 +4,13 @@
 Crazy Factory owns mission, observation, evaluation, and safety.
 This module is the implementation actuator:
 
-    objective + seed + failures → files → existing apply/observe/evaluate
+    objective + curated assignment + evidence
+      → files → existing apply/observe/evaluate
+
+The factory compiles the assignment. Coding plugins write files.
+Control intelligence (Claude/OpenAI) decides the beat: continuation,
+objective, stance, quality, recovery. Attempt history and working
+memory persist under the task root.
 
 Productization is Lovable-like: a bounded prompt becomes a working
 app. Coding intelligence is a plugin, not a local-model-first path.
@@ -13,9 +19,8 @@ Default chain:
 
 1. ``CloudCodingExecutor`` — Claude (Anthropic) or OpenAI file map.
    Skips immediately when no API key is set (no network).
-2. ``StdlibWebExecutor`` — capable bounded actuator for the first
-   proof seed (stdlib task-board). Copies a verified implementation
-   into the workbench. This is not a multi-agent org.
+2. ``StdlibWebExecutor`` — last-resort fixture for the task-board
+   proof when no API key is set. Live missions use the cloud plugin.
 
 ``LlmFileExecutor`` (Ollama) is opt-in via
 ``CRAZY_FACTORY_EXECUTOR=ollama``. None of the backends write engine
@@ -31,6 +36,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from coding_llm import resolve_coding_backend
+from execution_assignment import compile_assignment, render_assignment
 from llm_interaction import structured_call
 from ollama_client import OllamaClient
 from repo_tools import RepoSafetyError, safe_write_text
@@ -79,6 +85,8 @@ class ExecutorRequest:
     validation_failure: str = ""
     runtime_failure: str = ""
     app_path: str = ""
+    assignment_text: str = ""
+    stance: str = ""
 
 
 @dataclass
@@ -136,23 +144,35 @@ def build_request(
     root: Path,
     *,
     objective: Any,
+    packet: Any = None,
 ) -> ExecutorRequest:
-    """Pack the current objective and failure evidence for an executor."""
+    """Pack a purpose-built assignment plus failure evidence."""
+    assignment = compile_assignment(
+        project, root, objective, packet=packet
+    )
     task = project.get("task_root") or "factory_tasks"
     task_root = Path(str(task))
     if not task_root.is_absolute():
         task_root = root / task_root
+    validation = assignment.validation_summary or _json_reason(
+        task_root, "validation_result.json"
+    )
+    runtime = assignment.runtime_summary or _json_reason(
+        task_root, "runtime_result.json"
+    )
     return ExecutorRequest(
-        objective_id=str(getattr(objective, "id", "") or ""),
-        objective_kind=str(getattr(objective, "kind", "") or ""),
-        objective_title=str(getattr(objective, "title", "") or ""),
-        gap=str(getattr(objective, "gap", "") or ""),
-        why=str(getattr(objective, "why", "") or ""),
-        focus=str(getattr(objective, "focus", "") or ""),
-        seed_text=_seed_text(project, root),
-        validation_failure=_json_reason(task_root, "validation_result.json"),
-        runtime_failure=_json_reason(task_root, "runtime_result.json"),
+        objective_id=assignment.objective_id,
+        objective_kind=assignment.kind,
+        objective_title=assignment.title,
+        gap=assignment.gap,
+        why=assignment.why,
+        focus=assignment.focus,
+        seed_text=assignment.seed_excerpt or _seed_text(project, root),
+        validation_failure=validation,
+        runtime_failure=runtime,
         app_path=str(project.get("app_path") or ""),
+        assignment_text=render_assignment(assignment),
+        stance=assignment.stance,
     )
 
 
@@ -178,8 +198,9 @@ def _files_from_payload(data: dict[str, Any]) -> dict[str, str]:
 
 
 _FILE_MAP_SYSTEM = (
-    "You implement a small application from the seed and objective. "
-    "Return JSON only."
+    "You are the coding executor for Crazy Factory. The factory owns "
+    "mission, judgment, and verification. Implement the assignment. "
+    "Return JSON only. Do not claim the work is accepted."
 )
 _FILE_MAP_PRIMING = (
     'Respond with JSON {"files": {"relative/path": "content"}}. '
@@ -190,6 +211,8 @@ _FILE_MAP_PRIMING = (
 
 
 def _file_map_user(request: ExecutorRequest) -> str:
+    if request.assignment_text.strip():
+        return request.assignment_text
     return (
         f"Objective: {request.objective_title} "
         f"({request.objective_kind})\n"

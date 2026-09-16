@@ -41,6 +41,11 @@ from diagnosis_packet import (  # noqa: E402
     patch_plan_slice,
     write_packet,
 )
+from execution_assignment import (  # noqa: E402
+    assignment_record,
+    compile_assignment,
+    persist_assignment,
+)
 from requirement_expander import (  # noqa: E402
     load_or_expand,
     render_focus_with_spec,
@@ -579,7 +584,7 @@ def main(project: dict[str, Any] | None = None) -> int:
     # (no real design), and never writes an incoherent contract. Best-effort.
     if (
         bool((factory_config.get("contract") or {}).get("derive_from_seed"))
-        and architect_result.source == "ollama"
+        and architect_result.source != "fallback"
         and architect_result.data
         and load_contract(app_path) is None
     ):
@@ -692,6 +697,7 @@ def main(project: dict[str, Any] | None = None) -> int:
     # break the advance.
     coder_situational = ""
     patch_situational = ""
+    packet = None
     try:
         packet = build_packet(
             project=project,
@@ -798,8 +804,17 @@ def main(project: dict[str, Any] | None = None) -> int:
     executor_written: list[str] = []
     proposal_application = factory_config.get("proposal_application") or {}
     if bool(proposal_application.get("allow_apply")):
+        assignment = compile_assignment(
+            project, root, execute_obj, packet=packet
+        )
+        try:
+            persist_assignment(assignment, Path(str(task_root)))
+        except (OSError, ValueError):
+            pass
         exec_out = default_executor().execute(
-            build_request(project, root, objective=execute_obj)
+            build_request(
+                project, root, objective=execute_obj, packet=packet
+            )
         )
         executor_written, exec_err = apply_executor_result(
             exec_out, project, root
@@ -813,6 +828,8 @@ def main(project: dict[str, Any] | None = None) -> int:
                     "summary": exec_out.summary,
                     "reason": exec_err or exec_out.reason,
                     "files": executor_written,
+                    "stance": assignment.stance,
+                    "assignment": assignment_record(assignment),
                 },
                 repo_root=root,
                 allowed_roots=[task_root],

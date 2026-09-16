@@ -10,7 +10,7 @@ Recommended actions:
 
 * ``import_project`` — nothing is registered yet
 * ``pick_project`` — several projects exist; the owner must choose
-* ``provide_context`` — placeholder intent; start needs a real seed
+* ``provide_context`` — placeholder intent; start needs a prompt or seed
 * ``start`` — bounded context exists; no mission has run
 * ``continue`` — MORE_WORK / recoverable / budget; keep the loop going
 * ``done`` — evaluator COMPLETE (remaining product gaps are caveats)
@@ -20,8 +20,10 @@ Recommended actions:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
+from control_intelligence import load_decision
 from mission_runner import (
     BUDGET_EXHAUSTED,
     COMPLETE,
@@ -176,13 +178,13 @@ def _next_for_assessment(
         return NextAction(
             action=ACTION_PROVIDE_CONTEXT,
             why=(
-                "Intended product is still a placeholder. Pass a real seed "
-                "or inline context with start_mission; do not run workers "
-                "on 'describe what'."
+                "Intended product is still a placeholder. Pass a prompt, "
+                "a real seed, or inline context with start_mission; do "
+                "not run workers on 'describe what'."
             ),
             mcp_tool="start_mission",
-            cli=f"crazy-admin run {pid} --seed <seed.md>",
-            arguments={"project_id": pid, "seed": "<seed.md>"},
+            cli=f"crazy-admin run {pid} --prompt '<what to build>'",
+            arguments={"project_id": pid, "prompt": "<what to build>"},
         )
     return NextAction(
         action=ACTION_START,
@@ -204,6 +206,21 @@ def build_director_brief(
     mission = load_mission_snapshot(project, root)
     pid = str(project.get("name") or "")
     nxt = _next_for_assessment(pid, assessment, mission)
+    control_payload = None
+    task_root = project.get("task_root")
+    if task_root:
+        decision = load_decision(Path(str(task_root)))
+        if decision is not None:
+            control_payload = {
+                "outcome": decision.outcome,
+                "kind": decision.kind,
+                "stance": decision.stance,
+                "source": decision.source,
+                "rationale": decision.rationale,
+                "quality_ok": decision.quality_ok,
+            }
+            if decision.source == "model" and decision.director_why:
+                nxt.why = decision.director_why
     snap = assessment_to_dict(assessment)
     focus = focus_module_payload(select_focus_module(assessment.model))
     modules = [
@@ -240,6 +257,7 @@ def build_director_brief(
             "objective": mission.get("objective"),
         },
         "next": asdict(nxt),
+        "control": control_payload,
         "surface": mcp_surface(),
     }
 

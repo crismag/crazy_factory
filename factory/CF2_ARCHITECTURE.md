@@ -9,21 +9,22 @@ The broader repository assessment is
 
 ## Immediate product
 
-Crazy Factory must take a bounded application context and **keep
-working until there is a runnable, validated application** — or a
-clearly justified blocker that genuinely requires a human.
+Crazy Factory is an intelligence-driven software-creation system:
+incomplete human intent becomes coherent, demonstrable working
+software through understanding, investigation, planning, execution,
+observation, judgment, and iterative improvement. It is **not** a
+clone of Lovable or any other builder.
 
-UI, dashboards, large agent organizations, and product-intelligence
-theater are not the first milestone. The first failure is simpler:
+The factory owns mission, context construction, assignment quality,
+observation, and judgment. Coding models (Claude, OpenAI, later
+others) are replaceable workers. MCP is the external machinery.
+Capability first, architecture second, technology third — see
+[CF2_INTELLIGENCE.md](CF2_INTELLIGENCE.md).
 
-> The factory does not yet reliably take an input prompt/context and
-> autonomously continue doing the work required until it produces a
-> working output.
-
-Reference systems such as Lovable for the **automation behind
-prompt → working application**, not for UI. Coding intelligence
-comes from **plugins** (Claude, OpenAI, later others). The factory
-owns the loop; those plugins do not become the product.
+Closed-loop continuation remains mandatory: keep working until a
+runnable, validated application exists, or a justified human
+blocker. UI, dashboards, and multi-agent theater are not the
+milestone.
 
 ## Essential state machine
 
@@ -63,8 +64,9 @@ They must not be the thing the owner cranks with `advance`.
 | **P1** | Runnable output (install/build/start tools + inspect) | `done` (observer) |
 | **P2** | Convergence: remaining gaps become the next objective | `done` (engine; `objective_generator`) |
 | **P3** | External invocation: MCP wraps the working engine | `done` (`start` + seed; inspect/status report mission) |
-| **P4** | Better agents: coding-agent adapter, then specialized roles | **done (P4a+P4b)** |
+| **P4** | Better agents: coding-agent adapter, then specialized roles | **done (P4a–P4f)**; agentic control active |
 | **P5** | Broader product intelligence, dynamic teams, self-improve | **done (P5-01 Director)**; P5-02/P5-03 deferred |
+| **L0** | Prompt compiler + default `stdlib-web` stack | **done**; [CF2_WEB_STACK.md](CF2_WEB_STACK.md) |
 
 P5-01 is the Director (owner-facing brief + featured MCP). Do not
 start dynamic teams, factory self-mutation, or UI from this slice.
@@ -75,12 +77,12 @@ MCP surface: [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md).
 ## P0 shape (what this slice owns)
 
 ```text
-crazy-admin run <id> [--seed FILE]
+crazy-admin run <id> [--seed FILE | --prompt TEXT]
   apply WORKBENCH_AUTONOMOUS profile   # apply+validate+remediate+autonomy
                                        # safety floor intact (no push/merge/
                                        # delete, no engine writes, path confine)
   loop until COMPLETE | HUMAN_REQUIRED | BUDGET:
-      EVALUATE (acceptance, growth, blocker)
+      EVALUATE (acceptance, growth, blocker, runtime probe)
       if not terminal:
           EXECUTE = one factory_advance beat (existing kernel)
           OBSERVE = validation_result + workbench_metrics + runtime_observer
@@ -105,13 +107,12 @@ floor.
 | Stop for genuine human authority | — |
 
 Today the in-process Coder remains a kernel stage. P4 adds a
-provider-neutral `AgentExecutor`: objective + seed + failures in,
-workbench files out. The default coding plugins are Claude
-(Anthropic) and OpenAI (`CloudCodingExecutor`); they skip when no
-API key is set. The stdlib task-board actuator
-(`StdlibWebExecutor`) remains the deterministic proof backend.
-Ollama (`LlmFileExecutor`) is opt-in. Do not grow a multi-agent
-org in this slice.
+provider-neutral `AgentExecutor`. The factory compiles a
+purpose-built `ExecutionAssignment` from existing evidence
+(`scripts/execution_assignment.py`) before any coding plugin runs.
+Claude and OpenAI remain workers, not the architecture. The stdlib
+task-board actuator remains the deterministic proof backend. Ollama
+is opt-in. Do not grow a multi-agent org in this slice.
 
 ## Nested loops (later, not first)
 
@@ -140,7 +141,7 @@ Featured (owner / Director conversation):
 `list_projects` → registered workbenches + last mission outcome
 
 `crazy_factory.start(context, target)` → `start_mission`
-(seed path, inline context, and optional workbench path)
+(prompt, seed path, inline context, and optional workbench path)
 
 `crazy_factory.status(project)` → `get_status`
 (includes mission outcome, artifact, trace)

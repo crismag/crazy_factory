@@ -2,10 +2,10 @@
 
 ## Current Limitations
 
-- `crazy-admin run` closes the **process loop**. It does not yet
-  produce a working application by itself: the in-process Coder still
-  needs a live model. A declared start command is now observed
-  (`runtime_observer`); npm/browser journeys are still out of scope.
+- `crazy-admin run` closes the **process loop**. A raw `--prompt`
+  now compiles into a specified seed on `stdlib-web`. The coding
+  plugin still needs a live model (or the stdlib actuator for the
+  task-board proof). npm/browser journeys are still out of scope.
 - Default owner switches remain OFF. `run` enables an isolated
   workbench profile; other projects and the safety floor stay gated.
 - `max_files_per_run: 5` and `max_lines_per_file` still bound a single
