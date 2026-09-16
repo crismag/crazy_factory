@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** L0-05 conversational deltas
+**Current focus:** L0-08 re-open on delta (empirical next after prompt-build)
 **Last updated:** 2026-09-16
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -105,8 +105,10 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-L0-03 | DONE | CLI `--prompt` and MCP `start_mission.prompt` | `crazy_admin.py`, `mcp_server.py` |
 | CF2-L0-04 | DONE | Preview-first loop (serve + observe the compiled stack every beat) | `stdlib_preview.py`, `preview.json`, observer HTTP probe |
 | CF2-L0-05 | DONE | Conversational deltas on a running preview | `scripts/conversation_delta.py`, `tests/test_conversation_delta.py` |
-| CF2-L0-06 | DEFERRED | Drop-in MCP “any prompt” productization | after compiler + stack proof |
+| CF2-L0-06 | DEFERRED | Drop-in MCP “any prompt” productization | after a prompt becomes the *asked-for* app |
 | CF2-L0-07 | DEFERRED | `vite-react` executable (npm confine + probe) | P1-07 |
+| CF2-L0-08 | PLANNED | Re-open mission when a follow-up delta arrives (COMPLETE is not a tombstone) | live probe: second `run` was 0 beats |
+| CF2-L0-09 | PLANNED | Product-intent acceptance (generic CRUD preview ≠ requested product) | live probe: COMPLETE on titled CRUD |
 
 ---
 

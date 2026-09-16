@@ -1,0 +1,13 @@
+{
+  "url": "http://127.0.0.1:8765/",
+  "ok": true,
+  "http_status": 200,
+  "listen_port": 8765,
+  "status": "running",
+  "reason": "process stayed up for the probe window",
+  "command": [
+    "python3",
+    "-m",
+    "src.app"
+  ]
+}

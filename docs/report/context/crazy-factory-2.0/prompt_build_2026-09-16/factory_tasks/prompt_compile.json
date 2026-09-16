@@ -1,0 +1,50 @@
+{
+  "source": "fallback",
+  "provider": "",
+  "stack": "stdlib-web",
+  "title": "habit tracker",
+  "original_prompt": "build a habit tracker",
+  "start_command": "python3 -m src.app",
+  "listen_port": 8765,
+  "product": {
+    "title": "habit tracker",
+    "goal": "build a habit tracker",
+    "constraints": [
+      "Python 3 standard library only (http.server, pathlib, json).",
+      "No npm, no frameworks, no database server.",
+      "Persist application data as JSON under data/.",
+      "Keep the implementation small and testable.",
+      "Serve a usable HTML UI on localhost."
+    ],
+    "success": [
+      "A person can use the habit tracker UI in a browser on localhost.",
+      "Core create / list / update / delete flows work without placeholders.",
+      "Data persists across process restart (JSON under data/).",
+      "python3 -m compileall and pytest pass.",
+      "`python3 -m src.app` starts and answers HTTP."
+    ],
+    "known_context": "Single-user local app. No accounts, no cloud.",
+    "screens": [
+      "home",
+      "list",
+      "detail"
+    ],
+    "data": "JSON file under data/",
+    "required_files": [
+      "src/__init__.py",
+      "src/app.py",
+      "src/model.py",
+      "tests/test_model.py",
+      "tests/test_app.py",
+      "README.md",
+      "architecture.json",
+      "requirements.txt"
+    ],
+    "start_command": "python3 -m src.app",
+    "listen_port": 8765,
+    "stack": "stdlib-web",
+    "source": "fallback",
+    "original_prompt": "build a habit tracker",
+    "provider": ""
+  }
+}

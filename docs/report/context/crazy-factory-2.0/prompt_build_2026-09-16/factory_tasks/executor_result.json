@@ -1,0 +1,64 @@
+{
+  "ok": true,
+  "provider": "stdlib_web",
+  "summary": "stdlib-web preview actuator",
+  "reason": "",
+  "files": [
+    "src/__init__.py",
+    "src/model.py",
+    "src/app.py",
+    "tests/test_model.py",
+    "tests/test_app.py",
+    "data/items.json",
+    "data/change_requests.json",
+    "requirements.txt",
+    "README.md"
+  ],
+  "stance": "repair",
+  "assignment": {
+    "objective_id": "OBJ-RUNTIME",
+    "kind": "repair_runtime",
+    "title": "Make the application start",
+    "why": "File acceptance is not a running product.",
+    "gap": "module src.app is not in the workbench",
+    "focus": "Implement or repair the declared start_command so the process starts (and answers HTTP if listen_port is set). Observed: module src.app is not in the workbench",
+    "stance": "repair",
+    "success": [
+      "Required workbench files exist and are not stubs.",
+      "Allowlisted validation (compile, pytest, lint) passes.",
+      "Declared start command runs if architecture sets one."
+    ],
+    "verification": [
+      "python3 -m compileall on workbench sources",
+      "pytest on workbench tests when present",
+      "runtime probe when start_command is declared"
+    ],
+    "inventory": [
+      "README.md",
+      "architecture.json",
+      "docs/decisions.md",
+      "docs/requirements.md",
+      "docs/seed.md",
+      "tests/.gitkeep"
+    ],
+    "missing": [
+      "src/__init__.py",
+      "src/app.py",
+      "src/model.py",
+      "tests/test_model.py",
+      "tests/test_app.py",
+      "requirements.txt"
+    ],
+    "validation_summary": "",
+    "runtime_summary": "module src.app is not in the workbench",
+    "owner_deltas": [],
+    "previous_executor": "",
+    "constraints": [
+      "Write only under src/, tests/, data/, docs/, README.md, architecture.json, and requirements.txt.",
+      "Never write scripts/, factory/, config/, .git/, or engine source.",
+      "Do not push, merge, delete, or rewrite git history.",
+      "Do not invent a product when the seed is a placeholder.",
+      "Executor completion is not acceptance; tests and runtime are."
+    ]
+  }
+}

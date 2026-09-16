@@ -1,0 +1,38 @@
+{
+  "src_dirs": [
+    "src"
+  ],
+  "test_dirs": [
+    "tests"
+  ],
+  "extra_allowed": [
+    "README.md",
+    "data",
+    "docs",
+    "architecture.json",
+    "crazy_project.yaml",
+    "requirements.txt"
+  ],
+  "forbidden_imports": [
+    "sqlalchemy",
+    "django",
+    "flask",
+    "fastapi",
+    "react"
+  ],
+  "required_files": [
+    "src/__init__.py",
+    "src/app.py",
+    "src/model.py",
+    "tests/test_model.py",
+    "tests/test_app.py",
+    "README.md",
+    "architecture.json",
+    "requirements.txt"
+  ],
+  "start_command": "python3 -m src.app",
+  "listen_port": 8765,
+  "stack": "stdlib-web",
+  "source": "prompt-compiler",
+  "title": "habit tracker"
+}

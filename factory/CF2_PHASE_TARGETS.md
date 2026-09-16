@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** L0-05 — conversational deltas (`done`)
+**Current phase:** L0-08 — re-open on conversational delta (`planned`)
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -165,10 +165,10 @@ Acceptance (P5a):
 
 | | |
 | --- | --- |
-| Status | **done** (compiler + default stack + preview + deltas). Vite-react remains later. |
+| Status | **done** through L0-05. Live no-key prompt-build COMPLETE’d a generic preview; L0-08/L0-09 are next. Vite-react remains later. |
 | Target | A raw owner sentence becomes a specified factory seed on one executable web stack. |
 | Success | `crazy-admin run id --prompt "…"` and MCP `start_mission.prompt` write Goal/Success + `architecture.json` instead of parking on `specify_intent`. Follow-up prompts on a specified product are deltas. |
-| Evidence | `scripts/prompt_compiler.py`, `scripts/web_stack.py`, `tests/test_prompt_compiler.py`, [CF2_WEB_STACK.md](CF2_WEB_STACK.md) |
+| Evidence | `scripts/prompt_compiler.py`, live pack [prompt_build_2026-09-16](../docs/report/context/crazy-factory-2.0/prompt_build_2026-09-16/), [POST_L0_CAPABILITY_ASSESSMENT.md](../docs/report/context/crazy-factory-2.0/POST_L0_CAPABILITY_ASSESSMENT.md) |
 
 Acceptance:
 
@@ -181,4 +181,6 @@ Acceptance:
 - [x] Hand-authored `architecture.json` is not overwritten
 - [x] Preview-first: compiled `stdlib-web` workbenches get a reachable HTTP UI and `preview.json`
 - [x] Conversational deltas on a running preview (L0-05)
+- [ ] Re-open mission on a new owner delta (L0-08)
+- [ ] Product-intent acceptance vs generic preview (L0-09)
 - [ ] npm / Vite executable stack (P1-07 / L0-07)
