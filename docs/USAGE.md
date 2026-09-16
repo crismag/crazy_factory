@@ -27,6 +27,40 @@ bin/crazy-admin run todo_app --seed examples/seeds/task_board_web.md
 bin/crazy-admin stop todo_app
 ```
 
+### Coding intelligence plugins
+
+Productization is Lovable-like: a seed/prompt becomes a working app
+through the factory loop. Claude and OpenAI are the starting coding
+models behind `AgentExecutor`. Other intelligence plugins can join
+later under the same contract. Ollama is opt-in, not the default.
+
+```bash
+# Claude when ANTHROPIC_API_KEY is set (preferred if both keys exist)
+export ANTHROPIC_API_KEY=...
+bin/crazy-admin run todo_app --seed path/to/seed.md
+
+# Or OpenAI
+export OPENAI_API_KEY=...
+export CRAZY_FACTORY_CODING_PROVIDER=openai
+bin/crazy-admin run todo_app --seed path/to/seed.md
+
+# Deterministic task-board proof (CI / no vendor)
+export CRAZY_FACTORY_EXECUTOR=stdlib_web
+bin/crazy-admin run todo_app --seed examples/seeds/task_board_web.md
+
+# Local Ollama coder (optional; not the starting path)
+export CRAZY_FACTORY_EXECUTOR=ollama
+```
+
+Aliases: `CRAZY_FACTORY_ANTHROPIC_API_KEY`,
+`CRAZY_FACTORY_OPENAI_API_KEY`. Override the model with
+`CRAZY_FACTORY_CODER_MODEL` (cloud ids only; Ollama `name:tag`
+values are ignored by the cloud plugins). Timeout:
+`CRAZY_FACTORY_CODING_TIMEOUT` (seconds, default 60).
+
+With no API key the cloud plugin skips without opening a socket.
+The known task-board seed still completes via the stdlib actuator.
+
 One-beat kernel (the owner still cranks each step):
 
 ```bash

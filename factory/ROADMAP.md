@@ -12,7 +12,7 @@ below is retained as ancestry; it is not the current execution plan.
 | **P1** | Runnable output: install/build/start on the tool executor; observe runtime | `done` |
 | **P2** | Convergence: remaining product gaps become the next objective | `done` (engine + module loop) |
 | **P3** | MCP wraps the working engine (`start` / `status` / `continue` / `stop`) | `done` (engine) |
-| **P4** | Coding-agent adapter; specialized roles only where they improve completion | `done` (P4a+P4b); later providers deferred |
+| **P4** | Coding-agent adapter; specialized roles only where they improve completion | `done` (P4a+P4b+P4c); Cursor/Codex IDE adapters deferred |
 | **P5** | Broader product intelligence, dynamic teams, self-improving capabilities | `done` (P5-01 Director + P5b module loop); P5-02/P5-03 deferred |
 
 Living checklists:
@@ -24,7 +24,10 @@ Inspect/assess/MCP from Slice A shipped alongside P0 as inventory.
 P2 wires remaining-gap objectives into EXECUTE. P3 wraps that engine:
 `start_mission` takes context + target in one call. P4a is the capable
 implementation actuator: `context → Crazy Factory → runnable accepted
-application` on `task_board_web`. P5a is the Director: `crazy-admin
+application` on `task_board_web`. P4c is the starting coding
+intelligence: Claude and OpenAI plugins behind `AgentExecutor`
+(Lovable-like prompt → working app; skip when no API key). Ollama
+is opt-in, not the default. P5a is the Director: `crazy-admin
 brief` / MCP `director_brief` names the next featured command.
 P5b is the nested module loop: finish one module before opening the
 next. See [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md).
@@ -35,4 +38,4 @@ The original milestones (docs OS, local apprentice, Ollama, cron, MCP
 evaluation, oversight, multi-model, multi-project) were partially
 realized as the execution kernel. MCP is no longer "evaluate later":
 a stdio server exists. Multi-project isolation already exists.
-Oversight/Codex/Claude remain unbuilt as providers (P4).
+Oversight/Codex/Cursor remain unbuilt as IDE adapters (P4-09).

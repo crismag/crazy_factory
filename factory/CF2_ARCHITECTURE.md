@@ -21,7 +21,9 @@ theater are not the first milestone. The first failure is simpler:
 > working output.
 
 Reference systems such as Lovable for the **automation behind
-prompt → working application**, not for UI.
+prompt → working application**, not for UI. Coding intelligence
+comes from **plugins** (Claude, OpenAI, later others). The factory
+owns the loop; those plugins do not become the product.
 
 ## Essential state machine
 
@@ -102,12 +104,14 @@ floor.
 | Trace / report | — |
 | Stop for genuine human authority | — |
 
-Today the in-process Coder remains a kernel stage. P4a adds a
+Today the in-process Coder remains a kernel stage. P4 adds a
 provider-neutral `AgentExecutor`: objective + seed + failures in,
-workbench files out. The first capable backend is the stdlib
-task-board actuator (`StdlibWebExecutor`); `LlmFileExecutor` is the
-Ollama file-map adapter and skips when the daemon is down. Do not
-grow a multi-agent org in this slice.
+workbench files out. The default coding plugins are Claude
+(Anthropic) and OpenAI (`CloudCodingExecutor`); they skip when no
+API key is set. The stdlib task-board actuator
+(`StdlibWebExecutor`) remains the deterministic proof backend.
+Ollama (`LlmFileExecutor`) is opt-in. Do not grow a multi-agent
+org in this slice.
 
 ## Nested loops (later, not first)
 

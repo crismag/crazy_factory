@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** P5a — Director + featured MCP (`done`)
+**Current phase:** P4c — Claude / OpenAI coding plugins (`done`)
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -38,7 +38,7 @@ Acceptance (all met):
 
 Not in P0 (deliberately):
 
-- [ ] Live Ollama/coding-agent produces a working app (P1/P4)
+- [ ] Live Ollama `run` on the benchmark (P1-09, not the starting coding model)
 - [ ] Install / build / start tools (P1)
 - [x] Remaining-gap objectives drive EXECUTE (P2)
 
@@ -113,20 +113,23 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **done** (P4a + P4b). Cursor/Codex/Claude adapters and specialized roles remain deferred. |
+| Status | **done** (P4a + P4b + P4c). Cursor/Codex IDE adapters and specialized roles remain deferred. |
 | Target | Delegate low-level coding to a capable agent behind an adapter. |
 | Success | Crazy Factory owns mission/evaluate/tools; the adapter owns implementation. |
 
 Acceptance:
 
 - [x] Agent executor interface (objective in, workbench files out)
-- [x] One capable backend for the task-board proof (`StdlibWebExecutor`); Ollama file-map skips when down
+- [x] One capable backend for the task-board proof (`StdlibWebExecutor`); Ollama file-map is opt-in
+- [x] Claude (Anthropic) and OpenAI are the starting coding plugins; skip when no API key
 - [x] Independent evaluator still decides PASS / MORE_WORK / BLOCKED
 - [x] `examples/seeds/task_board_web.md` from a clean workbench → COMPLETE + runtime
 - [ ] Specialized roles only where they measurably improve completion
+- [ ] Cursor / Codex IDE adapters (P4-09)
 
 P3 completion baseline: [CF2_P3_COMPLETION.md](CF2_P3_COMPLETION.md).
 P4a completion baseline: [CF2_P4A_COMPLETION.md](CF2_P4A_COMPLETION.md).
+P4c completion baseline: [CF2_P4C_COMPLETION.md](CF2_P4C_COMPLETION.md).
 P5a completion baseline: [CF2_P5_COMPLETION.md](CF2_P5_COMPLETION.md).
 
 ---

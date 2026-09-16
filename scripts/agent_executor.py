@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
-"""P4a minimal AgentExecutor — objective in, workbench files out.
+"""P4 AgentExecutor — objective in, workbench files out.
 
 Crazy Factory owns mission, observation, evaluation, and safety.
 This module is the implementation actuator:
 
     objective + seed + failures → files → existing apply/observe/evaluate
 
-Two backends, chained:
+Productization is Lovable-like: a bounded prompt becomes a working
+app. Coding intelligence is a plugin, not a local-model-first path.
 
-1. ``LlmFileExecutor`` — one structured Ollama call for a file map.
-   Skips immediately when the daemon is down (short timeout).
+Default chain:
+
+1. ``CloudCodingExecutor`` — Claude (Anthropic) or OpenAI file map.
+   Skips immediately when no API key is set (no network).
 2. ``StdlibWebExecutor`` — capable bounded actuator for the first
    proof seed (stdlib task-board). Copies a verified implementation
    into the workbench. This is not a multi-agent org.
 
-Neither backend writes engine source, pushes, merges, or deletes.
+``LlmFileExecutor`` (Ollama) is opt-in via
+``CRAZY_FACTORY_EXECUTOR=ollama``. None of the backends write engine
+source, push, merge, or delete.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from coding_llm import resolve_coding_backend
 from llm_interaction import structured_call
 from ollama_client import OllamaClient
 from repo_tools import RepoSafetyError, safe_write_text
@@ -160,6 +166,42 @@ def _rel_ok(rel: str) -> bool:
     return parts[0] in ALLOWED_TOPS
 
 
+def _files_from_payload(data: dict[str, Any]) -> dict[str, str]:
+    raw = data.get("files")
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        str(path): str(body)
+        for path, body in raw.items()
+        if isinstance(path, str) and isinstance(body, str) and _rel_ok(path)
+    }
+
+
+_FILE_MAP_SYSTEM = (
+    "You implement a small application from the seed and objective. "
+    "Return JSON only."
+)
+_FILE_MAP_PRIMING = (
+    'Respond with JSON {"files": {"relative/path": "content"}}. '
+    "Only src/, tests/, data/, docs/, README.md, architecture.json, "
+    "and requirements.txt. Never write scripts/, factory/, config/, "
+    "or .git/."
+)
+
+
+def _file_map_user(request: ExecutorRequest) -> str:
+    return (
+        f"Objective: {request.objective_title} "
+        f"({request.objective_kind})\n"
+        f"Gap: {request.gap}\n"
+        f"Why: {request.why}\n"
+        f"Focus: {request.focus}\n"
+        f"Runtime failure: {request.runtime_failure or 'none'}\n"
+        f"Validation failure: {request.validation_failure or 'none'}\n"
+        f"Seed:\n{request.seed_text[:4000]}\n"
+    )
+
+
 def apply_executor_result(
     result: ExecutorResult,
     project: dict[str, Any],
@@ -194,8 +236,58 @@ def apply_executor_result(
     return written, None
 
 
+class CloudCodingExecutor:
+    """Claude / OpenAI file-map plugin. Skips when no API key is set."""
+
+    name = "cloud_coding"
+
+    def __init__(self, provider: str | None = None) -> None:
+        self.prefer = provider
+
+    def execute(self, request: ExecutorRequest) -> ExecutorResult:
+        pack = resolve_coding_backend(prefer=self.prefer)
+        if pack is None:
+            return ExecutorResult(
+                ok=False,
+                provider=self.name,
+                summary="no coding API key",
+                reason="no_coding_api_key",
+            )
+        provider, client, model = pack
+        data, note = structured_call(
+            client=client,
+            model=model,
+            system=_FILE_MAP_SYSTEM,
+            user=_file_map_user(request),
+            priming=_FILE_MAP_PRIMING,
+            required_keys=("files",),
+            retries=0,
+        )
+        if not data:
+            return ExecutorResult(
+                ok=False,
+                provider=provider,
+                summary="cloud coding file map unavailable",
+                reason=note,
+            )
+        files = _files_from_payload(data)
+        if not files:
+            return ExecutorResult(
+                ok=False,
+                provider=provider,
+                summary="cloud coding returned no allowed files",
+                reason=note,
+            )
+        return ExecutorResult(
+            ok=True,
+            provider=provider,
+            summary=f"{provider} proposed {len(files)} file(s)",
+            files=files,
+        )
+
+
 class LlmFileExecutor:
-    """One-shot Ollama file-map backend. Skips when Ollama is down."""
+    """One-shot Ollama file-map backend. Opt-in; skips when down."""
 
     name = "ollama_files"
 
@@ -204,44 +296,23 @@ class LlmFileExecutor:
             os.environ.get("CRAZY_FACTORY_CODER_MODEL") or "qwen2.5-coder:14b"
         )
         client = OllamaClient(timeout_seconds=3)
-        user = (
-            f"Objective: {request.objective_title} "
-            f"({request.objective_kind})\n"
-            f"Gap: {request.gap}\n"
-            f"Why: {request.why}\n"
-            f"Focus: {request.focus}\n"
-            f"Runtime failure: {request.runtime_failure or 'none'}\n"
-            f"Validation failure: {request.validation_failure or 'none'}\n"
-            f"Seed:\n{request.seed_text[:4000]}\n"
-        )
         data, note = structured_call(
             client=client,
             model=model,
-            system=(
-                "You implement a small Python stdlib application. "
-                "Return JSON only."
-            ),
-            user=user,
-            priming=(
-                'Respond with JSON {"files": {"relative/path": "content"}}. '
-                "Only src/, tests/, data/, README.md, architecture.json, "
-                "and requirements.txt."
-            ),
+            system=_FILE_MAP_SYSTEM,
+            user=_file_map_user(request),
+            priming=_FILE_MAP_PRIMING,
             required_keys=("files",),
             retries=0,
         )
-        if not data or not isinstance(data.get("files"), dict):
+        if not data:
             return ExecutorResult(
                 ok=False,
                 provider=self.name,
                 summary="ollama file map unavailable",
                 reason=note,
             )
-        files = {
-            str(path): str(body)
-            for path, body in data["files"].items()
-            if isinstance(path, str) and isinstance(body, str)
-        }
+        files = _files_from_payload(data)
         if not files:
             return ExecutorResult(
                 ok=False,
@@ -351,10 +422,21 @@ class ChainedExecutor:
 
 
 def default_executor() -> AgentExecutor:
-    """LLM first when present; stdlib web actuator closes the proof seed."""
-    forced = (os.environ.get("CRAZY_FACTORY_EXECUTOR") or "").strip()
+    """Cloud coding plugin first; stdlib web closes the proof seed.
+
+    Ollama is not the starting coding model. Force it with
+    ``CRAZY_FACTORY_EXECUTOR=ollama``. Force a vendor with
+    ``openai`` / ``anthropic``. Force the deterministic proof
+    actuator with ``stdlib_web``.
+    """
+    forced = (os.environ.get("CRAZY_FACTORY_EXECUTOR") or "").strip().lower()
     if forced == "stdlib_web":
         return StdlibWebExecutor()
     if forced == "ollama":
         return LlmFileExecutor()
-    return ChainedExecutor([LlmFileExecutor(), StdlibWebExecutor()])
+    if forced in {"openai", "anthropic", "claude", "cloud"}:
+        prefer = None if forced == "cloud" else forced
+        return CloudCodingExecutor(provider=prefer)
+    return ChainedExecutor(
+        [CloudCodingExecutor(), StdlibWebExecutor()]
+    )

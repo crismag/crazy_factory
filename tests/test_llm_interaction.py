@@ -14,6 +14,7 @@ from pathlib import Path
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+from coding_llm import CodingLlmError  # noqa: E402
 from llm_interaction import classify_response, structured_call  # noqa: E402
 from ollama_client import OllamaConnectionError  # noqa: E402
 
@@ -85,6 +86,13 @@ class StructuredCallTests(unittest.TestCase):
         data, note = _call(c)
         self.assertIsNone(data)
         self.assertIn("ollama_unavailable", note)
+
+    def test_coding_llm_unavailable_returns_none(self) -> None:
+        c = FakeClient([CodingLlmError("no key")])
+        data, note = _call(c)
+        self.assertIsNone(data)
+        self.assertIn("coding_llm_unavailable", note)
+        self.assertNotIn("ollama_unavailable", note)
 
     def test_missing_required_key_rejected(self) -> None:
         c = FakeClient(['{"something_else": 1}'])  # valid json, wrong shape

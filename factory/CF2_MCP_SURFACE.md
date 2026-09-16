@@ -96,7 +96,9 @@ inventory, not featured commands.
 - Network listen + auth (P3-04).
 - Dynamic team / skill registry (P5-02).
 - Factory self-improvement that writes `scripts/` (P5-03).
-- Cursor / Codex / Claude as named tools (P4-03 adapters, not MCP verbs).
+- Cursor / Codex as named tools (P4-09 adapters, not MCP verbs).
+  Claude/OpenAI are coding plugins behind `AgentExecutor`, not MCP
+  tools.
 
 ---
 

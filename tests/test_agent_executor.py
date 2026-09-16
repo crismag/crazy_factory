@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import crazy_admin as ca  # noqa: E402
 from agent_executor import (  # noqa: E402
+    CloudCodingExecutor,
     ExecutorRequest,
     ExecutorResult,
     LlmFileExecutor,
@@ -32,6 +33,20 @@ from mcp_server import call_tool  # noqa: E402
 from mission_runner import COMPLETE, run_mission  # noqa: E402
 
 SEED = ROOT / "examples" / "seeds" / "task_board_web.md"
+_CLOUD_ENV = (
+    "CRAZY_FACTORY_EXECUTOR",
+    "CRAZY_FACTORY_CODING_PROVIDER",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "CRAZY_FACTORY_OPENAI_API_KEY",
+    "CRAZY_FACTORY_ANTHROPIC_API_KEY",
+)
+
+
+def _env_without_cloud(**extra: str) -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k not in _CLOUD_ENV}
+    env.update(extra)
+    return env
 
 
 def _write(path: Path, text: str) -> None:
@@ -206,21 +221,123 @@ class DefaultExecutorTests(unittest.TestCase):
         with patch.dict(os.environ, {"CRAZY_FACTORY_EXECUTOR": "stdlib_web"}):
             self.assertEqual(default_executor().name, "stdlib_web")
 
-    def test_default_chain_falls_through_when_ollama_is_down(self) -> None:
-        env = {
-            k: v
-            for k, v in os.environ.items()
-            if k != "CRAZY_FACTORY_EXECUTOR"
-        }
-        with patch.dict(os.environ, env, clear=True):
+    def test_env_forces_openai_plugin(self) -> None:
+        with patch.dict(os.environ, {"CRAZY_FACTORY_EXECUTOR": "openai"}):
+            executor = default_executor()
+        self.assertIsInstance(executor, CloudCodingExecutor)
+        assert isinstance(executor, CloudCodingExecutor)
+        self.assertEqual(executor.prefer, "openai")
+
+    def test_env_forces_claude_plugin(self) -> None:
+        with patch.dict(os.environ, {"CRAZY_FACTORY_EXECUTOR": "anthropic"}):
+            executor = default_executor()
+        self.assertIsInstance(executor, CloudCodingExecutor)
+        assert isinstance(executor, CloudCodingExecutor)
+        self.assertEqual(executor.prefer, "anthropic")
+
+    def test_env_forces_ollama_opt_in(self) -> None:
+        with patch.dict(os.environ, {"CRAZY_FACTORY_EXECUTOR": "ollama"}):
+            self.assertEqual(default_executor().name, "ollama_files")
+
+    def test_default_chain_falls_through_without_cloud_keys(self) -> None:
+        with patch.dict(os.environ, _env_without_cloud(), clear=True):
             executor = default_executor()
             self.assertEqual(executor.name, "chain")
+            names = [backend.name for backend in executor.backends]
+            self.assertEqual(names, ["cloud_coding", "stdlib_web"])
             result = executor.execute(
                 _request(seed=SEED.read_text(encoding="utf-8"))
             )
         self.assertTrue(result.ok)
         self.assertEqual(result.provider, "stdlib_web")
         self.assertIn("src/task_board.py", result.files)
+
+    def test_novel_seed_without_keys_does_not_invent_files(self) -> None:
+        with patch.dict(os.environ, _env_without_cloud(), clear=True):
+            result = default_executor().execute(
+                _request(seed="a calendar app")
+            )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.files, {})
+
+
+class CloudCodingExecutorTests(unittest.TestCase):
+    def test_skips_without_calling_network(self) -> None:
+        with (
+            patch.dict(os.environ, _env_without_cloud(), clear=True),
+            patch("coding_llm.urlopen") as mock_open,
+        ):
+            out = CloudCodingExecutor().execute(_request(seed="x"))
+        mock_open.assert_not_called()
+        self.assertFalse(out.ok)
+        self.assertEqual(out.reason, "no_coding_api_key")
+        self.assertEqual(out.provider, "cloud_coding")
+
+    def test_openai_file_map_is_applied(self) -> None:
+        payload = {
+            "files": {
+                "src/hello.py": "X = 1\n",
+                "scripts/pwn.py": "print(1)\n",
+            }
+        }
+        with (
+            patch.dict(
+                os.environ,
+                _env_without_cloud(OPENAI_API_KEY="sk-test"),
+                clear=True,
+            ),
+            patch(
+                "agent_executor.structured_call",
+                return_value=(payload, "ok (attempt 1)"),
+            ) as mock_call,
+        ):
+            out = CloudCodingExecutor(provider="openai").execute(
+                _request(seed="novel app")
+            )
+        mock_call.assert_called_once()
+        self.assertTrue(out.ok)
+        self.assertEqual(out.provider, "openai")
+        self.assertEqual(out.files, {"src/hello.py": "X = 1\n"})
+        self.assertNotIn("scripts/pwn.py", out.files)
+
+    def test_anthropic_file_map_is_applied(self) -> None:
+        payload = {"files": {"src/app.py": "print('ok')\n"}}
+        with (
+            patch.dict(
+                os.environ,
+                _env_without_cloud(ANTHROPIC_API_KEY="ant-test"),
+                clear=True,
+            ),
+            patch(
+                "agent_executor.structured_call",
+                return_value=(payload, "ok (attempt 1)"),
+            ),
+        ):
+            out = CloudCodingExecutor(provider="anthropic").execute(
+                _request(seed="novel app")
+            )
+        self.assertTrue(out.ok)
+        self.assertEqual(out.provider, "anthropic")
+        self.assertEqual(out.files["src/app.py"], "print('ok')\n")
+
+    def test_blocked_only_payload_is_rejected(self) -> None:
+        payload = {"files": {"scripts/pwn.py": "print(1)\n"}}
+        with (
+            patch.dict(
+                os.environ,
+                _env_without_cloud(OPENAI_API_KEY="sk-test"),
+                clear=True,
+            ),
+            patch(
+                "agent_executor.structured_call",
+                return_value=(payload, "ok (attempt 1)"),
+            ),
+        ):
+            out = CloudCodingExecutor(provider="openai").execute(
+                _request(seed="novel app")
+            )
+        self.assertFalse(out.ok)
+        self.assertEqual(out.files, {})
 
 
 class TaskBoardBenchmarkTests(unittest.TestCase):

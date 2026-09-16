@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from coding_llm import CodingLlmError
 from json_parsing import strip_code_fence
 from ollama_client import OllamaConnectionError
 
@@ -88,7 +89,8 @@ def structured_call(
     """Prime + JSON call + classify + bounded reframe-retry.
 
     Args:
-        client: An ``OllamaClient`` (so callers control base_url/timeout).
+        client: Chat client with Ollama-shaped ``chat`` (Ollama, OpenAI,
+            or Anthropic). Callers control base_url/timeout.
         model: Model name.
         system: The role's task instruction (appended after the priming).
         user: The (curated) user content.
@@ -113,7 +115,11 @@ def structured_call(
         try:
             response = client.chat(model, messages, response_format="json")
             content = str(response["message"]["content"]).strip()
-        except (KeyError, TypeError, ValueError, OllamaConnectionError) as exc:
+        except OllamaConnectionError as exc:
+            return None, f"ollama_unavailable: {exc}"
+        except CodingLlmError as exc:
+            return None, f"coding_llm_unavailable: {exc}"
+        except (KeyError, TypeError, ValueError) as exc:
             return None, f"ollama_unavailable: {exc}"
 
         kind = classify_response(content)

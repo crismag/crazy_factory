@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** P5-02/P5-03 deferred (P5b nested module loop landed)
+**Current focus:** P4c cloud coding plugins landed; P5-02/P5-03 deferred
 **Last updated:** 2026-09-16
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -37,7 +37,7 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-P1-06 | DONE | Default compileall + pytest remain the validation floor | already allowlisted |
 | CF2-P1-07 | DEFERRED | npm / node / webpack / vitest allowlist | after stdlib benchmark |
 | CF2-P1-08 | DEFERRED | Browser / visual journey inspection | P1+ / Playwright later |
-| CF2-P1-09 | DEFERRED | Live Ollama `run` on `task_board_web` | P4a stdlib actuator closes the seed; Ollama still optional |
+| CF2-P1-09 | DEFERRED | Live Ollama `run` on `task_board_web` | not the starting coding model; Claude/OpenAI are P4-03 |
 
 ---
 
@@ -64,18 +64,19 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 
 ---
 
-## P4 — Agent executor (P4a + P4b done)
+## P4 — Agent executor (P4a + P4b + P4c)
 
 | ID | Status | Task | Evidence |
 | --- | --- | --- | --- |
 | CF2-P4-01 | DONE | `AgentExecutor` interface (objective + failures → workbench files) | `scripts/agent_executor.py` |
-| CF2-P4-02 | DONE | One capable backend (stdlib task-board actuator; Ollama file-map optional) | `StdlibWebExecutor` + `LlmFileExecutor` |
-| CF2-P4-03 | DEFERRED | Cursor / Codex / Claude adapter | later providers |
+| CF2-P4-02 | DONE | One capable backend (stdlib task-board actuator; Ollama file-map opt-in) | `StdlibWebExecutor` + `LlmFileExecutor` |
+| CF2-P4-03 | DONE | Claude / OpenAI coding plugins (Lovable-like intelligence, skip if no key) | `CloudCodingExecutor`, `scripts/coding_llm.py` |
 | CF2-P4-04 | DEFERRED | Specialized roles only with measured gain | not this slice |
 | CF2-P4-05 | DONE | `examples/seeds/task_board_web.md` → runnable accepted app | `tests/test_agent_executor.py` |
-| CF2-P4-06 | DONE | Default chain (Ollama down → stdlib actuator) without env flag | `DefaultExecutorTests` |
+| CF2-P4-06 | DONE | Default chain (no cloud key → stdlib actuator) without env flag | `DefaultExecutorTests` |
 | CF2-P4-07 | DONE | Failed workbench repaired on the next beat (no HUMAN_REQUIRED) | repair test |
 | CF2-P4-08 | DONE | `crazy-admin run --seed` and MCP `start_mission` reach COMPLETE | owner-path tests |
+| CF2-P4-09 | DEFERRED | Cursor / Codex IDE adapters | later providers; not MCP verbs |
 
 ---
 

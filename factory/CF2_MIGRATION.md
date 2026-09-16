@@ -180,6 +180,40 @@ reload architecture contract, validate, mark checklist complete),
 
 ---
 
+## P4c — Claude / OpenAI coding plugins
+
+### Objective
+
+Productization equals a Lovable-like closed loop. Coding intelligence
+is a plugin behind `AgentExecutor`. Start with Claude and OpenAI —
+not live Ollama. Other plugins can join later under the same
+contract.
+
+### New
+
+`scripts/coding_llm.py` (`CodingLlmError`, `AnthropicClient`,
+`OpenAIClient`, `resolve_coding_backend`),
+`CloudCodingExecutor` in `scripts/agent_executor.py`,
+`tests/test_coding_llm.py`.
+
+### Changed
+
+Default executor chain is cloud coding then stdlib web. Ollama is
+opt-in via `CRAZY_FACTORY_EXECUTOR=ollama`. `structured_call`
+accepts cloud clients.
+
+### Acceptance
+
+- No API key → skip, `urlopen` is not called.
+- Mocked Anthropic and OpenAI file maps write allowed paths only.
+- Blocked paths (`scripts/`, `factory/`) are dropped.
+- Both keys present → Claude is preferred.
+- Task-board proof still COMPLETE via `stdlib_web` when keys are
+  absent.
+- CI never calls a live vendor.
+
+---
+
 ## P5a — Director + featured MCP
 
 ### Objective
