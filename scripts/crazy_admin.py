@@ -1240,10 +1240,11 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
 def _dispatch_run(args: argparse.Namespace, root: Path) -> int:
     """Create-if-needed, optional seed ingest, then closed-loop run."""
     pid = args.project_id
+    path = getattr(args, "path", None)
     if pid:
-        project = ensure_project(pid, root)
+        project = ensure_project(pid, root, path=str(path) if path else None)
     else:
-        project = _resolve_project_arg(root, None, path=args.path)
+        project = _resolve_project_arg(root, None, path=path)
     seed = getattr(args, "seed", None)
     if seed:
         ingest_start_context(project, root, seed=str(seed))

@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** next planned item after P4a (P4-03 deferred; do not start P5)
+**Current focus:** `CF2-P4-08` owner/MCP path (P4a landed)
 **Last updated:** 2026-09-16
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -64,7 +64,7 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 
 ---
 
-## P4 — Agent executor (P4a done)
+## P4 — Agent executor (P4a done; P4b owner/repair)
 
 | ID | Status | Task | Evidence |
 | --- | --- | --- | --- |
@@ -73,6 +73,9 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-P4-03 | DEFERRED | Cursor / Codex / Claude adapter | later providers |
 | CF2-P4-04 | DEFERRED | Specialized roles only with measured gain | not this slice |
 | CF2-P4-05 | DONE | `examples/seeds/task_board_web.md` → runnable accepted app | `tests/test_agent_executor.py` |
+| CF2-P4-06 | ACTIVE | Default chain (Ollama down → stdlib actuator) without env flag | `DefaultExecutorTests` |
+| CF2-P4-07 | ACTIVE | Failed workbench repaired on the next beat (no HUMAN_REQUIRED) | repair test |
+| CF2-P4-08 | ACTIVE | `crazy-admin run --seed` and MCP `start_mission` reach COMPLETE | owner-path tests |
 
 ---
 

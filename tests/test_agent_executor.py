@@ -8,6 +8,8 @@ import shutil
 import sys
 import tempfile
 import unittest
+from contextlib import contextmanager
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -26,6 +28,7 @@ from agent_executor import (  # noqa: E402
     default_executor,
     seed_looks_like_stdlib_task_board,
 )
+from mcp_server import call_tool  # noqa: E402
 from mission_runner import COMPLETE, run_mission  # noqa: E402
 
 SEED = ROOT / "examples" / "seeds" / "task_board_web.md"
@@ -34,6 +37,22 @@ SEED = ROOT / "examples" / "seeds" / "task_board_web.md"
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+@contextmanager
+def _isolated_workbench(pid: str):
+    """Create a throwaway workbench under apps/ and restore the registry."""
+    app = ROOT / "apps" / pid
+    registry = ROOT / "config" / "projects.yaml"
+    backup = registry.read_text(encoding="utf-8")
+    if app.exists():
+        shutil.rmtree(app)
+    try:
+        yield app
+    finally:
+        if app.exists():
+            shutil.rmtree(app, ignore_errors=True)
+        registry.write_text(backup, encoding="utf-8")
 
 
 def _bootstrap_repo(root: Path) -> None:
@@ -187,19 +206,28 @@ class DefaultExecutorTests(unittest.TestCase):
         with patch.dict(os.environ, {"CRAZY_FACTORY_EXECUTOR": "stdlib_web"}):
             self.assertEqual(default_executor().name, "stdlib_web")
 
+    def test_default_chain_falls_through_when_ollama_is_down(self) -> None:
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k != "CRAZY_FACTORY_EXECUTOR"
+        }
+        with patch.dict(os.environ, env, clear=True):
+            executor = default_executor()
+            self.assertEqual(executor.name, "chain")
+            result = executor.execute(
+                _request(seed=SEED.read_text(encoding="utf-8"))
+            )
+        self.assertTrue(result.ok)
+        self.assertEqual(result.provider, "stdlib_web")
+        self.assertIn("src/task_board.py", result.files)
+
 
 class TaskBoardBenchmarkTests(unittest.TestCase):
     def test_clean_workbench_mission_reaches_complete(self) -> None:
         pid = "p4a_stdlib_board"
-        app = ROOT / "apps" / pid
-        registry = ROOT / "config" / "projects.yaml"
-        backup = registry.read_text(encoding="utf-8")
-        if app.exists():
-            shutil.rmtree(app)
-        try:
-            ca.startproject(
-                pid, f"apps/{pid}", root=ROOT, force=True, reuse=True
-            )
+        with _isolated_workbench(pid) as app:
+            ca.startproject(pid, f"apps/{pid}", root=ROOT, force=True)
             project = ca.resolve_project(ca.load_registry(ROOT), pid)
             ca.install_seed(project, str(SEED), root=ROOT)
             with patch.dict(
@@ -223,10 +251,102 @@ class TaskBoardBenchmarkTests(unittest.TestCase):
             self.assertTrue((app / "src/task_board.py").is_file())
             self.assertTrue((app / "tests/test_task_board.py").is_file())
             self.assertIn("runtime", result.reason)
-        finally:
-            if app.exists():
-                shutil.rmtree(app, ignore_errors=True)
-            registry.write_text(backup, encoding="utf-8")
+
+    def test_broken_workbench_is_repaired_without_a_human(self) -> None:
+        pid = "p4b_repair_board"
+        with _isolated_workbench(pid) as app:
+            ca.startproject(pid, f"apps/{pid}", root=ROOT, force=True)
+            project = ca.resolve_project(ca.load_registry(ROOT), pid)
+            ca.install_seed(project, str(SEED), root=ROOT)
+            _write(app / "src/task_board.py", "STATUS = 'broken'\n")
+            _write(
+                app / "tests/test_task_board.py",
+                "def test_ok():\n    assert False\n",
+            )
+            _write(
+                app / "architecture.json",
+                json.dumps(
+                    {
+                        "required_files": [
+                            "src/task_board.py",
+                            "tests/test_task_board.py",
+                        ],
+                        "src_dirs": ["src"],
+                        "test_dirs": ["tests"],
+                        "start_command": "python3 -m src.task_board",
+                        "listen_port": 8765,
+                    }
+                ),
+            )
+            _write(
+                app / "factory_tasks/MASTER_CHECKLIST.md",
+                "- [x] Implement src/task_board.py\n",
+            )
+            _write(
+                app / "factory_tasks/validation_result.json",
+                json.dumps({"status": "failed", "reason": "assert False"}),
+            )
+            with patch.dict(
+                os.environ, {"CRAZY_FACTORY_EXECUTOR": "stdlib_web"}
+            ):
+                result = run_mission(
+                    project,
+                    ROOT,
+                    max_beats=3,
+                    apply_profile=True,
+                )
+            self.assertEqual(result.outcome, COMPLETE, result.reason)
+            src = (app / "src/task_board.py").read_text(encoding="utf-8")
+            self.assertIn("def add_task", src)
+            self.assertIn("runtime", result.reason)
+
+    def test_crazy_admin_run_seed_exits_zero(self) -> None:
+        pid = "p4b_admin_run"
+        with _isolated_workbench(pid):
+            out = StringIO()
+            with (
+                patch("sys.stdout", out),
+                patch.dict(
+                    os.environ,
+                    {**os.environ, "CRAZY_FACTORY_EXECUTOR": "stdlib_web"},
+                ),
+            ):
+                code = ca.main(
+                    [
+                        "run",
+                        pid,
+                        "--path",
+                        f"apps/{pid}",
+                        "--seed",
+                        str(SEED),
+                        "--max-beats",
+                        "3",
+                    ]
+                )
+            self.assertEqual(code, 0, out.getvalue())
+            self.assertIn("COMPLETE", out.getvalue())
+
+    def test_mcp_start_mission_seed_completes(self) -> None:
+        pid = "p4b_mcp_start"
+        with _isolated_workbench(pid) as app:
+            with patch.dict(
+                os.environ, {"CRAZY_FACTORY_EXECUTOR": "stdlib_web"}
+            ):
+                result = call_tool(
+                    "start_mission",
+                    {
+                        "project_id": pid,
+                        "seed": str(SEED),
+                        "target": f"apps/{pid}",
+                        "max_beats": 3,
+                    },
+                    ROOT,
+                )
+            self.assertFalse(result["isError"], result)
+            body = json.loads(result["content"][0]["text"])
+            self.assertEqual(body["outcome"], COMPLETE, body)
+            self.assertGreaterEqual(int(body["beats"]), 1)
+            self.assertTrue((app / "src/task_board.py").is_file())
 
 
 if __name__ == "__main__":

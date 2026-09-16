@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** P4a — Minimal AgentExecutor + task-board benchmark (`done`)
+**Current phase:** P4b — owner path + repair (P4a `done`)
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -48,7 +48,7 @@ Not in P0 (deliberately):
 
 | | |
 | --- | --- |
-| Status | **done** (observer). Live seed build needs P4. npm remains out of scope. |
+| Status | **done** (observer). npm remains out of scope. |
 | Target | The Factory can produce and **independently validate** an actual application, not just source files. |
 | Success | Observer records compile/test **and** start/runtime evidence. Failures feed the same P0 loop as MORE_WORK / RECOVERABLE. |
 | Evidence | `scripts/runtime_observer.py`, pip `-r` allowlist, `tests/test_runtime_observer.py` |
@@ -125,6 +125,7 @@ Acceptance:
 - [ ] Specialized roles only where they measurably improve completion
 
 P3 completion baseline: [CF2_P3_COMPLETION.md](CF2_P3_COMPLETION.md).
+P4a completion baseline: [CF2_P4A_COMPLETION.md](CF2_P4A_COMPLETION.md).
 Do not start P5, UI, extra MCP, or a multi-agent org from this slice.
 
 ---
