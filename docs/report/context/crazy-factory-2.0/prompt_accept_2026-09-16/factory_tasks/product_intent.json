@@ -1,0 +1,93 @@
+{
+  "revision": 2,
+  "original_prompt": "build a habit tracker",
+  "source": "fallback",
+  "capabilities": [
+    {
+      "id": "define_habits",
+      "claim": "User can define habits.",
+      "symbols": [
+        "add_habit",
+        "create_habit",
+        "habits"
+      ],
+      "fields": [],
+      "files": [
+        "data/habits.json"
+      ],
+      "origin": "compile"
+    },
+    {
+      "id": "record_completion",
+      "claim": "User can record completion for a habit.",
+      "symbols": [
+        "complete_habit",
+        "check_in",
+        "mark_habit",
+        "completions"
+      ],
+      "fields": [],
+      "files": [],
+      "origin": "compile"
+    },
+    {
+      "id": "dated_completion",
+      "claim": "Completion is associated with a date.",
+      "symbols": [
+        "completed_on",
+        "completion_date"
+      ],
+      "fields": [
+        "completed_on",
+        "completion_date",
+        "checked_on"
+      ],
+      "files": [],
+      "origin": "compile"
+    },
+    {
+      "id": "persist_habits",
+      "claim": "Persisted habit state survives restart.",
+      "symbols": [
+        "save_habits",
+        "load_habits",
+        "habits"
+      ],
+      "fields": [],
+      "files": [
+        "data/habits.json"
+      ],
+      "origin": "compile"
+    },
+    {
+      "id": "habit_streaks",
+      "claim": "Streak information is calculated from completion history and visible to the user.",
+      "symbols": [
+        "current_streak",
+        "streak_count",
+        "compute_streak"
+      ],
+      "fields": [
+        "streak",
+        "current_streak"
+      ],
+      "files": [],
+      "origin": "delta-1"
+    },
+    {
+      "id": "weekly_view",
+      "claim": "A weekly representation of habit completion exists.",
+      "symbols": [
+        "weekly_view",
+        "week_view",
+        "render_week"
+      ],
+      "fields": [
+        "week",
+        "weekly"
+      ],
+      "files": [],
+      "origin": "delta-1"
+    }
+  ]
+}

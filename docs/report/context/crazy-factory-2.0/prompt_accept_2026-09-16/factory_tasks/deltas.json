@@ -1,0 +1,41 @@
+[
+  {
+    "id": "delta-1",
+    "at": "2026-09-16T21:42:13Z",
+    "prompt": "add a streak counter and a weekly view",
+    "status": "CLAIMED",
+    "intent_revision": 2,
+    "capabilities": [
+      {
+        "id": "habit_streaks",
+        "claim": "Streak information is calculated from completion history and visible to the user.",
+        "symbols": [
+          "current_streak",
+          "streak_count",
+          "compute_streak"
+        ],
+        "fields": [
+          "streak",
+          "current_streak"
+        ],
+        "files": [],
+        "origin": "delta-1"
+      },
+      {
+        "id": "weekly_view",
+        "claim": "A weekly representation of habit completion exists.",
+        "symbols": [
+          "weekly_view",
+          "week_view",
+          "render_week"
+        ],
+        "fields": [
+          "week",
+          "weekly"
+        ],
+        "files": [],
+        "origin": "delta-1"
+      }
+    ]
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "id": "OBJ-DELTA-delta-1",
+  "kind": "implement_delta",
+  "title": "Implement owner delta: add a streak counter and a weekly view",
+  "gap": "add a streak counter and a weekly view",
+  "why": "An accepted owner delta changed requested product behavior. Prior acceptance is stale until this revision is evidenced.",
+  "focus": "Implement these product claims without replacing the Goal: Streak information is calculated from completion history and visible to the user.; A weekly representation of habit completion exists. Previous coding plugin (stdlib_web) wrote: src/__init__.py, src/model.py, src/app.py, tests/test_model.py, tests/test_app.py, data/items.json, data/change_requests.json, requirements.txt. Diagnose against evidence; do not emit the same files unchanged. Last stance was `repair`.",
+  "source": "owner_delta",
+  "module": ""
+}

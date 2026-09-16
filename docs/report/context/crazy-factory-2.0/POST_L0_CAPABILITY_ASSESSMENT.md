@@ -1,72 +1,80 @@
 # Crazy Factory — post-L0 capability assessment
 
 Generated: 2026-09-16  
-Branch: `cursor/l0-conversational-deltas-3f2d` (L0-01…L0-05 landed)  
-Supersedes [ASSESSMENT.md](ASSESSMENT.md) as the **current** product
-reading. The 2026-09-16 Slice A audit remains the historical
-repository map; it is not the live capability ceiling.
+Branch: `cursor/l0-product-acceptance-3f2d` (L0-01…L0-09 landed)
 
-Evidence pack:
-[prompt_build_2026-09-16/](prompt_build_2026-09-16/).
+Supersedes the L0-05 reading on the same date. The 2026-09-16
+Slice A audit remains the historical repository map.
+
+Evidence packs:
+
+- Pre-fix (false COMPLETE): [prompt_build_2026-09-16/](prompt_build_2026-09-16/)
+- After L0-08/L0-09: [prompt_accept_2026-09-16/](prompt_accept_2026-09-16/)
 
 ---
 
-## 1. How far a prompt actually goes
+## 1. How far a prompt actually goes (re-run)
 
-This environment had **no** `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`
-and **no** Ollama. That is the no-plugin path owners hit in CI and
-on a fresh machine.
+This environment still had **no** `ANTHROPIC_API_KEY` /
+`OPENAI_API_KEY` and **no** Ollama.
 
 | Step | Command / event | Result |
 | --- | --- | --- |
-| 1 | `--prompt "build a habit tracker"` | Compiler wrote a specified `docs/seed.md` + `architecture.json` (`stdlib-web`, `python3 -m src.app`, port 8765). Fallback compiler (no model). |
-| 2 | `run` beat 1 | Inner Architect/Planner/contract **rejected** (Ollama connection refused). `StdlibWebExecutor` still wrote 9 preview files. |
-| 3 | Validation | compileall, pytest, ruff, `pip install -r` all **passed**. |
-| 4 | Runtime | HTTP **200** at `http://127.0.0.1:8765/`. Process killed after the probe. |
-| 5 | Evaluator | **`COMPLETE` in 1 beat.** Reason: `acceptance evidence is complete (runtime running)`. |
-| 6 | Product on the page | Generic item CRUD titled “habit tracker”. Add / edit / done / delete. **No habits, dates, or streaks.** |
-| 7 | Follow-up `--prompt "add a streak counter and a weekly view"` | Goal and architecture **unchanged**. Delta written to `deltas.jsonl` + `docs/deltas.md`. Banner appears on the HTML page. |
-| 8 | Second `run` | **`COMPLETE`, 0 beats.** Already-accepted workbenches do not execute. The streak/weekly request was recorded, not built. |
+| 1 | `--prompt "build a habit tracker"` | Compiler wrote specified seed + architecture **and** `product_intent.json` claims: define habits, record completion, dated completion, persist. |
+| 2 | `run` beat 1 | Inner contract rejected (Ollama refused). `StdlibWebExecutor` wrote 9 generic CRUD files. Validation passed. HTTP 200. |
+| 3 | Evaluator | **`RUNNABLE_PREVIEW` in 1 beat.** Not COMPLETE. Reason: mechanical and runtime passed; product claims unsatisfied; no coding plugin. Exit code 1. |
+| 4 | Product on the page | Generic item CRUD titled “habit tracker”. **No** `add_habit`, dates, or `data/habits.json`. |
+| 5 | Inspect | `Demo ready: false`. `demo_readiness` lists the unsatisfied claims. |
+| 6 | Follow-up `--prompt "add a streak counter and a weekly view"` | Goal **unchanged**. Architecture **unchanged**. Delta persisted as `PENDING` then `CLAIMED`. Intent revision 1 → 2. Prior acceptance stale. |
+| 7 | Second `run` | **1 beat**, objective `OBJ-DELTA-delta-1` / `implement_delta`. Stdlib actuator skipped overwrite. Banner shows the follow-up. Delta **not VERIFIED**. Outcome **`RUNNABLE_PREVIEW`**, not COMPLETE. |
 
-Trace (beat 0 → beat 1):
+First-prompt trace:
 
 ```text
-beat 0: MORE_WORK  src=0 tests=0  runtime=missing  OBJ-001 code_birth
-beat 1: COMPLETE   src=2 tests=2  runtime=running  OBJ-RUNTIME repair_runtime
-        blocker=planning_contract_rejected
+beat 0: MORE_WORK          src=0 tests=0  runtime=missing
+beat 1: RUNNABLE_PREVIEW   src=2 tests=2  runtime=running
+        product claims unsatisfied; no coding plugin
 ```
 
-Inspect after the run still reported `demo_ready: true` and
-“No material gap currently blocks a demo.”
+Follow-up trace:
+
+```text
+beat 0: MORE_WORK          owner delta delta-1 is unsatisfied product intent
+        objective=OBJ-DELTA-delta-1:implement_delta
+beat 1: RUNNABLE_PREVIEW   claims still unsatisfied; delta CLAIMED not VERIFIED
+```
 
 **Ceiling without a coding plugin:** a reachable generic stdlib
-CRUD preview, labeled with words from the prompt, that the factory
-believes is done. **Not** a habit tracker. **Not** conversational
-editing of the running product.
+CRUD preview that the factory **does not** call done. Follow-up
+intent reopens work. Banner text cannot verify a delta.
 
-**Not measured here:** Claude/OpenAI applying a purpose-built
-assignment. Keys were absent. That path is wired (`CloudCodingExecutor`
-first in the default chain) and unproven on this host.
+**Not measured here:** Claude/OpenAI implementing the compiled
+claims. Keys were absent. That is the next empirical step — not a
+substitute for these acceptance semantics.
 
 ---
 
-## 2. What is now true (L0 + P0–P5)
+## 2. What L0-08 / L0-09 changed
 
-The September 16 Slice A audit (“no MCP, no Director, no closed
-loop, Ollama-only”) is obsolete. The factory **can**:
+- Natural-language intent compiles into explicit product claims
+  with implementation probes (identifiers, data files, JSON fields).
+  Title/banner string matching is not an acceptance rule.
+- Acceptance is layered: mechanical (files, validation), runtime
+  (start/HTTP), product (claims + VERIFIED deltas for the current
+  intent revision).
+- COMPLETE requires all applicable layers. Generic CRUD may be
+  `RUNNABLE_PREVIEW`.
+- Owner deltas have a lifecycle (`PENDING` → `CLAIMED` →
+  `VERIFIED`). Only VERIFIED deltas contribute to COMPLETE. A new
+  actionable delta invalidates prior acceptance and forces at least
+  one execute beat.
+- Inner `planning_contract_rejected` (Ollama down) no longer
+  outranks a truthful preview stop or a pending owner delta.
 
-- Keep working without the owner cranking `advance` (`crazy-admin run`).
-- Compile a one-liner into Goal/Success + a default executable stack.
-- Stand up a localhost HTTP preview and persist `preview.json`.
-- Treat a follow-up prompt as a delta instead of recompiling the product.
-- Wrap start/continue/stop in MCP; Director names the next featured tool.
-- Prefer Claude, then OpenAI, as coding plugins when a key exists.
-- Compile a purpose-built execution assignment from evidence.
-- Observe runtime every evaluation beat.
-- Persist attempts / control memory (model control is off without a key).
-
-Safety floor still holds: no auto-push/merge, path confinement,
-deletes off, factory must not write engine source.
+Unchanged and still valuable: prompt → seed/spec, stack selection,
+autonomous mission loop, implementation actuator, validation,
+runtime observation, reachable preview, additive deltas, original
+Goal/architecture preserved.
 
 ---
 
@@ -74,94 +82,82 @@ deletes off, factory must not write engine source.
 
 | Capability | Status | Evidence / enablement |
 | --- | --- | --- |
-| Raw sentence → specified intent | **YES** | Fallback compiler; `prompt_compile.json` source=`fallback` |
+| Raw sentence → specified intent | **YES** | Fallback compiler + `product_intent.json` claims |
 | Default executable web stack | **YES** | `stdlib-web` only. `vite-react` recorded, not executable |
 | Reachable preview without a vendor key | **YES** | HTTP 200, `preview.json` |
-| Preview is the *requested* product | **NO** | Generic CRUD; success criteria are CRUD+HTTP, not habit semantics |
-| Closed loop until COMPLETE | **YES** (process) | 1 beat to COMPLETE |
-| COMPLETE means the software is good | **NO** | `judgment.json` admits executor ok ≠ acceptance; evaluator still COMPLETE’d a generic preview |
-| Follow-up prompt does not clobber Goal | **YES** | `seed_unchanged`, `arch_unchanged` |
-| Follow-up prompt changes the running app | **NO** | Banner only; 0-beat COMPLETE; `StdlibWebExecutor` skips overwrite on `implement` |
+| Preview is the *requested* product | **NO** | Generic CRUD; claims unsatisfied |
+| Factory knows preview ≠ requested product | **YES** | `RUNNABLE_PREVIEW`; inspect `demo_ready: false` |
+| Closed loop until a truthful stop | **YES** | 1 beat to RUNNABLE_PREVIEW (not false COMPLETE) |
+| COMPLETE means the software is good | **GATED** | COMPLETE now requires product claims; unmeasured with a plugin |
+| Follow-up prompt does not clobber Goal | **YES** | seed + architecture unchanged |
+| Follow-up reopens work | **YES** | 1 beat, `implement_delta`, acceptance stale |
+| Follow-up becomes product behavior | **NO** (no key) | Banner + CLAIMED; not VERIFIED |
 | Coding plugin writes product-specific code | **UNMEASURED** | Requires `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` |
-| Inner Architect/Planner without Ollama | **FALLBACK** | Contract rejected; executor bypassed the inner coder |
+| Inner Architect/Planner without Ollama | **FALLBACK** | Contract rejected; executor still wrote the preview |
 | MCP `start_mission.prompt` | **YES** (unit) | Not re-run live in this probe |
-| MCP drop-in “any prompt” product | **NO** (L0-06) | stdio only; client must already know featured tools |
+| MCP drop-in “any prompt” product | **NO** (L0-06) | stdio only |
 | Long-lived preview (Vite-style) | **NO** | Probe then kill |
-| npm / React / browser journeys | **NO** | Safety floor forbids npm; P1-07 / L0-07 / P1-08 |
-| Durable AI memory (KAE-Memory, vectors) | **DEFERRED** | File artifacts are the memory; no demonstrated need to add infra |
-| Cursor / Codex IDE adapters | **DEFERRED** | P4-09 |
+| npm / React / browser journeys | **NO** | Safety floor forbids npm |
+| Durable AI memory (KAE-Memory, vectors) | **DEFERRED** | File artifacts are the memory |
 
 ---
 
 ## 4. Missing features (product, not architecture)
 
-These are capability holes the live run actually hit.
-
-1. **Product-intent acceptance.** Success criteria from the fallback
-   compiler are generic (“CRUD works”, “HTTP answers”). Acceptance
-   + inspect `demo_ready` treat that as a habit tracker. The factory
-   cannot tell “labeled CRUD” from “the software the owner asked for.”
-2. **Delta execution after COMPLETE.** L0-05 persists the follow-up.
-   The mission runner treats COMPLETE as terminal, so
-   `continue_mission` / second `run` is a 0-beat no-op. The banner
-   can look like the change landed.
-3. **No-key implement path.** After `src/app.py` exists, the stdlib
-   actuator refuses to overwrite. Without a coding plugin, a delta
-   cannot become behavior.
-4. **Prompt compiler without a model is stack-shaped, not
-   domain-shaped.** Title = “habit tracker”; screens = home/list/detail;
-   no streak, schedule, or check-in in the seed.
-5. **Inner kernel still assumes Ollama.** Contract review failed
-   loudly; the P4 executor saved the beat. Dual writers remain a
-   coherence risk when a key *or* Ollama is present.
-6. **Preview is evidence, not a product session.** No long-running
+1. **Product-specific implementation without a coding plugin.**
+   Stdlib preview remains generic CRUD. That is now reported
+   honestly as `RUNNABLE_PREVIEW`. Closing claims still needs a
+   plugin (or a later, bounded stdlib domain actuator — not this
+   slice).
+2. **Live Claude/OpenAI characterization.** Keys were absent. The
+   factory can now ask the plugin for the right claims and reopen
+   on deltas; whether the plugin actually writes habit/streak
+   behavior is the next measurement.
+3. **Inner kernel still assumes Ollama.** Contract review failed;
+   the P4 executor saved the beat. Dual writers remain a coherence
+   risk when a key *or* Ollama is present.
+4. **Prompt compiler without a model is claim-shaped but
+   implementation-generic.** Claims are explicit; files are still
+   item CRUD.
+5. **Preview is evidence, not a product session.** No long-running
    URL for the owner to click while chatting.
-7. **Drop-in MCP packaging (L0-06).** Featured tools exist; there is
+6. **Drop-in MCP packaging (L0-06).** Featured tools exist; there is
    no “paste this server into Claude/Cursor and type a prompt”
    productization.
-8. **`vite-react` (L0-07).** Blocked on npm confine + probe (P1-07).
+7. **`vite-react` (L0-07).** Blocked on npm confine + probe (P1-07).
 
 ---
 
 ## 5. Required enablements (to go further than this run)
 
-Ordered by what would have changed **this** probe’s outcome.
+Ordered by what would change the next probe’s outcome.
 Do not start KAE-Memory, LangChain, n8n, Cline, UI, or network MCP
-to fix these.
+to fix these. Do not infer that a stronger coding model alone
+replaces acceptance semantics — those are now in the engine.
 
 | Enablement | Why | Kind |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | Only way the default chain writes product-specific files instead of the generic preview | **Operator** (key). Unmeasured until set. |
-| Re-open / continue on new owner delta | Second prompt must produce beats with stance `implement`, even if the last outcome was COMPLETE | **Factory** (L0-08) |
-| Intent vs preview in acceptance | COMPLETE must fail when the running UI does not cover compiled success *meaning* (or an explicit “generic preview, not the product” caveat) | **Factory** (L0-09) |
-| Domain-shaped compile when a key is present | Screens/success should mention streaks, check-ins, etc. Fallback may stay generic | **Already wired** if `control_model_enabled()`; needs a key |
-| Optional: allow stdlib preview to apply *small* HTML/data deltas without a plugin | No-key follow-ups could do more than a banner | **Factory**, only if L0-08 still has no key |
+| `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | Default chain can write product-specific files against compiled claims + deltas | **Operator** (key). Unmeasured until set. |
+| Observe whether the plugin satisfies probes | `add_habit` / `complete_habit` / `current_streak` / `weekly_view` vs banner text | **Empirical** next run |
 | `npm` confine + HTTP probe | Required before `vite-react.executable = true` | P1-07 / L0-07 |
 | Network MCP + auth | Only if a remote client must attach | P3-04, later |
-
-Operator keys are not a substitute for L0-08/L0-09: a plugin that
-never runs because the mission is already COMPLETE still cannot
-apply the follow-up.
 
 ---
 
 ## 6. Pipeline (do not skip ahead)
 
-**Done:** P0 closed loop, P1 observer, P2 remaining-gap EXECUTE,
-P3 stdio MCP, P4a–P4f executor + assignment + control, P5a Director,
-P5b module loop, L0-01…L0-05 compiler / stack / preview / deltas.
+**Done:** P0–P5b as before, plus L0-01…L0-09 (compiler, stack,
+preview, deltas, delta reopen, product-intent acceptance).
 
-**Empirical next (from this run), then recorded L0:**
+**Empirical next:**
 
-1. **L0-08** — New owner delta re-opens work (COMPLETE is not a
-   tombstone for conversation).
-2. **L0-09** — Acceptance/inspect must distinguish generic preview
-   from the intended product (or refuse COMPLETE on preview-only).
-3. **Measure with a live Claude/OpenAI key** — same habit-tracker
-   prompt; compare files and HTTP body to this no-key baseline.
-4. **L0-06** — Drop-in MCP packaging once 08/09 (or a keyed run)
-   show a prompt can become the *asked-for* app.
-5. **L0-07 / P1-07** — `vite-react` after npm is confined.
+1. **Measure with a live Claude/OpenAI key** — same two prompts;
+   watch reopen → `implement_delta` → plugin with product context
+   → validation/runtime → claim evaluation → COMPLETE only if
+   revision N+1 is evidenced.
+2. **L0-06** — Drop-in MCP packaging once a keyed run shows a
+   prompt can become the asked-for app.
+3. **L0-07 / P1-07** — `vite-react` after npm is confined.
 
 Still deferred on purpose: P5-02 dynamic teams, P5-03 factory
 self-writes `scripts/`, P4-09 Cursor/Codex, P1-08 browser journeys,
@@ -171,10 +167,15 @@ KAE-Memory, LangChain.
 
 ## 7. Honest product sentence
 
-Crazy Factory can take a one-line prompt, compile it onto
-`stdlib-web`, and in one autonomous beat serve a passing, reachable
-generic CRUD page titled after that prompt. It will then declare the
-mission complete. A second sentence is remembered as a delta and
-shown as a banner; it is not built. Turning that into coherent
-working software still requires a coding-plugin key **and** the
-factory to keep working after the preview looks “done.”
+Crazy Factory can take a one-line prompt, compile it into Goal,
+architecture, **and explicit product claims**, and in one
+autonomous beat serve a passing, reachable generic CRUD preview.
+Without a coding plugin it now **stops at `RUNNABLE_PREVIEW`**
+instead of declaring the requested product complete. A second
+sentence is remembered as a delta, invalidates that acceptance,
+reopens the mission, and stays unverified until implementation
+probes hit source — not until a banner quotes the request.
+Turning the preview into the asked-for habit tracker still
+requires a coding-plugin key. The factory finally knows the
+difference between running some software and building what the
+owner asked for.

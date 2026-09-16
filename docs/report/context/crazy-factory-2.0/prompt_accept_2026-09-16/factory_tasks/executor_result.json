@@ -1,0 +1,70 @@
+{
+  "ok": false,
+  "provider": "stdlib_web",
+  "summary": "stdlib-web preview already present",
+  "reason": "preview already present",
+  "files": [],
+  "stance": "implement",
+  "assignment": {
+    "objective_id": "OBJ-DELTA-delta-1",
+    "kind": "implement_delta",
+    "title": "Implement owner delta: add a streak counter and a weekly view",
+    "why": "An accepted owner delta changed requested product behavior. Prior acceptance is stale until this revision is evidenced.",
+    "gap": "add a streak counter and a weekly view",
+    "focus": "Implement these product claims without replacing the Goal: Streak information is calculated from completion history and visible to the user.; A weekly representation of habit completion exists. Previous coding plugin (stdlib_web) wrote: src/__init__.py, src/model.py, src/app.py, tests/test_model.py, tests/test_app.py, data/items.json, data/change_requests.json, requirements.txt. Diagnose against evidence; do not emit the same files unchanged. Last stance was `repair`.",
+    "stance": "implement",
+    "success": [
+      "User can define habits.",
+      "User can record completion for a habit.",
+      "Completion is associated with a date.",
+      "Persisted habit state survives restart.",
+      "Streak information is calculated from completion history and visible to the user.",
+      "A weekly representation of habit completion exists.",
+      "Required workbench files exist and are not stubs.",
+      "Allowlisted validation (compile, pytest, lint) passes.",
+      "Declared start command runs if architecture sets one."
+    ],
+    "verification": [
+      "python3 -m compileall on workbench sources",
+      "pytest on workbench tests when present",
+      "runtime probe when start_command is declared"
+    ],
+    "inventory": [
+      "README.md",
+      "architecture.json",
+      "data/change_requests.json",
+      "data/items.json",
+      "docs/decisions.md",
+      "docs/deltas.md",
+      "docs/requirements.md",
+      "docs/seed.md",
+      "requirements.txt",
+      "src/__init__.py",
+      "src/__pycache__/__init__.cpython-312.pyc",
+      "src/__pycache__/app.cpython-312.pyc",
+      "src/__pycache__/model.cpython-312.pyc",
+      "src/app.py",
+      "src/model.py",
+      "tests/.gitkeep",
+      "tests/__pycache__/test_app.cpython-312.pyc",
+      "tests/__pycache__/test_model.cpython-312.pyc",
+      "tests/test_app.py",
+      "tests/test_model.py"
+    ],
+    "missing": [],
+    "validation_summary": "",
+    "runtime_summary": "",
+    "owner_deltas": [
+      "add a streak counter and a weekly view"
+    ],
+    "previous_executor": "provider=stdlib_web wrote src/__init__.py, src/model.py, src/app.py, tests/test_model.py, tests/test_app.py, data/items.json, data/change_requests.json, requirements.txt, README.md",
+    "constraints": [
+      "Write only under src/, tests/, data/, docs/, README.md, architecture.json, and requirements.txt.",
+      "Never write scripts/, factory/, config/, .git/, or engine source.",
+      "Do not push, merge, delete, or rewrite git history.",
+      "Do not invent a product when the seed is a placeholder.",
+      "Executor completion is not acceptance; tests and runtime are.",
+      "Banner or title text is not product evidence."
+    ]
+  }
+}

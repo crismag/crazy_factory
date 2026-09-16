@@ -419,6 +419,31 @@ class ProductAcceptanceMissionTests(unittest.TestCase):
             self.assertEqual(result.beats, 0)
             self.assertIn("product claims", result.reason)
 
+    def test_planning_reject_does_not_override_runnable_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("habit", "apps/habit", root=root)
+            app = root / "apps/habit"
+            project = ca.resolve_project(ca.load_registry(root), "habit")
+            from prompt_compiler import compile_into_workbench
+
+            compile_into_workbench(project, root, "build a habit tracker")
+            _make_accepted(app)
+            state_path = app / "state/project_state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["current_blocker"] = "planning_contract_rejected"
+            _write(state_path, json.dumps(state, indent=2))
+            result = run_mission(
+                project,
+                root,
+                max_beats=3,
+                apply_profile=False,
+                advance=lambda _p: 0,
+            )
+            self.assertEqual(result.outcome, RUNNABLE_PREVIEW, result.reason)
+            self.assertNotEqual(result.outcome, "RECOVERABLE_FAILURE")
+
     def test_owner_delta_reopens_mission(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

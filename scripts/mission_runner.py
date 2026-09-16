@@ -194,29 +194,39 @@ def evaluate_mission(
             COMPLETE,
             "acceptance evidence is complete" + extra,
         )
-    elif beat >= max_beats:
-        candidate, why = (
-            BUDGET_EXHAUSTED,
-            f"beat budget {max_beats} exhausted",
-        )
-    elif blocker:
-        candidate, why = RECOVERABLE, f"blocker={blocker}"
     elif pending:
+        # Owner deltas reopen work even when an inner planning
+        # contract was rejected on a previous beat.
         delta_id = str(pending[-1].get("id") or "delta")
-        candidate, why = (
-            MORE_WORK,
-            f"owner delta {delta_id} is unsatisfied product intent",
-        )
+        if beat >= max_beats:
+            candidate, why = (
+                BUDGET_EXHAUSTED,
+                f"beat budget {max_beats} exhausted",
+            )
+        else:
+            candidate, why = (
+                MORE_WORK,
+                f"owner delta {delta_id} is unsatisfied product intent",
+            )
     elif (
         acceptance.mechanical_ok
         and runtime_ready
         and not acceptance.product_ok
     ):
+        gaps = "; ".join(acceptance.unsatisfied_product[:4]) or (
+            "; ".join(acceptance.reasons) or "product claims unsatisfied"
+        )
         if resolve_coding_backend() is not None:
-            gaps = "; ".join(acceptance.unsatisfied_product[:4]) or (
-                "; ".join(acceptance.reasons) or "product claims unsatisfied"
-            )
-            candidate, why = MORE_WORK, f"product claims unsatisfied: {gaps}"
+            if beat >= max_beats:
+                candidate, why = (
+                    BUDGET_EXHAUSTED,
+                    f"beat budget {max_beats} exhausted",
+                )
+            else:
+                candidate, why = (
+                    MORE_WORK,
+                    f"product claims unsatisfied: {gaps}",
+                )
         else:
             candidate, why = (
                 RUNNABLE_PREVIEW,
@@ -226,6 +236,13 @@ def evaluate_mission(
                     "is configured"
                 ),
             )
+    elif beat >= max_beats:
+        candidate, why = (
+            BUDGET_EXHAUSTED,
+            f"beat budget {max_beats} exhausted",
+        )
+    elif blocker:
+        candidate, why = RECOVERABLE, f"blocker={blocker}"
     else:
         growth = workbench_metrics(str(_as_path(project["app_path"], root)))
         if growth.is_greenfield:
