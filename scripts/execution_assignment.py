@@ -385,8 +385,10 @@ def render_assignment(assignment: ExecutionAssignment) -> str:
             [
                 "",
                 "## Owner deltas",
-                "The Goal is already specified. Apply these follow-up "
-                "changes; do not replace the product.",
+                (
+                    "The Goal is already specified. Apply these "
+                    "follow-up changes; do not replace the product."
+                ),
                 bullets(assignment.owner_deltas),
             ]
         )
