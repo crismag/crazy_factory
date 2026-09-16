@@ -22,8 +22,14 @@ without expanding the safety floor.
 
 The prompt compiler writes this stack into `architecture.json` so
 EXECUTE, the observer, and the evaluator share one start command.
+Without a coding-plugin key, `StdlibWebExecutor` writes a generic
+stdlib HTTP preview (`src/app.py`) so the observer can probe it.
+Each probe persists `factory_tasks/preview.json` with the localhost
+URL. The process is still killed after the probe — this is evidence,
+not a long-running dev server.
 
-Evidence: `scripts/web_stack.py`, `scripts/prompt_compiler.py`.
+Evidence: `scripts/web_stack.py`, `scripts/prompt_compiler.py`,
+`scripts/stdlib_preview.py`.
 
 ## Recorded successor: `vite-react`
 

@@ -404,6 +404,40 @@ that happens.
 
 ---
 
+## L0-04 — Preview-first stdlib-web loop
+
+### Objective
+
+A compiled `stdlib-web` prompt must produce a reachable localhost
+HTTP UI on the next execute beat, even without a coding-plugin key.
+The observer already probes every evaluation; this slice writes a
+generic preview app and persists `preview.json` (URL + HTTP status)
+so Director/MCP can name the preview.
+
+The process is still killed after the probe. This is evidence, not a
+long-running Vite-style server.
+
+### New
+
+`scripts/stdlib_preview.py`, `tests/test_stdlib_preview.py`.
+
+### Changed
+
+`StdlibWebExecutor` (task-board fixture or generic `src/app.py`),
+`persist_runtime` writes `preview.json`, mission snapshot + Director
+brief include the preview URL.
+
+### Acceptance
+
+- Compiled habit-tracker architecture + generated files → HTTP 200
+  on `python3 -m src.app`.
+- Task-board seed still uses the fixture (`src/task_board.py`).
+- Existing `src/app.py` is not clobbered on `implement`.
+- `preview.json` carries `http://127.0.0.1:<port>/`.
+- No npm.
+
+---
+
 ## Slice A — Product intelligence service (P2/P5 inventory)
 
 ### Objective
