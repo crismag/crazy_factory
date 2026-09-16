@@ -398,3 +398,37 @@ def patch_plan_slice(packet: DiagnosisPacket) -> str:
     if ground:
         sections.append(ground)
     return "\n\n".join(sections)
+
+
+def executor_slice(packet: DiagnosisPacket) -> str:
+    """Role slice for the coding-plugin assignment (whole-app file map)."""
+    sections = [
+        "Acceptance criteria (every one must be satisfied):\n"
+        + _bullet(packet.acceptance_criteria),
+    ]
+    if packet.validation_expectations:
+        sections.append(
+            "Verification the factory will run:\n"
+            + _bullet(packet.validation_expectations)
+        )
+    if packet.files_in_scope:
+        sections.append(
+            "Workbench files already present:\n"
+            + _bullet(packet.files_in_scope)
+        )
+    if packet.source_snapshot:
+        snaps: list[str] = []
+        for source in packet.source_snapshot:
+            if not source.exists:
+                snaps.append(f"{source.path}: MISSING (create it)")
+                continue
+            body = source.content or ""
+            flag = " (truncated)" if source.truncated else ""
+            snaps.append(f"{source.path}{flag}:\n{body}")
+        sections.append("In-scope source snapshot:\n" + "\n\n".join(snaps))
+    ground = _ground_truth_block(packet)
+    if ground:
+        sections.append(ground)
+    if packet.current_blocker:
+        sections.append(f"Current blocker: {packet.current_blocker}")
+    return "\n\n".join(sections)

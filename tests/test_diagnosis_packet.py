@@ -18,6 +18,7 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 from diagnosis_packet import (  # noqa: E402
     build_packet,
     coder_slice,
+    executor_slice,
     packet_to_dict,
     patch_plan_slice,
 )
@@ -238,11 +239,15 @@ class SliceTests(unittest.TestCase):
             )
             coder = coder_slice(p)
             patch = patch_plan_slice(p)
+            executor = executor_slice(p)
             self.assertIn("AC-ALPHA", coder)
             self.assertIn("PATCH-REJECT-MARK", coder)
             self.assertIn("AC-ALPHA", patch)
             self.assertIn("FAILCHECK-MARK", patch)
             self.assertIn("src/b.py", patch)  # missing-file ground truth
+            self.assertIn("AC-ALPHA", executor)
+            self.assertIn("FAILCHECK-MARK", executor)
+            self.assertIn("src/b.py", executor)
 
 
 if __name__ == "__main__":

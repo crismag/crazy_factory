@@ -29,10 +29,12 @@ bin/crazy-admin stop todo_app
 
 ### Coding intelligence plugins
 
-Productization is Lovable-like: a seed/prompt becomes a working app
-through the factory loop. Claude and OpenAI are the starting coding
-models behind `AgentExecutor`. Other intelligence plugins can join
-later under the same contract. Ollama is opt-in, not the default.
+The factory compiles a purpose-built engineering assignment from
+seed, architecture, workbench inventory, and observed failures, then
+hands that assignment to a coding plugin. Claude and OpenAI are the
+starting workers. Crazy Factory is not synonymous with either
+vendor. Ollama is opt-in, not the default. See
+[../factory/CF2_INTELLIGENCE.md](../factory/CF2_INTELLIGENCE.md).
 
 ```bash
 # Claude when ANTHROPIC_API_KEY is set (preferred if both keys exist)
@@ -60,6 +62,9 @@ values are ignored by the cloud plugins). Timeout:
 
 With no API key the cloud plugin skips without opening a socket.
 The known task-board seed still completes via the stdlib actuator.
+Each beat writes `factory_tasks/execution_assignment.md` (what the
+plugin was asked) and `factory_tasks/judgment.json` (acceptance vs
+executor/process success).
 
 One-beat kernel (the owner still cranks each step):
 

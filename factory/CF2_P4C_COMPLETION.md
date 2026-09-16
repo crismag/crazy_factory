@@ -38,6 +38,8 @@ CI never calls a live vendor. Keys:
 Force a plugin with `CRAZY_FACTORY_EXECUTOR=anthropic|openai` or
 `CRAZY_FACTORY_CODING_PROVIDER`.
 
+P4d adds the assignment compiler in front of these plugins.
+
 ## What remains after this baseline
 
 - Cursor / Codex IDE adapters (P4-09)

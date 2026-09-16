@@ -26,15 +26,16 @@ from typing import Any, Callable
 import factory_advance
 import factory_messaging as msg
 from acceptance_check import evaluate_acceptance
+from execution_assignment import persist_judgment
 from flags import flag_active, set_flag
 from mission_state import load_state
-from owner_controls import set_capability
 from objective_generator import (
     load_focus_module,
     load_objective,
     next_execute_objective,
     persist_objective,
 )
+from owner_controls import set_capability
 from runtime_observer import observe_runtime, persist_runtime
 from workbench_growth import workbench_metrics
 
@@ -224,7 +225,8 @@ def _record(
     reason: str,
 ) -> BeatRecord:
     src, tests = _growth(project, root)
-    accepted = evaluate_acceptance(project, root).accepted
+    report = evaluate_acceptance(project, root)
+    accepted = report.accepted
     runtime = ""
     objective = ""
     task_root = project.get("task_root")
@@ -239,6 +241,17 @@ def _record(
         current = load_objective(Path(str(task_root)))
         if current is not None:
             objective = f"{current.id}:{current.kind}"
+        try:
+            persist_judgment(
+                Path(str(task_root)),
+                outcome=status,
+                reason=reason,
+                accepted=accepted,
+                validation_passed=report.validation_passed,
+                runtime_status=runtime,
+            )
+        except (OSError, ValueError):
+            pass
     return BeatRecord(
         index=index,
         evaluation=status,

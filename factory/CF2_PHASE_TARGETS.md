@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** P4c — Claude / OpenAI coding plugins (`done`)
+**Current phase:** P4d — execution assignment (`done`)
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -113,9 +113,9 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **done** (P4a + P4b + P4c). Cursor/Codex IDE adapters and specialized roles remain deferred. |
-| Target | Delegate low-level coding to a capable agent behind an adapter. |
-| Success | Crazy Factory owns mission/evaluate/tools; the adapter owns implementation. |
+| Status | **done** (P4a–P4d). Cursor/Codex IDE adapters and specialized roles remain deferred. |
+| Target | Put strong coding systems in a position to succeed; independently judge the result. |
+| Success | Crazy Factory owns mission/context/assignment/evaluate; the adapter owns implementation. |
 
 Acceptance:
 
@@ -124,12 +124,14 @@ Acceptance:
 - [x] Claude (Anthropic) and OpenAI are the starting coding plugins; skip when no API key
 - [x] Independent evaluator still decides PASS / MORE_WORK / BLOCKED
 - [x] `examples/seeds/task_board_web.md` from a clean workbench → COMPLETE + runtime
+- [x] Purpose-built execution assignment from evidence (not “implement this”)
 - [ ] Specialized roles only where they measurably improve completion
 - [ ] Cursor / Codex IDE adapters (P4-09)
 
 P3 completion baseline: [CF2_P3_COMPLETION.md](CF2_P3_COMPLETION.md).
 P4a completion baseline: [CF2_P4A_COMPLETION.md](CF2_P4A_COMPLETION.md).
 P4c completion baseline: [CF2_P4C_COMPLETION.md](CF2_P4C_COMPLETION.md).
+Intelligence map: [CF2_INTELLIGENCE.md](CF2_INTELLIGENCE.md).
 P5a completion baseline: [CF2_P5_COMPLETION.md](CF2_P5_COMPLETION.md).
 
 ---

@@ -214,6 +214,37 @@ accepts cloud clients.
 
 ---
 
+## P4d — Execution assignment (intelligence-first vertical)
+
+### Objective
+
+The factory must understand the objective, assemble relevant
+context, and hand the coding plugin a purpose-built assignment.
+Executor completion is not product quality. Do not add KAE-Memory,
+LangChain, or new MCP verbs.
+
+### New
+
+`scripts/execution_assignment.py`, `diagnosis_packet.executor_slice`,
+`tests/test_execution_assignment.py`,
+`factory/CF2_INTELLIGENCE.md`.
+
+### Changed
+
+`build_request` compiles the assignment. `factory_advance` persists
+`execution_assignment.md` and records stance on
+`executor_result.json`. `mission_runner` persists `judgment.json`.
+
+### Acceptance
+
+- Validation evidence is failing-check detail, not a bare `failed`.
+- Repeat executor writes plus still-failing checks → `investigate`.
+- Placeholder / specify_intent → `need_context`.
+- Assignment includes constraints, inventory, success, verification.
+- No new dependencies. No new MCP tools.
+
+---
+
 ## P5a — Director + featured MCP
 
 ### Objective
