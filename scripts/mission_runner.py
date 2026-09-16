@@ -29,6 +29,11 @@ from acceptance_check import evaluate_acceptance
 from flags import flag_active, set_flag
 from mission_state import load_state
 from owner_controls import set_capability
+from objective_generator import (
+    load_objective,
+    next_execute_objective,
+    persist_objective,
+)
 from runtime_observer import observe_runtime, persist_runtime
 from workbench_growth import workbench_metrics
 
@@ -139,7 +144,10 @@ def evaluate_mission(
     if blocker in HUMAN_BLOCKERS:
         return HUMAN_REQUIRED, f"blocker={blocker}"
     if blocker in STUCK_BLOCKERS:
-        return BUDGET_EXHAUSTED, f"blocker={blocker} (loop produced no code)"
+        return (
+            HUMAN_REQUIRED,
+            f"blocker={blocker} (no product change after repair retry)",
+        )
     acceptance = evaluate_acceptance(project, root)
     if acceptance.accepted:
         app = Path(str(project["app_path"]))
@@ -182,6 +190,7 @@ class BeatRecord:
     test_files: int
     accepted: bool
     runtime: str = ""
+    objective: str = ""
     at: str = field(default_factory=_now)
 
 
@@ -216,6 +225,7 @@ def _record(
     src, tests = _growth(project, root)
     accepted = evaluate_acceptance(project, root).accepted
     runtime = ""
+    objective = ""
     task_root = project.get("task_root")
     if task_root:
         result_path = Path(str(task_root)) / "runtime_result.json"
@@ -225,6 +235,9 @@ def _record(
                 runtime = str(payload.get("status") or "")
             except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                 runtime = ""
+        current = load_objective(Path(str(task_root)))
+        if current is not None:
+            objective = f"{current.id}:{current.kind}"
     return BeatRecord(
         index=index,
         evaluation=status,
@@ -234,6 +247,7 @@ def _record(
         test_files=tests,
         accepted=accepted,
         runtime=runtime,
+        objective=objective,
     )
 
 
@@ -258,6 +272,7 @@ def _trace_lines(result: MissionResult) -> str:
             f"src={rec.source_files} tests={rec.test_files} "
             f"accepted={str(rec.accepted).lower()} "
             f"runtime={rec.runtime or 'none'} "
+            f"objective={rec.objective or 'none'} "
             f"blocker={rec.blocker or 'none'} — {rec.reason}"
         )
     lines.append("")
@@ -314,11 +329,19 @@ def run_mission(
         )
 
     records: list[BeatRecord] = []
+
+    def _select_objective() -> None:
+        obj = next_execute_objective(view, root)
+        persist_objective(obj, Path(str(view["task_root"])))
+        msg.info(f"Objective {obj.id} ({obj.kind}): {obj.title}")
+
+    _select_objective()
     status, reason = evaluate_mission(view, root, beat=0, max_beats=budget)
     records.append(_record(view, root, index=0, status=status, reason=reason))
     beats = 0
     while status in {MORE_WORK, RECOVERABLE}:
         msg.phase(f"Mission beat {beats + 1}/{budget} for '{pid}'")
+        _select_objective()
         # Kernel stages still consume the relative registry mapping.
         advance_fn(project)
         beats += 1

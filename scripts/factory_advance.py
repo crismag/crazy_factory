@@ -115,6 +115,12 @@ from project_contract import (  # noqa: E402
     derive_and_write_seed_contract,
 )
 from workbench_growth import workbench_metrics  # noqa: E402
+from objective_generator import (  # noqa: E402
+    next_execute_objective,
+    persist_objective,
+    progress_repair_objective,
+    render_objective_focus,
+)
 from mission_state import (  # noqa: E402
     load_state,
     persist_state,
@@ -159,6 +165,7 @@ from settings import load_engine_settings  # noqa: E402
 # item completed, the loop is active but not advancing — stop churning and park.
 NO_PROGRESS = "no_progress"
 NO_PROGRESS_BEATS = 5
+NO_PROGRESS_RETRIES = 1
 _PROGRESS_TERMINAL_BLOCKERS = frozenset(
     {"recovery_exhausted", "self_rejection", "needs_owner_decision"}
 )
@@ -175,6 +182,7 @@ def progress_blocker(
     """
     if progressed:
         project_state["beats_without_progress"] = 0
+        project_state["no_progress_recoveries"] = 0
         return None
     streak = int(project_state.get("beats_without_progress", 0) or 0) + 1
     project_state["beats_without_progress"] = streak
@@ -184,6 +192,28 @@ def progress_blocker(
     ):
         return NO_PROGRESS
     return None
+
+
+def handle_no_progress(project_state: dict[str, Any]) -> str:
+    """Convert a tripped no-progress streak into retry or park.
+
+    The first trip emits a repair retry (reset the streak). A second
+    trip parks with ``no_progress`` so the mission runner can escalate
+    to a justified HUMAN_REQUIRED instead of silently no-op'ing.
+    """
+    recoveries = int(project_state.get("no_progress_recoveries") or 0)
+    if recoveries < NO_PROGRESS_RETRIES:
+        project_state["no_progress_recoveries"] = recoveries + 1
+        project_state["beats_without_progress"] = 0
+        if project_state.get("current_blocker") == NO_PROGRESS:
+            project_state["current_blocker"] = None
+        return "retry"
+    return "park"
+
+
+def _absolute_task_root(task_root: str, root: Path) -> Path:
+    path = Path(str(task_root))
+    return path if path.is_absolute() else (root / path)
 
 
 def _read_text_or_empty(rel_path: str, root: Path) -> str:
@@ -479,6 +509,10 @@ def main(project: dict[str, Any] | None = None) -> int:
             f"checklist item(s) -> {CHECKLIST_FILENAME}"
         )
     focus = checklist_focus(checklist_md)
+    execute_obj = next_execute_objective(project, root)
+    persist_objective(execute_obj, _absolute_task_root(str(task_root), root))
+    obj_focus = render_objective_focus(execute_obj)
+    msg.info(f"Execute objective {execute_obj.id} ({execute_obj.kind})")
     # 9D Layer 1: enrich the focus with a seed-derived, frozen per-file behavior
     # contract so planner/contract/coder/patch-plan all see concrete behaviors
     # instead of a generic "implement <file>". The deterministic checklist
@@ -507,7 +541,9 @@ def main(project: dict[str, Any] | None = None) -> int:
                 f"requirement expansion unavailable for {focus_file}: {exc}"
             )
     planning_context = "\n\n".join(
-        part for part in (context_bundle.text, arch_brief, focus) if part
+        part
+        for part in (context_bundle.text, arch_brief, obj_focus, focus)
+        if part
     )
 
     architect_result = request_architect_result(
@@ -1026,14 +1062,26 @@ def main(project: dict[str, Any] | None = None) -> int:
         )
         == NO_PROGRESS
     ):
-        project_state["current_blocker"] = NO_PROGRESS
-        active_run["current_blocker"] = NO_PROGRESS
-        msg.warn(
-            f"NO_PROGRESS: {project_state['beats_without_progress']} beats with "
-            f"no applied code and no checklist item completed. The loop is "
-            f"active but not advancing project state — parking for owner review "
-            f"rather than continuing to churn recovery."
-        )
+        policy = handle_no_progress(project_state)
+        if policy == "retry":
+            repair = progress_repair_objective(
+                f"{NO_PROGRESS_BEATS} beats with no applied code"
+            )
+            persist_objective(
+                repair, _absolute_task_root(str(task_root), root)
+            )
+            msg.warn(
+                "NO_PROGRESS: streak tripped — emitting repair objective "
+                f"{repair.id} and retrying once instead of parking."
+            )
+        else:
+            project_state["current_blocker"] = NO_PROGRESS
+            active_run["current_blocker"] = NO_PROGRESS
+            msg.warn(
+                f"NO_PROGRESS: {project_state['beats_without_progress']} beats "
+                "with no applied code and no checklist item completed after a "
+                "repair retry — parking for owner review."
+            )
     persist_state(
         root=root,
         state_dir=state_dir,

@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** `CF2-P2-01` Objective generator (P1 observer landed; live seed build still needs a coding agent)
+**Current focus:** `CF2-P3-02` MCP `start` accepts context + target (P2 engine landed)
 **Last updated:** 2026-09-16
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -25,7 +25,7 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 
 ---
 
-## P1 — Runnable output (active)
+## P1 — Runnable output
 
 | ID | Status | Task | Notes |
 | --- | --- | --- | --- |
@@ -41,19 +41,19 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 
 ---
 
-## P2 — Convergence
+## P2 — Convergence (engine)
 
-| ID | Status | Task |
-| --- | --- | --- |
-| CF2-P2-01 | PLANNED | Objective generator: current gap → next EXECUTE goal |
-| CF2-P2-02 | PLANNED | Wire product-kernel objectives into `advance` / mission |
-| CF2-P2-03 | PLANNED | Repair objective from validation/runtime failure |
-| CF2-P2-04 | PLANNED | Replace silent `NO_PROGRESS` park with recover-or-human |
-| CF2-P2-05 | DEFERRED | Nested module/product loops |
+| ID | Status | Task | Evidence |
+| --- | --- | --- | --- |
+| CF2-P2-01 | DONE | Objective generator: current gap → next EXECUTE goal | `scripts/objective_generator.py` |
+| CF2-P2-02 | DONE | Wire product-kernel objectives into `advance` / mission | `factory_advance` + `mission_runner._select_objective` |
+| CF2-P2-03 | DONE | Repair objective from validation/runtime failure | runtime/validation outrank product gaps |
+| CF2-P2-04 | DONE | Replace silent `NO_PROGRESS` park with recover-or-human | first trip retry + `HUMAN_REQUIRED` |
+| CF2-P2-05 | DEFERRED | Nested module/product loops | |
 
 ---
 
-## P3 — MCP around the working engine
+## P3 — MCP around the working engine (active)
 
 | ID | Status | Task |
 | --- | --- | --- |

@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** P1 — Runnable output (`active`)
+**Current phase:** P2 — Reliable convergence (`done` engine); next P3
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -40,7 +40,7 @@ Not in P0 (deliberately):
 
 - [ ] Live Ollama/coding-agent produces a working app (P1/P4)
 - [ ] Install / build / start tools (P1)
-- [ ] Remaining-gap objectives drive EXECUTE (P2)
+- [x] Remaining-gap objectives drive EXECUTE (P2)
 
 ---
 
@@ -48,7 +48,7 @@ Not in P0 (deliberately):
 
 | | |
 | --- | --- |
-| Status | **active** |
+| Status | **done** (observer). Live seed build needs P4. npm remains out of scope. |
 | Target | The Factory can produce and **independently validate** an actual application, not just source files. |
 | Success | Observer records compile/test **and** start/runtime evidence. Failures feed the same P0 loop as MORE_WORK / RECOVERABLE. |
 | Evidence | `scripts/runtime_observer.py`, pip `-r` allowlist, `tests/test_runtime_observer.py` |
@@ -72,17 +72,22 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | `planned` |
+| Status | **done** (engine). Nested module loops remain deferred. |
 | Target | After success or failure, the Factory knows what remains and selects the next meaningful objective. |
 | Success | Incomplete output does not look finished. Next work is a product gap, not merely “next file.” |
+| Evidence | `scripts/objective_generator.py`, `tests/test_objective_generator.py`, mission `current_objective.json` |
 
 Acceptance:
 
-- [ ] Evaluator states: COMPLETE / MORE_WORK / RECOVERABLE / HUMAN_REQUIRED / BUDGET
-- [ ] Product-kernel gaps can become the next EXECUTE objective
-- [ ] Checklist-as-filename is not the only progress signal
-- [ ] Repair objectives are created from observed failures (build/test/runtime)
-- [ ] `NO_PROGRESS` park produces a new objective or a justified HUMAN_REQUIRED, not a silent no-op
+- [x] Evaluator states: COMPLETE / MORE_WORK / RECOVERABLE / HUMAN_REQUIRED / BUDGET
+- [x] Product-kernel gaps can become the next EXECUTE objective
+- [x] Checklist-as-filename is not the only progress signal (`current_objective.json` + planner block)
+- [x] Repair objectives are created from observed failures (build/test/runtime)
+- [x] `NO_PROGRESS` park produces a new objective or a justified HUMAN_REQUIRED, not a silent no-op
+
+Not in this P2 slice:
+
+- [ ] Nested module/product loops (P2-05, deferred)
 
 ---
 
@@ -90,7 +95,7 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | `planned` (thin wrappers already exist; engine must work first) |
+| Status | **active** (thin wrappers exist; seed-in-start is the remaining gap) |
 | Target | MCP exposes the **working** engine. |
 | Success | `start()` initiates a genuine persistent mission. MCP is not a remote copy of the incomplete workflow. |
 

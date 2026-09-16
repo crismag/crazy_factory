@@ -313,6 +313,29 @@ class NoProgressMonitorTests(unittest.TestCase):
         )
         self.assertTrue(signal.stalled)
 
+    def test_first_no_progress_retries_second_parks(self) -> None:
+        import factory_advance as fa
+
+        state: dict[str, object] = {"beats_without_progress": 5}
+        self.assertEqual(fa.handle_no_progress(state), "retry")
+        self.assertEqual(state["beats_without_progress"], 0)
+        self.assertEqual(state["no_progress_recoveries"], 1)
+        self.assertEqual(fa.handle_no_progress(state), "park")
+
+    def test_real_progress_resets_no_progress_recoveries(self) -> None:
+        import factory_advance as fa
+
+        state: dict[str, object] = {
+            "beats_without_progress": 2,
+            "no_progress_recoveries": 1,
+        }
+        out = fa.progress_blocker(
+            state, progressed=True, current_blocker="application_rejected"
+        )
+        self.assertIsNone(out)
+        self.assertEqual(state["beats_without_progress"], 0)
+        self.assertEqual(state["no_progress_recoveries"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

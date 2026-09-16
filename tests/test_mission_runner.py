@@ -240,6 +240,72 @@ class LoopTests(unittest.TestCase):
             runtime_path = root / "apps/demo/factory_tasks/runtime_result.json"
             runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
             self.assertEqual(runtime["status"], "missing")
+            obj_path = root / "apps/demo/factory_tasks/current_objective.json"
+            objective = json.loads(obj_path.read_text(encoding="utf-8"))
+            self.assertEqual(objective["kind"], "repair_runtime")
+
+    def test_no_progress_blocker_is_human_required(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("demo", "apps/demo", root=root)
+            state = json.loads(
+                (root / "apps/demo/state/project_state.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            state["current_blocker"] = "no_progress"
+            _write(
+                root / "apps/demo/state/project_state.json",
+                json.dumps(state, indent=2),
+            )
+            project = ca.resolve_project(ca.load_registry(root), "demo")
+            calls: list[int] = []
+
+            def tick(_project: dict) -> int:
+                calls.append(1)
+                return 0
+
+            result = run_mission(
+                project,
+                root,
+                max_beats=8,
+                apply_profile=False,
+                advance=tick,
+            )
+            self.assertEqual(result.outcome, HUMAN_REQUIRED)
+            self.assertEqual(result.beats, 0)
+            self.assertEqual(calls, [])
+            self.assertIn("repair retry", result.reason)
+            self.assertNotEqual(result.outcome, BUDGET_EXHAUSTED)
+
+    def test_greenfield_writes_current_objective(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("demo", "apps/demo", root=root)
+            project = ca.resolve_project(ca.load_registry(root), "demo")
+
+            def tick(_project: dict) -> int:
+                return 0
+
+            result = run_mission(
+                project,
+                root,
+                max_beats=1,
+                apply_profile=False,
+                advance=tick,
+            )
+            self.assertEqual(result.outcome, BUDGET_EXHAUSTED)
+            obj_path = root / "apps/demo/factory_tasks/current_objective.json"
+            self.assertTrue(obj_path.is_file())
+            payload = json.loads(obj_path.read_text(encoding="utf-8"))
+            # Placeholder seed → specify_intent; empty code → code_birth.
+            self.assertIn(payload["kind"], {"code_birth", "specify_intent"})
+            self.assertTrue(payload["id"])
+            trace = Path(result.trace_path).read_text(encoding="utf-8")
+            self.assertIn("objective=", trace)
+            self.assertTrue(any(rec.objective for rec in result.records))
 
 
 class CliRunTests(unittest.TestCase):

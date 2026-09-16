@@ -58,9 +58,9 @@ They must not be the thing the owner cranks with `advance`.
 | Pri | Meaning | Status on this branch |
 | --- | --- | --- |
 | **P0** | Closed loop: context → work → observe → repair → continue | `scripts/mission_runner.py`, `crazy-admin run` |
-| **P1** | Runnable output (install/build/start tools + inspect) | **active** |
-| **P2** | Convergence: remaining gaps become the next objective | product kernel inspect helps; not yet wired into EXECUTE |
-| **P3** | External invocation: MCP wraps the working engine | thin `start_mission` / `status` / `continue` / `stop` |
+| **P1** | Runnable output (install/build/start tools + inspect) | `done` (observer) |
+| **P2** | Convergence: remaining gaps become the next objective | `done` (engine; `objective_generator`) |
+| **P3** | External invocation: MCP wraps the working engine | **active** (`start` + seed still open) |
 | **P4** | Better agents: coding-agent adapter, then specialized roles | later |
 | **P5** | Broader product intelligence, dynamic teams, self-improve | postpone |
 
