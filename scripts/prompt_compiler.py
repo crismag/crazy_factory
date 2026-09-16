@@ -205,10 +205,15 @@ def _sanitize(
         and not name.startswith("factory/")
     ]
     start = str(data.get("start_command") or base.start_command).strip()
-    if not start.startswith("python3"):
+    rewritten_start = not start.startswith("python3")
+    if rewritten_start:
         start = stack.start_command
     port = data.get("listen_port")
-    if not isinstance(port, int) or not (1 <= port <= 65535):
+    if (
+        rewritten_start
+        or not isinstance(port, int)
+        or not (1 <= port <= 65535)
+    ):
         port = stack.listen_port
     goal = str(data.get("goal") or base.goal).strip() or base.goal
     success = _str_list(data.get("success")) or base.success
