@@ -61,7 +61,7 @@ They must not be the thing the owner cranks with `advance`.
 | **P1** | Runnable output (install/build/start tools + inspect) | `done` (observer) |
 | **P2** | Convergence: remaining gaps become the next objective | `done` (engine; `objective_generator`) |
 | **P3** | External invocation: MCP wraps the working engine | `done` (`start` + seed; inspect/status report mission) |
-| **P4** | Better agents: coding-agent adapter, then specialized roles | **active** |
+| **P4** | Better agents: coding-agent adapter, then specialized roles | **active (P4a)** |
 | **P5** | Broader product intelligence, dynamic teams, self-improve | postpone |
 
 Do not begin P5 while P0/P1 remain unfinished. Phase and task
@@ -100,9 +100,12 @@ floor.
 | Trace / report | — |
 | Stop for genuine human authority | — |
 
-Today the in-process Coder remains the default executor so `run` can
-use Ollama. P4 adds an agent executor interface; do not grow the
-internal patch engine first.
+Today the in-process Coder remains a kernel stage. P4a adds a
+provider-neutral `AgentExecutor`: objective + seed + failures in,
+workbench files out. The first capable backend is the stdlib
+task-board actuator (`StdlibWebExecutor`); `LlmFileExecutor` is the
+Ollama file-map adapter and skips when the daemon is down. Do not
+grow a multi-agent org in this slice.
 
 ## Nested loops (later, not first)
 

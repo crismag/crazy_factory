@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** P3 — External invocation (`done` engine); next P4
+**Current phase:** P4a — Minimal AgentExecutor + task-board benchmark
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -64,7 +64,7 @@ Acceptance:
 - [x] Documented listen port is probed over HTTP on 127.0.0.1
 - [x] Started process is always terminated after the probe
 - [ ] npm / node / webpack remain **out of scope** until the stdlib benchmark passes
-- [ ] Task-board seed can be compiled, tested, and started when implementation exists
+- [x] Task-board seed can be compiled, tested, and started when implementation exists
 
 ---
 
@@ -112,16 +112,20 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **active** |
+| Status | **active** (P4a in progress: executor contract + stdlib backend) |
 | Target | Delegate low-level coding to a capable agent behind an adapter. |
 | Success | Crazy Factory owns mission/evaluate/tools; the adapter owns implementation. |
 
 Acceptance:
 
-- [ ] Agent executor interface (objective in, patch/workbench out)
-- [ ] Default remains in-process Coder + Ollama
-- [ ] Independent evaluator still decides PASS / MORE_WORK / BLOCKED
+- [x] Agent executor interface (objective in, workbench files out)
+- [x] One capable backend for the task-board proof (`StdlibWebExecutor`); Ollama file-map skips when down
+- [x] Independent evaluator still decides PASS / MORE_WORK / BLOCKED
+- [ ] `examples/seeds/task_board_web.md` from a clean workbench → COMPLETE + runtime
 - [ ] Specialized roles only where they measurably improve completion
+
+P3 completion baseline: [CF2_P3_COMPLETION.md](CF2_P3_COMPLETION.md).
+Do not start P5, UI, extra MCP, or a multi-agent org from this slice.
 
 ---
 

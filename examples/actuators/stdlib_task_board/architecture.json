@@ -1,0 +1,15 @@
+{
+  "src_dirs": ["src"],
+  "test_dirs": ["tests"],
+  "extra_allowed": [
+    "README.md",
+    "data",
+    "docs",
+    "architecture.json",
+    "crazy_project.yaml"
+  ],
+  "forbidden_imports": ["sqlalchemy", "django", "flask", "fastapi"],
+  "required_files": ["src/task_board.py", "tests/test_task_board.py"],
+  "start_command": "python3 -m src.task_board",
+  "listen_port": 8765
+}

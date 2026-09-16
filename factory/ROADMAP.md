@@ -22,8 +22,9 @@ Living checklists:
 
 Inspect/assess/MCP from Slice A shipped alongside P0 as inventory.
 P2 wires remaining-gap objectives into EXECUTE. P3 wraps that engine:
-`start_mission` takes context + target in one call. Next is a
-coding-agent adapter (P4) for live builds.
+`start` takes context + target in one call. P4a is the capable
+implementation actuator so `context → Crazy Factory → runnable
+accepted application` can be proven on `task_board_web`.
 
 ## Ancestry (documentation bootstrap → local apprentice)
 

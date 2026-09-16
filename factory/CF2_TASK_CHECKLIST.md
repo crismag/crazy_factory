@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** `CF2-P4-01` Agent executor interface (P3 seed-in-start landed)
+**Current focus:** `CF2-P4-05` Task-board benchmark (P4a executor landed)
 **Last updated:** 2026-09-16
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -37,7 +37,7 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-P1-06 | DONE | Default compileall + pytest remain the validation floor | already allowlisted |
 | CF2-P1-07 | DEFERRED | npm / node / webpack / vitest allowlist | after stdlib benchmark |
 | CF2-P1-08 | DEFERRED | Browser / visual journey inspection | P1+ / Playwright later |
-| CF2-P1-09 | DEFERRED | Live Ollama `run` on `task_board_web` yields a runnable app | needs P4 or a live model |
+| CF2-P1-09 | DEFERRED | Live Ollama `run` on `task_board_web` | P4a stdlib actuator closes the seed; Ollama still optional |
 
 ---
 
@@ -64,14 +64,15 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 
 ---
 
-## P4 — Agent executor (active)
+## P4 — Agent executor (active — P4a)
 
-| ID | Status | Task |
-| --- | --- | --- |
-| CF2-P4-01 | PLANNED | `AgentExecutor` interface (objective + contract → workbench result) |
-| CF2-P4-02 | PLANNED | Default adapter = in-process Coder |
-| CF2-P4-03 | DEFERRED | Cursor / Codex / Claude adapter |
-| CF2-P4-04 | DEFERRED | Specialized roles only with measured gain |
+| ID | Status | Task | Evidence |
+| --- | --- | --- | --- |
+| CF2-P4-01 | DONE | `AgentExecutor` interface (objective + failures → workbench files) | `scripts/agent_executor.py` |
+| CF2-P4-02 | DONE | One capable backend (stdlib task-board actuator; Ollama file-map optional) | `StdlibWebExecutor` + `LlmFileExecutor` |
+| CF2-P4-03 | DEFERRED | Cursor / Codex / Claude adapter | later providers |
+| CF2-P4-04 | DEFERRED | Specialized roles only with measured gain | not this slice |
+| CF2-P4-05 | ACTIVE | `examples/seeds/task_board_web.md` → runnable accepted app | `tests/test_agent_executor.py` |
 
 ---
 

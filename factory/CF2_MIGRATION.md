@@ -140,6 +140,46 @@ CLI inspect/status show mission), `scripts/mission_runner.py`
 
 ---
 
+## P4a — Minimal AgentExecutor + first autonomous application build
+
+### Objective
+
+Prove `context → Crazy Factory → runnable accepted application` on
+`examples/seeds/task_board_web.md`. P0–P3 already provide mission,
+continuation, runtime observation, remaining-gap objectives, and
+MCP start. P4a is the missing implementation actuator:
+
+`objective → AgentExecutor → coding-agent backend → workbench files
+→ existing validation/runtime observation → existing evaluation
+→ repair/next objective → repeat`
+
+Do **not** build roles/skills/subagent organization. Do not start
+P5, UI, or extra MCP.
+
+### New
+
+`scripts/agent_executor.py` (`AgentExecutor`, `LlmFileExecutor`,
+`StdlibWebExecutor`, `ChainedExecutor`),
+`examples/actuators/stdlib_task_board/`,
+`tests/test_agent_executor.py`.
+
+### Changed
+
+`scripts/factory_advance.py` (apply executor after in-process apply,
+reload architecture contract, validate, mark checklist complete),
+`scripts/completion.py` (`mark_all_open_done`).
+
+### Acceptance
+
+- Provider-neutral executor contract (request in, files out).
+- Path confinement: no engine `scripts/` / `factory/` writes.
+- Task-board seed from a clean workbench → COMPLETE + HTTP runtime
+  without ordinary owner intervention.
+- Failures remain MORE_WORK / repair objectives, not silent success.
+- Unnecessary HUMAN_REQUIRED is an automation defect.
+
+---
+
 ## Slice A — Product intelligence service (P2/P5 inventory)
 
 ### Objective
