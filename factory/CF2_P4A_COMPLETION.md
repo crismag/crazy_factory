@@ -30,7 +30,8 @@ acceptance record.
 
 ## What remains after this baseline
 
-The happy path is closed for the first seed. Ordinary owner
-invocation (`crazy-admin run --seed`, MCP `start_mission`) and a
-failed workbench recovering on the next beat must not require a
-human. Those are P4b automation proofs, not new architecture.
+P4b is now also met: default chain fall-through, repair of a broken
+workbench, `crazy-admin run --path --seed`, and MCP `start_mission`
+all reach COMPLETE without a human. Later providers and specialized
+roles stay deferred. Do not start P5 / UI / extra MCP / a multi-agent
+org.

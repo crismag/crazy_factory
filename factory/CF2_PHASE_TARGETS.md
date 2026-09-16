@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** P4b — owner path + repair (P4a `done`)
+**Current phase:** P4b — owner path + repair (`done`)
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -112,7 +112,7 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **done** (P4a). Cursor/Codex/Claude adapters and specialized roles remain deferred. |
+| Status | **done** (P4a + P4b). Cursor/Codex/Claude adapters and specialized roles remain deferred. |
 | Target | Delegate low-level coding to a capable agent behind an adapter. |
 | Success | Crazy Factory owns mission/evaluate/tools; the adapter owns implementation. |
 

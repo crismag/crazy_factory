@@ -45,11 +45,11 @@ The plan of record is [CF2_ARCHITECTURE.md](../CF2_ARCHITECTURE.md).
 
 ## Next State Transition
 
-P4a is landed ([CF2_P4A_COMPLETION.md](../CF2_P4A_COMPLETION.md)):
-`examples/seeds/task_board_web.md` from a clean workbench reaches
-COMPLETE with runtime evidence. Next is P4b: the ordinary owner
-path (`crazy-admin run --seed`, MCP `start_mission`) and repair of
-a failed workbench must not require a human. Do not start P5 / UI /
-extra MCP / multi-agent org.
+P4a/P4b are landed ([CF2_P4A_COMPLETION.md](../CF2_P4A_COMPLETION.md)):
+the task-board seed reaches COMPLETE from a clean workbench, from a
+broken workbench, via `crazy-admin run --seed`, and via MCP
+`start_mission`. Do not start P5 / UI / extra MCP / multi-agent org.
+Remaining P4 items are later providers (Cursor/Codex/Claude) only
+where they measurably help.
 See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and
 [CF2_TASK_CHECKLIST.md](../CF2_TASK_CHECKLIST.md).
