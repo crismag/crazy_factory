@@ -68,3 +68,24 @@ class InspectAssessCliTests(unittest.TestCase):
             self.assertTrue(persisted.is_file())
             data = json.loads(persisted.read_text(encoding="utf-8"))
             self.assertTrue(data["objectives"])
+
+    def test_brief_cli_on_seeded_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("todo", "apps/todo", root=root)
+            seed = (ROOT / "examples/seeds/cli_todo_tracker.md").read_text(
+                encoding="utf-8"
+            )
+            (root / "apps/todo/docs/seed.md").write_text(
+                seed, encoding="utf-8"
+            )
+            with (
+                patch("crazy_admin.find_repo_root", return_value=root),
+                patch("sys.stdout", new_callable=StringIO) as out,
+            ):
+                code = ca.main(["brief", "todo"])
+            self.assertEqual(code, 0)
+            text = out.getvalue()
+            self.assertIn("Director brief", text)
+            self.assertIn("start_mission", text)

@@ -116,11 +116,19 @@ class ProtocolTests(unittest.TestCase):
             )
             assert listed is not None
             names = [t["name"] for t in listed["result"]["tools"]]
+            self.assertIn("director_brief", names)
+            self.assertIn("list_projects", names)
             self.assertIn("inspect_project", names)
             self.assertIn("assess_project", names)
             self.assertNotIn("call_coder", names)
             self.assertNotIn("call_architect", names)
-            self.assertEqual(len(TOOLS), 12)
+            self.assertEqual(names[:6], list(mcp_server.FEATURED_TOOLS))
+            self.assertEqual(names[6:], list(mcp_server.INVENTORY_TOOLS))
+            self.assertEqual(len(TOOLS), 14)
+            self.assertIn(
+                "Director",
+                init["result"].get("instructions", ""),
+            )
 
     def test_notification_has_no_reply(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -259,6 +267,8 @@ class NoWorkerLeakTests(unittest.TestCase):
         self.assertIn("start_mission", names)
         self.assertIn("continue_mission", names)
         self.assertIn("stop_mission", names)
+        self.assertIn("director_brief", names)
+        self.assertIn("list_projects", names)
         # Silence unused import lint on mcp_server helper access.
         self.assertTrue(mcp_server.SERVER_NAME)
 
@@ -382,3 +392,32 @@ class MissionToolTests(unittest.TestCase):
             self.assertEqual(
                 inspect_body["mission"]["trace"], mission["trace"]
             )
+
+
+class DirectorMcpTests(unittest.TestCase):
+    def test_list_projects_and_brief(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            startproject("todo", "apps/todo", root=root)
+            seed = (ROOT / "examples/seeds/cli_todo_tracker.md").read_text(
+                encoding="utf-8"
+            )
+            (root / "apps/todo/docs/seed.md").write_text(
+                seed, encoding="utf-8"
+            )
+            listed = call_tool("list_projects", {}, root)
+            self.assertFalse(listed["isError"], listed)
+            body = json.loads(listed["content"][0]["text"])
+            self.assertEqual(body["projects"][0]["project_id"], "todo")
+            self.assertIn("director_brief", body["featured"])
+            briefed = call_tool(
+                "director_brief", {"project_id": "todo"}, root
+            )
+            self.assertFalse(briefed["isError"], briefed)
+            payload = json.loads(briefed["content"][0]["text"])
+            self.assertEqual(payload["next"]["action"], "start")
+            self.assertEqual(payload["next"]["mcp_tool"], "start_mission")
+            catalog = call_tool("director_brief", {}, root)
+            catalog_body = json.loads(catalog["content"][0]["text"])
+            self.assertEqual(catalog_body["project_id"], "todo")

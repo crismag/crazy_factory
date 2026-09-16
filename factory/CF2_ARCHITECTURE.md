@@ -61,12 +61,14 @@ They must not be the thing the owner cranks with `advance`.
 | **P1** | Runnable output (install/build/start tools + inspect) | `done` (observer) |
 | **P2** | Convergence: remaining gaps become the next objective | `done` (engine; `objective_generator`) |
 | **P3** | External invocation: MCP wraps the working engine | `done` (`start` + seed; inspect/status report mission) |
-| **P4** | Better agents: coding-agent adapter, then specialized roles | **done (P4a)** |
-| **P5** | Broader product intelligence, dynamic teams, self-improve | postpone |
+| **P4** | Better agents: coding-agent adapter, then specialized roles | **done (P4a+P4b)** |
+| **P5** | Broader product intelligence, dynamic teams, self-improve | **done (P5-01 Director)**; P5-02/P5-03 deferred |
 
-Do not begin P5 while P0/P1 remain unfinished. Phase and task
-checklists: [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md),
+P5-01 is the Director (owner-facing brief + featured MCP). Do not
+start dynamic teams, factory self-mutation, or UI from this slice.
+Phase and task checklists: [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md),
 [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md).
+MCP surface: [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md).
 
 ## P0 shape (what this slice owns)
 
@@ -121,24 +123,35 @@ Maturity remains **derived from evidence**, not a workflow you step.
 ## Public interface
 
 P0 CLI: `crazy-admin run|stop` (plus existing `advance` for one beat).
+P5 CLI: `crazy-admin brief` (Director: product + mission + next command).
 
-P3 MCP, wrapping the engine, never replacing it:
+P3 MCP, wrapping the engine, never replacing it. P5a splits the
+surface into **featured** vs **inventory**
+([CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md)):
+
+Featured (owner / Director conversation):
+
+`director_brief` → intended product + mission + one next command
+
+`list_projects` → registered workbenches + last mission outcome
 
 `crazy_factory.start(context, target)` → `start_mission`
 (seed path, inline context, and optional workbench path)
 
-`crazy_factory.status(project)` → `get_status` / `inspect_project`
+`crazy_factory.status(project)` → `get_status`
 (includes mission outcome, artifact, trace)
 
 `crazy_factory.continue(project)` → `continue_mission`
 
-`crazy_factory.inspect(project)` → `inspect_project`
-
 `crazy_factory.stop(project)` → `stop_mission`
 
+Inventory (power-user): `inspect_project`, `assess_project`,
+`advance_project`, `import_project`, `provide_context`, `get_findings`,
+`get_objectives`, `reconcile_project`.
+
 MCP without the execution engine would only expose the incomplete
-workflow remotely. Slice A's inspect/assess tools remain available;
-they are not the product.
+workflow remotely. Slice A's inspect/assess tools remain inventory;
+the Director is the conversation.
 
 ## What stays deterministic
 

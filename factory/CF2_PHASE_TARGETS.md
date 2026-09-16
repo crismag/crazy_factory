@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** P4b — owner path + repair (`done`)
+**Current phase:** P5a — Director + featured MCP (`done`)
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -126,7 +126,7 @@ Acceptance:
 
 P3 completion baseline: [CF2_P3_COMPLETION.md](CF2_P3_COMPLETION.md).
 P4a completion baseline: [CF2_P4A_COMPLETION.md](CF2_P4A_COMPLETION.md).
-Do not start P5, UI, extra MCP, or a multi-agent org from this slice.
+P5a completion baseline: [CF2_P5_COMPLETION.md](CF2_P5_COMPLETION.md).
 
 ---
 
@@ -134,9 +134,17 @@ Do not start P5, UI, extra MCP, or a multi-agent org from this slice.
 
 | | |
 | --- | --- |
-| Status | `deferred` |
-| Target | Product-level convergence, dynamic teams, self-improving capabilities. |
-| Rule | **Do not begin P5 while P0/P1 remain unfinished.** |
+| Status | **done (P5-01 / P5a)**. Dynamic teams and factory self-improve stay deferred. |
+| Target | Product-level convergence. The Director is what the owner talks to. |
+| Rule | P0/P1 are finished; this slice does **not** include P5-02/P5-03, UI, or network MCP. |
 
-Inspect/assess/MCP inventory from Slice A may stay in the tree. It is not
-the development focus.
+Acceptance (P5a):
+
+- [x] Director brief combines live inspect + mission snapshot + one next command
+- [x] CLI `crazy-admin brief`
+- [x] MCP `director_brief` / `list_projects` are featured; inspect/assess stay inventory
+- [x] Featured vs inventory documented in [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md)
+- [x] `HUMAN_REQUIRED` does not recommend continue/start
+- [x] `COMPLETE` is `done` (remaining product gaps are caveats)
+- [ ] Dynamic teams / skill registry (P5-02)
+- [ ] Factory self-improvement that writes `scripts/` (P5-03)

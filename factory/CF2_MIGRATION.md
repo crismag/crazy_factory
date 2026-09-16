@@ -180,6 +180,38 @@ reload architecture contract, validate, mark checklist complete),
 
 ---
 
+## P5a — Director + featured MCP
+
+### Objective
+
+The owner talks to the Director. Product intelligence (inspect/assess)
+plus the mission snapshot become one brief with a recommended next
+command. MCP is split into featured vs inventory so clients do not
+treat the Slice A dump as the product.
+
+Do **not** build dynamic teams, factory self-mutation, or UI.
+
+### New
+
+`scripts/director.py`, `factory/CF2_MCP_SURFACE.md`,
+`tests/test_director.py`.
+
+### Changed
+
+`scripts/mcp_server.py` (`director_brief`, `list_projects`, featured
+first), `scripts/crazy_admin.py` (`brief`).
+
+### Acceptance
+
+- Placeholder seed → `provide_context` / `start_mission` with a real seed.
+- Real seed, no mission → `start`.
+- `BUDGET_EXHAUSTED` / remaining work → `continue_mission`.
+- `HUMAN_REQUIRED` → `human` (does not recommend start/continue).
+- `COMPLETE` → `done` (remaining product gaps are caveats).
+- Empty registry → `import_project`; several projects → `pick_project`.
+
+---
+
 ## Slice A — Product intelligence service (P2/P5 inventory)
 
 ### Objective

@@ -166,7 +166,8 @@ All commands are `bin/crazy-admin <command>` (a thin wrapper over
 | `add-context <id> <source>` | Ingest a file, directory, or archive (`zip`/`tar`/`tar.gz`/`tgz`/`gz`) into the project's context store. |
 | `migrate-project-runtime <id>` | Bring a pre-relocation project forward: non-destructively copy legacy root `state/`, `factory_state/projects/<id>/`, and `reports/` into the workbench, and materialize `config/factory.yaml` if missing. Leaves the old root folders in place. |
 | `status [id] [--path DIR]` | Show one project: contract validation/authorization, proposal/approval, effective capabilities, current blocker, and the latest mission outcome/artifact/trace. With no id/path, discover the project from the current workbench. |
-| `inspect [id] [--path DIR] [--json]` | Product intelligence: intended vs observable product, modules, readiness dimensions, Director objectives, plus the latest mission outcome/artifact/trace. Does not run workers or apply code. |
+| `brief [id] [--path DIR] [--json]` | Director: intended product + latest mission + one recommended next command. No workers. With no id, catalogs registered projects or briefs the only one. |
+| `inspect [id] [--path DIR] [--json]` | Product intelligence inventory: intended vs observable product, modules, readiness dimensions, Director objectives, plus the latest mission outcome/artifact/trace. Does not run workers or apply code. |
 | `assess [id] [--path DIR] [--json]` | Recompute product intelligence, persist it under `factory_state/`, and print the Director queue. |
 | `run [id] [--path DIR] [--seed FILE] [--max-beats N] [--keep-gates]` | Closed-loop mission: enable the isolated workbench profile (unless `--keep-gates`) and keep advancing until accepted, a genuine human blocker, or the beat budget. After file acceptance, a declared `start_command` is started and probed. Writes `MISSION_TRACE.md`. |
 | `stop [id] [--path DIR]` | Request the mission runner to halt at the next evaluation. |
@@ -198,7 +199,7 @@ Other entry points:
 
 - `bin/factory-advance` — run a advance directly (same as `crazy-admin advance`).
 - `bin/factory-status` / `bin/factory-report` / `bin/factory-watch` — inspect state and reports.
-- `bin/crazy-factory-mcp` / `crazy-admin serve-mcp` — stdio MCP server (intent tools + `crazy://` resources). `--jsonl` for newline-delimited JSON. `start_mission` accepts `seed` / `context` and `target` in one call; `get_status` / `inspect_project` return the latest mission outcome, artifact, and trace.
+- `bin/crazy-factory-mcp` / `crazy-admin serve-mcp` — stdio MCP server. Featured tools: `director_brief`, `list_projects`, `start_mission`, `continue_mission`, `stop_mission`, `get_status`. Inventory: inspect/assess/advance/import/context/findings/objectives/reconcile. See [CF2_MCP_SURFACE.md](../factory/CF2_MCP_SURFACE.md). `--jsonl` for newline-delimited JSON. `start_mission` accepts `seed` / `context` and `target` in one call.
 - `scripts/mission_loop.py` — the guarded, cron-friendly continuous entry point (Section 6).
 - `scripts/context_growth.py start|grow|promote` — grow a project from a seed and promote it into the pipeline (see SEED_GROWN_CONTEXT.md).
 
@@ -208,8 +209,9 @@ Other entry points:
 
 A advance is a single planning-and-proposal pass of the **execution
 kernel** (the task loop). `crazy-admin run` is the continuation
-controller that keeps calling that beat. Product-level inspect/assess
-is a separate control-plane operation. See
+controller that keeps calling that beat. `crazy-admin brief` is the
+Director (product + mission + next command). Product-level inspect/assess
+is inventory. See
 [CF2_ARCHITECTURE.md](../factory/CF2_ARCHITECTURE.md).
 
 ```text

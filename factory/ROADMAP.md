@@ -12,8 +12,8 @@ below is retained as ancestry; it is not the current execution plan.
 | **P1** | Runnable output: install/build/start on the tool executor; observe runtime | `done` |
 | **P2** | Convergence: remaining product gaps become the next objective | `done` (engine) |
 | **P3** | MCP wraps the working engine (`start` / `status` / `continue` / `stop`) | `done` (engine) |
-| **P4** | Coding-agent adapter; specialized roles only where they improve completion | `done` (P4a); later providers deferred |
-| **P5** | Broader product intelligence, dynamic teams, self-improving capabilities | `deferred` |
+| **P4** | Coding-agent adapter; specialized roles only where they improve completion | `done` (P4a+P4b); later providers deferred |
+| **P5** | Broader product intelligence, dynamic teams, self-improving capabilities | `done` (P5-01 Director); P5-02/P5-03 deferred |
 
 Living checklists:
 
@@ -24,7 +24,9 @@ Inspect/assess/MCP from Slice A shipped alongside P0 as inventory.
 P2 wires remaining-gap objectives into EXECUTE. P3 wraps that engine:
 `start_mission` takes context + target in one call. P4a is the capable
 implementation actuator: `context → Crazy Factory → runnable accepted
-application` on `task_board_web`. Do not start P5.
+application` on `task_board_web`. P5a is the Director: `crazy-admin
+brief` / MCP `director_brief` names the next featured command.
+See [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md).
 
 ## Ancestry (documentation bootstrap → local apprentice)
 

@@ -19,7 +19,7 @@ specialized workers:
 
 | Worker | Primary responsibility |
 | --- | --- |
-| Director | Name the product-level gap and the next objective (P2/P5 inventory) |
+| Director | Owner conversation: product + mission + next command (`crazy-admin brief`) |
 | Architect | Expand goals into architecture and bounded work areas |
 | Planner | Select and define the next smallest valuable task |
 | Coder | Propose and apply owner-approved implementation changes within guarded paths |

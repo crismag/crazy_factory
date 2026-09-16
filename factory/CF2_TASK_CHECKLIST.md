@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** later providers deferred (P4a/P4b landed; do not start P5)
+**Current focus:** P5-02/P5-03 deferred (P5-01 Director + featured MCP landed)
 **Last updated:** 2026-09-16
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -79,14 +79,15 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 
 ---
 
-## P5 — Product intelligence (do not start)
+## P5 — Product intelligence
 
-| ID | Status | Task |
-| --- | --- | --- |
-| CF2-P5-01 | DEFERRED | Director as the thing the owner talks to |
-| CF2-P5-02 | DEFERRED | Dynamic teams / skill registry |
-| CF2-P5-03 | DEFERRED | Factory self-improvement that writes `scripts/` |
-| CF2-P5-04 | DONE (inventory) | `inspect` / `assess` / product kernel exist; not the priority |
+| ID | Status | Task | Evidence |
+| --- | --- | --- | --- |
+| CF2-P5-01 | DONE | Director as the thing the owner talks to | `scripts/director.py`, `crazy-admin brief`, MCP `director_brief` |
+| CF2-P5-02 | DEFERRED | Dynamic teams / skill registry | |
+| CF2-P5-03 | DEFERRED | Factory self-improvement that writes `scripts/` | |
+| CF2-P5-04 | DONE | `inspect` / `assess` inventory; featured MCP mapped | [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md) |
+| CF2-P5-05 | DONE | Featured MCP: `director_brief`, `list_projects`; inventory stays | `scripts/mcp_server.py` |
 
 ---
 

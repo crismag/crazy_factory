@@ -4,25 +4,29 @@
 Crazy Factory is the *server*. External AIs (Cursor, Claude, other
 orchestrators) are clients. The public surface is intent-shaped.
 
-P0 mission tools wrap the closed-loop runner:
+Featured tools (owner / Director conversation):
 
-    start_mission(context, target), continue_mission, stop_mission
+    director_brief, list_projects,
+    start_mission, continue_mission, stop_mission, get_status
+
+Inventory tools (power-user; same engine, not the conversation):
+
+    import_project, provide_context, inspect_project, assess_project,
+    advance_project, get_findings, get_objectives, reconcile_project
 
 ``start_mission`` accepts a seed/context and target in one call.
 ``inspect_project`` / ``get_status`` include mission outcome, artifact,
-and trace.
-
-Inspect/assess tools remain available as inventory:
-
-    import_project, provide_context, inspect_project, assess_project,
-    advance_project, get_status, get_findings, get_objectives,
-    reconcile_project
+and trace. ``director_brief`` is the owner-facing combination of
+product intelligence, mission snapshot, and one recommended next
+command.
 
 It does not expose call_architect / call_coder. Resources under
 ``crazy://projects/...`` are read-only project intelligence.
 
 Transport: MCP stdio (Content-Length framing, protocol 2024-11-05),
 plus newline-delimited JSON for tests. No vendor SDK.
+
+See factory/CF2_MCP_SURFACE.md for the featured vs inventory map.
 """
 
 from __future__ import annotations
@@ -44,6 +48,13 @@ from crazy_admin import (  # noqa: E402
     ingest_start_context,
     startproject,
     status as admin_status,
+)
+from director import (  # noqa: E402
+    FEATURED_MCP,
+    INVENTORY_MCP,
+    director_brief,
+    list_registered_projects,
+    mcp_surface,
 )
 from owner_controls import gather_status  # noqa: E402
 from product_kernel import (  # noqa: E402
@@ -68,79 +79,63 @@ from repo_tools import find_repo_root  # noqa: E402
 
 PROTOCOL = "2024-11-05"
 SERVER_NAME = "crazy-factory"
-SERVER_VERSION = "2.0.0-slice-a"
+SERVER_VERSION = "2.0.0-p5a"
+FEATURED_TOOLS = list(FEATURED_MCP)
+INVENTORY_TOOLS = list(INVENTORY_MCP)
+
+_INSTRUCTIONS = (
+    "Talk to the Director. Featured tools: director_brief, "
+    "list_projects, start_mission, continue_mission, stop_mission, "
+    "get_status. director_brief names the one next command. "
+    "Do not call advance_project unless the owner wants a single "
+    "beat. Never call worker roles."
+)
+
+
+def _ann(
+    title: str, *, read_only: bool, featured: bool = True
+) -> dict[str, Any]:
+    return {
+        "title": title,
+        "readOnlyHint": read_only,
+        "destructiveHint": False,
+        "openWorldHint": False,
+        "featured": featured,
+    }
+
 
 TOOLS: list[dict[str, Any]] = [
     {
-        "name": "import_project",
-        "description": ("Create or attach a Crazy Factory project workbench."),
+        "name": "director_brief",
+        "description": (
+            "Owner-facing Director: intended vs observable product, "
+            "latest mission, and one recommended next command "
+            "(start, continue, done, human, provide_context, "
+            "import, or pick a project). Does not run workers. "
+            "Omit project_id to catalog registered workbenches."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "project_id": {"type": "string"},
-                "path": {
+                "project_id": {
                     "type": "string",
-                    "description": "Optional workbench path.",
-                },
-                "attach": {
-                    "type": "boolean",
                     "description": (
-                        "Attach an existing tree instead of scaffolding."
+                        "Optional. When omitted, briefs the sole "
+                        "project or lists all registered projects."
                     ),
                 },
             },
-            "required": ["project_id"],
         },
+        "annotations": _ann("Director brief", read_only=True),
     },
     {
-        "name": "provide_context",
+        "name": "list_projects",
         "description": (
-            "Import a file, directory, or archive as project context."
+            "List registered workbenches with last mission outcome. "
+            "Does not inspect product intelligence."
         ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "project_id": {"type": "string"},
-                "source": {"type": "string"},
-            },
-            "required": ["project_id", "source"],
-        },
-    },
-    {
-        "name": "inspect_project",
-        "description": (
-            "Live product intelligence plus the latest mission outcome, "
-            "artifact, and trace. Does not run workers."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {"project_id": {"type": "string"}},
-            "required": ["project_id"],
-        },
-    },
-    {
-        "name": "assess_project",
-        "description": (
-            "Recompute product intelligence, persist it, and return "
-            "Director objectives."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {"project_id": {"type": "string"}},
-            "required": ["project_id"],
-        },
-    },
-    {
-        "name": "advance_project",
-        "description": (
-            "Run one execution-kernel beat for the project. Honors owner "
-            "capability switches; does not bypass safety."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {"project_id": {"type": "string"}},
-            "required": ["project_id"],
-        },
+        "inputSchema": {"type": "object", "properties": {}},
+        "annotations": _ann("List projects", read_only=True),
     },
     {
         "name": "start_mission",
@@ -185,6 +180,7 @@ TOOLS: list[dict[str, Any]] = [
             },
             "required": ["project_id"],
         },
+        "annotations": _ann("Start mission", read_only=False),
     },
     {
         "name": "continue_mission",
@@ -199,6 +195,7 @@ TOOLS: list[dict[str, Any]] = [
             },
             "required": ["project_id"],
         },
+        "annotations": _ann("Continue mission", read_only=False),
     },
     {
         "name": "stop_mission",
@@ -208,6 +205,7 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {"project_id": {"type": "string"}},
             "required": ["project_id"],
         },
+        "annotations": _ann("Stop mission", read_only=False),
     },
     {
         "name": "get_status",
@@ -220,6 +218,93 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {"project_id": {"type": "string"}},
             "required": ["project_id"],
         },
+        "annotations": _ann("Mission status", read_only=True),
+    },
+    {
+        "name": "import_project",
+        "description": ("Create or attach a Crazy Factory project workbench."),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string"},
+                "path": {
+                    "type": "string",
+                    "description": "Optional workbench path.",
+                },
+                "attach": {
+                    "type": "boolean",
+                    "description": (
+                        "Attach an existing tree instead of scaffolding."
+                    ),
+                },
+            },
+            "required": ["project_id"],
+        },
+        "annotations": _ann(
+            "Import project", read_only=False, featured=False
+        ),
+    },
+    {
+        "name": "provide_context",
+        "description": (
+            "Import a file, directory, or archive as project context."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string"},
+                "source": {"type": "string"},
+            },
+            "required": ["project_id", "source"],
+        },
+        "annotations": _ann(
+            "Provide context", read_only=False, featured=False
+        ),
+    },
+    {
+        "name": "inspect_project",
+        "description": (
+            "Live product intelligence plus the latest mission outcome, "
+            "artifact, and trace. Does not run workers."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project_id": {"type": "string"}},
+            "required": ["project_id"],
+        },
+        "annotations": _ann(
+            "Inspect project", read_only=True, featured=False
+        ),
+    },
+    {
+        "name": "assess_project",
+        "description": (
+            "Recompute product intelligence, persist it, and return "
+            "Director objectives."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project_id": {"type": "string"}},
+            "required": ["project_id"],
+        },
+        "annotations": _ann(
+            "Assess project", read_only=False, featured=False
+        ),
+    },
+    {
+        "name": "advance_project",
+        "description": (
+            "Run one execution-kernel beat for the project. Honors owner "
+            "capability switches; does not bypass safety."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"project_id": {"type": "string"}},
+            "required": ["project_id"],
+        },
+        "annotations": _ann(
+            "Advance one beat", read_only=False, featured=False
+        ),
     },
     {
         "name": "get_findings",
@@ -231,6 +316,7 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {"project_id": {"type": "string"}},
             "required": ["project_id"],
         },
+        "annotations": _ann("Get findings", read_only=True, featured=False),
     },
     {
         "name": "get_objectives",
@@ -240,6 +326,9 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {"project_id": {"type": "string"}},
             "required": ["project_id"],
         },
+        "annotations": _ann(
+            "Get objectives", read_only=True, featured=False
+        ),
     },
     {
         "name": "reconcile_project",
@@ -249,9 +338,14 @@ TOOLS: list[dict[str, Any]] = [
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {"project_id": {"type": "string"}},
+            "properties": {
+                "project_id": {"type": "string"},
+            },
             "required": ["project_id"],
         },
+        "annotations": _ann(
+            "Reconcile project", read_only=False, featured=False
+        ),
     },
 ]
 
@@ -356,6 +450,16 @@ def call_tool(
 def _call_tool(
     name: str, arguments: dict[str, Any], root: Path
 ) -> dict[str, Any]:
+    if name == "director_brief":
+        pid = arguments.get("project_id")
+        payload = director_brief(
+            root, project_id=str(pid) if pid else None
+        )
+        return _text_result(payload)
+    if name == "list_projects":
+        return _text_result(
+            {"projects": list_registered_projects(root), **mcp_surface()}
+        )
     if name == "import_project":
         pid = str(arguments["project_id"])
         path = arguments.get("path")
@@ -544,6 +648,7 @@ def handle_message(
                     "name": SERVER_NAME,
                     "version": SERVER_VERSION,
                 },
+                "instructions": _INSTRUCTIONS,
             },
         }
     if method == "tools/list":

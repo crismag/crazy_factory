@@ -14,6 +14,7 @@ Commands:
     crazy-admin attachproject <id> <existing_path> register an existing codebase
     crazy-admin run [<id>] [--seed FILE]          closed-loop mission until done
     crazy-admin stop [<id>]                       request the runner to halt
+    crazy-admin brief [<id>]                      Director next-command brief
     crazy-admin status [<id>] [--path DIR]        show a project's status
     crazy-admin advance [<id>] [--path DIR] [--all] run one build beat
 
@@ -77,6 +78,7 @@ from product_kernel import (  # noqa: E402
     inspect_project,
     render_assessment,
 )
+from director import director_brief, render_brief  # noqa: E402
 from mission_runner import (  # noqa: E402
     COMPLETE,
     load_mission_snapshot,
@@ -964,6 +966,15 @@ def main(argv: list[str] | None = None) -> int:
     met.add_argument(
         "--json", action="store_true", help="emit machine-readable JSON"
     )
+    brf = sub.add_parser(
+        "brief",
+        help="Director: product + mission + recommended next command",
+    )
+    brf.add_argument("project_id", nargs="?", default=None)
+    brf.add_argument("--path", default=None)
+    brf.add_argument(
+        "--json", action="store_true", help="emit machine-readable JSON"
+    )
     insp = sub.add_parser(
         "inspect",
         help="product intelligence: intended vs observable (no workers)",
@@ -1201,6 +1212,27 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             print(json.dumps(metrics, indent=2))
         else:
             print(render_metrics_md(metrics))
+        return 0
+    if args.command == "brief":
+        pid = args.project_id
+        path = args.path
+        payload: dict[str, Any]
+        if pid or path:
+            try:
+                project = _resolve_project_arg(root, pid, path=path)
+                payload = director_brief(root, project=project)
+            except RegistryError:
+                payload = director_brief(root, project_id=pid)
+        else:
+            try:
+                project = _resolve_project_arg(root, None, path=None)
+                payload = director_brief(root, project=project)
+            except RegistryError:
+                payload = director_brief(root)
+        if getattr(args, "json", False):
+            print(json.dumps(payload, indent=2))
+        else:
+            print(render_brief(payload), end="")
         return 0
     if args.command in ("inspect", "assess"):
         project = _resolve_project_arg(root, args.project_id, path=args.path)
