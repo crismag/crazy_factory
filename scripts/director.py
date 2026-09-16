@@ -10,7 +10,7 @@ Recommended actions:
 
 * ``import_project`` — nothing is registered yet
 * ``pick_project`` — several projects exist; the owner must choose
-* ``provide_context`` — placeholder intent; start needs a real seed
+* ``provide_context`` — placeholder intent; start needs a prompt or seed
 * ``start`` — bounded context exists; no mission has run
 * ``continue`` — MORE_WORK / recoverable / budget; keep the loop going
 * ``done`` — evaluator COMPLETE (remaining product gaps are caveats)
@@ -178,13 +178,13 @@ def _next_for_assessment(
         return NextAction(
             action=ACTION_PROVIDE_CONTEXT,
             why=(
-                "Intended product is still a placeholder. Pass a real seed "
-                "or inline context with start_mission; do not run workers "
-                "on 'describe what'."
+                "Intended product is still a placeholder. Pass a prompt, "
+                "a real seed, or inline context with start_mission; do "
+                "not run workers on 'describe what'."
             ),
             mcp_tool="start_mission",
-            cli=f"crazy-admin run {pid} --seed <seed.md>",
-            arguments={"project_id": pid, "seed": "<seed.md>"},
+            cli=f"crazy-admin run {pid} --prompt '<what to build>'",
+            arguments={"project_id": pid, "prompt": "<what to build>"},
         )
     return NextAction(
         action=ACTION_START,

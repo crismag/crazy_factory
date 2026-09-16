@@ -29,6 +29,9 @@ Contract schema (all keys optional)::
         "required_files": ["src/task_model.py", "tests/test_task_model.py"],
         "start_command": "python3 -m src.task_board",
         "listen_port": 8000,
+        "stack": "stdlib-web",
+        "source": "prompt-compiler",
+        "title": "Task Board",
     }
 """
 

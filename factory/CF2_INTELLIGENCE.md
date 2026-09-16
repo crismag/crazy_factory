@@ -95,6 +95,7 @@ evidence.
 | Safety / stall / recovery routing | `recovery` field + floor | **Yes** (floor never overridden) |
 | Write application files | `CloudCodingExecutor` | **Yes** — Claude preferred |
 | Inner Architect / Planner | `_chat_backend` cloud then Ollama | **Yes** (Ollama if no key) |
+| Prompt → seed + architecture | `prompt_compiler.compile_prompt` | **Yes** (fallback if no key) |
 | Task-board proof with no keys | `StdlibWebExecutor` | Fixture fallback only |
 
 ## Near-term boundary (not this slice)
@@ -103,3 +104,6 @@ evidence.
 - specialized tool plugins (browser, security, a11y)
 - Cursor/Codex IDE adapters
 - network MCP
+- `vite-react` as an executable stack (npm still forbidden)
+
+Default stack and compiler: [CF2_WEB_STACK.md](CF2_WEB_STACK.md).

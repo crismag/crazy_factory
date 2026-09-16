@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** P4f agentic control intelligence landed; P5-02/P5-03 deferred
+**Current focus:** L0 prompt compiler + default `stdlib-web` stack landed
 **Last updated:** 2026-09-16
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -93,6 +93,20 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-P5-04 | DONE | `inspect` / `assess` inventory; featured MCP mapped | [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md) |
 | CF2-P5-05 | DONE | Featured MCP: `director_brief`, `list_projects`; inventory stays | `scripts/mcp_server.py` |
 | CF2-P5-06 | DONE | Nested module loop in Director + EXECUTE | `focus_module` in brief; execute stays on one module |
+
+---
+
+## L0 — Prompt compiler + default web stack
+
+| ID | Status | Task | Evidence |
+| --- | --- | --- | --- |
+| CF2-L0-01 | DONE | Raw owner prompt → specified seed + architecture | `scripts/prompt_compiler.py`, `tests/test_prompt_compiler.py` |
+| CF2-L0-02 | DONE | Default executable stack `stdlib-web`; `vite-react` recorded successor | `scripts/web_stack.py`, [CF2_WEB_STACK.md](CF2_WEB_STACK.md) |
+| CF2-L0-03 | DONE | CLI `--prompt` and MCP `start_mission.prompt` | `crazy_admin.py`, `mcp_server.py` |
+| CF2-L0-04 | PLANNED | Preview-first loop (serve + observe the compiled stack every beat) | observer already probes; product preview UX later |
+| CF2-L0-05 | DEFERRED | Conversational deltas on a running preview | after L0-04 |
+| CF2-L0-06 | DEFERRED | Drop-in MCP “any prompt” productization | after compiler + stack proof |
+| CF2-L0-07 | DEFERRED | `vite-react` executable (npm confine + probe) | P1-07 |
 
 ---
 

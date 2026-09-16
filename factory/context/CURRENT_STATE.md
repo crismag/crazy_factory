@@ -24,12 +24,15 @@ P4f makes continuation, objective, stance, and quality **model
 decisions** with attempt-log persistence; rails still veto stop,
 budget, unsafe start, and fake COMPLETE.
 P5a names the next MCP/CLI verb instead of dumping inspect JSON.
+L0 compiles a raw owner prompt into a specified seed on the default
+`stdlib-web` stack so a one-liner can enter the same loop.
 
 The execution audit is
 [docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 The plan of record is [CF2_ARCHITECTURE.md](../CF2_ARCHITECTURE.md).
 The intelligence map is [CF2_INTELLIGENCE.md](../CF2_INTELLIGENCE.md).
 The MCP surface map is [CF2_MCP_SURFACE.md](../CF2_MCP_SURFACE.md).
+The default web stack is [CF2_WEB_STACK.md](../CF2_WEB_STACK.md).
 
 ## Available Assets
 
@@ -45,14 +48,17 @@ The MCP surface map is [CF2_MCP_SURFACE.md](../CF2_MCP_SURFACE.md).
 - P2 execute-objective generator (`current_objective.json`; wired into
   `advance` and the mission loop)
 - product kernel: inspect/assess (inventory; also feeds P2 objectives)
-- P3 MCP `start_mission` accepts seed/context + target in one call;
-  `get_status` / `inspect` include mission outcome, artifact, and trace
+- P3 MCP `start_mission` accepts prompt/seed/context + target in one
+  call; `get_status` / `inspect` include mission outcome, artifact,
+  and trace
 - P4 `AgentExecutor` plus `execution_assignment` (purpose-built
   assignment from evidence; Claude/OpenAI plugins; stdlib actuator;
   next objective reads `executor_result.json`)
 - P5a Director (`crazy-admin brief`, MCP `director_brief` /
   `list_projects`; featured vs inventory MCP)
 - P5b nested module loop (`focus_module`, `current_module.json`)
+- L0 prompt compiler (`crazy-admin run --prompt`, MCP `start_mission.prompt`)
+  on the default `stdlib-web` stack
 - tests (unit; live Ollama product builds are not in CI)
 
 ## Not Yet Available
@@ -63,17 +69,17 @@ The MCP surface map is [CF2_MCP_SURFACE.md](../CF2_MCP_SURFACE.md).
 - KAE-Memory / vector “AI memory”
 - LangChain / LangGraph / n8n / Cline
 - live Ollama as the coding model (P1-09; not the starting path)
+- conversational deltas / Vite preview stack (L0-04 / L0-07)
 - dynamic role/skill acquisition (P5-02)
 - factory self-improvement that writes `scripts/` (P5-03)
 - network MCP / auth (P3-04)
 
 ## Next State Transition
 
-P4f is landed: continuation, objective, stance, and quality are
-model decisions persisted in `attempts.jsonl` and
-`control_memory.json`. Rails still veto stop, budget, unsafe start,
-and COMPLETE without evidence. Remaining work is Cursor/Codex IDE
-adapters, specialized roles, and deferred P5 — do not start those,
-UI, network MCP, or KAE-Memory from this slice.
+L0 is landed: a raw owner prompt compiles into a specified seed and
+`architecture.json` on `stdlib-web`. Scaffold placeholders still wait
+for a prompt. Next productization gaps are preview-first observation
+of that stack, then `vite-react` once npm is confined. Do not start
+Cursor/Codex adapters, UI, network MCP, or KAE-Memory from this slice.
 See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and
 [CF2_TASK_CHECKLIST.md](../CF2_TASK_CHECKLIST.md).

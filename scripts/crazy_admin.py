@@ -12,7 +12,7 @@ under ``apps/<id>`` (embedded), a sibling folder, or a separate repo (external).
 Commands:
     crazy-admin startproject <id> [target_path]   scaffold a new app + register
     crazy-admin attachproject <id> <existing_path> register an existing codebase
-    crazy-admin run [<id>] [--seed FILE]          closed-loop mission until done
+    crazy-admin run [<id>] [--seed FILE] [--prompt TEXT]  closed-loop mission
     crazy-admin stop [<id>]                       request the runner to halt
     crazy-admin brief [<id>]                      Director next-command brief
     crazy-admin status [<id>] [--path DIR]        show a project's status
@@ -1017,6 +1017,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Install this seed as docs/seed.md and import it as context.",
     )
     runp.add_argument(
+        "--prompt",
+        default=None,
+        help=(
+            "Raw owner prompt compiled into docs/seed.md and "
+            "architecture.json (stdlib-web default stack)."
+        ),
+    )
+    runp.add_argument(
         "--max-beats",
         type=int,
         default=12,
@@ -1278,8 +1286,14 @@ def _dispatch_run(args: argparse.Namespace, root: Path) -> int:
     else:
         project = _resolve_project_arg(root, None, path=path)
     seed = getattr(args, "seed", None)
-    if seed:
-        ingest_start_context(project, root, seed=str(seed))
+    prompt = getattr(args, "prompt", None)
+    if seed or prompt:
+        ingest_start_context(
+            project,
+            root,
+            seed=str(seed) if seed else None,
+            prompt=str(prompt) if prompt else None,
+        )
     result = run_mission(
         project,
         root,
@@ -1322,51 +1336,92 @@ def install_seed(project: dict[str, Any], seed: str, root: Path) -> Path:
     return dest
 
 
+def _reingest_seed(
+    project: dict[str, Any], root: Path, seed_path: str
+) -> None:
+    """Re-catalog a compiled seed so context matches the intended product."""
+    add_context(project=project, source=seed_path, root=root, now=_now())
+
+
 def ingest_start_context(
     project: dict[str, Any],
     root: Path,
     *,
     seed: str | None = None,
     context: str | None = None,
+    prompt: str | None = None,
 ) -> dict[str, str | None]:
     """Install seed and/or context for a one-call mission start.
 
     ``seed`` is a filesystem path. ``context`` is either a path (file,
     directory, or archive) or inline markdown written to ``docs/seed.md``
-    when no seed path was given.
+    when no seed path was given. ``prompt`` is a raw owner sentence
+    compiled into a specified seed + architecture (stdlib-web). The
+    startproject scaffold is never compiled unless the owner supplied
+    a prompt, seed, or inline context.
     """
-    summary: dict[str, str | None] = {"seed": None, "context": None}
+    from prompt_compiler import (
+        compile_into_workbench,
+        maybe_compile_workbench,
+    )
+
+    summary: dict[str, str | None] = {
+        "seed": None,
+        "context": None,
+        "prompt": None,
+        "compiled": None,
+    }
+    wrote_seed = False
     if seed:
         summary["seed"] = str(install_seed(project, seed, root))
-    if not context:
-        return summary
-    ctx_path = Path(context)
-    resolved = ctx_path
-    if not resolved.exists() and not ctx_path.is_absolute():
-        alt = root / ctx_path
-        if alt.exists():
-            resolved = alt
-    if resolved.exists():
-        if seed is None and resolved.is_file():
-            summary["seed"] = str(install_seed(project, str(resolved), root))
+        wrote_seed = True
+    if context:
+        ctx_path = Path(context)
+        resolved = ctx_path
+        if not resolved.exists() and not ctx_path.is_absolute():
+            alt = root / ctx_path
+            if alt.exists():
+                resolved = alt
+        if resolved.exists():
+            if seed is None and resolved.is_file():
+                summary["seed"] = str(
+                    install_seed(project, str(resolved), root)
+                )
+                wrote_seed = True
+            else:
+                add_context(
+                    project=project,
+                    source=str(resolved),
+                    root=root,
+                    now=_now(),
+                )
+                summary["context"] = str(resolved)
         else:
-            add_context(
-                project=project,
-                source=str(resolved),
-                root=root,
-                now=_now(),
+            app = _abs_app_dir(str(project["app_path"]), root)
+            dest = app / "docs" / (
+                "seed.md" if seed is None else "extra_context.md"
             )
-            summary["context"] = str(resolved)
-        return summary
-    app = _abs_app_dir(str(project["app_path"]), root)
-    dest = app / "docs" / ("seed.md" if seed is None else "extra_context.md")
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(context, encoding="utf-8")
-    add_context(project=project, source=str(dest), root=root, now=_now())
-    if seed is None:
-        summary["seed"] = str(dest)
-    else:
-        summary["context"] = str(dest)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(context, encoding="utf-8")
+            add_context(
+                project=project, source=str(dest), root=root, now=_now()
+            )
+            if seed is None:
+                summary["seed"] = str(dest)
+                wrote_seed = True
+            else:
+                summary["context"] = str(dest)
+    raw_prompt = (prompt or "").strip()
+    compiled: dict[str, str] | None = None
+    if raw_prompt:
+        summary["prompt"] = raw_prompt
+        compiled = compile_into_workbench(project, root, raw_prompt)
+    elif wrote_seed:
+        compiled = maybe_compile_workbench(project, root)
+    if compiled:
+        summary["compiled"] = compiled.get("record")
+        summary["seed"] = compiled.get("seed") or summary["seed"]
+        _reingest_seed(project, root, compiled["seed"])
     return summary
 
 

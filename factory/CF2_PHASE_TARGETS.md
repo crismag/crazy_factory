@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** P4f — agentic control (`done`)
+**Current phase:** L0 — prompt compiler + `stdlib-web` (`done`)
 **Last updated:** 2026-09-16
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -158,3 +158,26 @@ Acceptance (P5a):
 - [x] Nested module loop: Director names `focus_module`; EXECUTE finishes it before the next
 - [ ] Dynamic teams / skill registry (P5-02)
 - [ ] Factory self-improvement that writes `scripts/` (P5-03)
+
+---
+
+## L0 — Prompt compiler + default web stack
+
+| | |
+| --- | --- |
+| Status | **done** (compiler + default stack). Preview UX and vite-react remain later. |
+| Target | A raw owner sentence becomes a specified factory seed on one executable web stack. |
+| Success | `crazy-admin run id --prompt "…"` and MCP `start_mission.prompt` write Goal/Success + `architecture.json` instead of parking on `specify_intent`. |
+| Evidence | `scripts/prompt_compiler.py`, `scripts/web_stack.py`, `tests/test_prompt_compiler.py`, [CF2_WEB_STACK.md](CF2_WEB_STACK.md) |
+
+Acceptance:
+
+- [x] Unspecified prompt compiles to a non-placeholder seed
+- [x] Structured Goal+Success seeds are left verbatim
+- [x] `startproject` scaffold is not compiled until the owner supplies a prompt
+- [x] Default stack is `stdlib-web` (`python3 -m src.app`, port 8765)
+- [x] `vite-react` is recorded and not executable (npm still forbidden)
+- [x] Claude/OpenAI fill screens when a key is present; pytest uses fallback
+- [x] Hand-authored `architecture.json` is not overwritten
+- [ ] Preview-first product UX (L0-04)
+- [ ] npm / Vite executable stack (P1-07 / L0-07)

@@ -14,7 +14,7 @@ Inventory tools (power-user; same engine, not the conversation):
     import_project, provide_context, inspect_project, assess_project,
     advance_project, get_findings, get_objectives, reconcile_project
 
-``start_mission`` accepts a seed/context and target in one call.
+``start_mission`` accepts a prompt, seed/context, and target in one call.
 ``inspect_project`` / ``get_status`` include mission outcome, artifact,
 and trace. ``director_brief`` is the owner-facing combination of
 product intelligence, mission snapshot, and one recommended next
@@ -140,10 +140,11 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "start_mission",
         "description": (
-            "Start a persistent autonomous mission from context + target "
-            "in one call: create the workbench if needed, ingest a seed, "
-            "enable the isolated profile, and keep executing until "
-            "accepted, blocked, or the beat budget is spent."
+            "Start a persistent autonomous mission from a prompt or "
+            "context + target in one call: create the workbench if "
+            "needed, compile a raw prompt into a seed, ingest that "
+            "seed, enable the isolated profile, and keep executing "
+            "until accepted, blocked, or the beat budget is spent."
         ),
         "inputSchema": {
             "type": "object",
@@ -152,11 +153,20 @@ TOOLS: list[dict[str, Any]] = [
                     "type": "string",
                     "description": "Target project id (created if missing).",
                 },
+                "prompt": {
+                    "type": "string",
+                    "description": (
+                        "Raw owner prompt compiled into docs/seed.md "
+                        "and architecture.json on the default "
+                        "stdlib-web stack."
+                    ),
+                },
                 "context": {
                     "type": "string",
                     "description": (
                         "Inline seed markdown, or a path to a context "
-                        "source (file, directory, or archive)."
+                        "source (file, directory, or archive). "
+                        "Unstructured text is compiled like prompt."
                     ),
                 },
                 "seed": {
@@ -503,6 +513,9 @@ def _call_tool(
             seed=(str(arguments["seed"]) if arguments.get("seed") else None),
             context=(
                 str(arguments["context"]) if arguments.get("context") else None
+            ),
+            prompt=(
+                str(arguments["prompt"]) if arguments.get("prompt") else None
             ),
         )
         max_beats = int(arguments.get("max_beats") or 12)

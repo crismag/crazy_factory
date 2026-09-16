@@ -366,6 +366,44 @@ Do **not** build dynamic teams, factory self-mutation, or UI.
 
 ---
 
+## L0 — Prompt compiler + default web stack
+
+### Objective
+
+A raw owner sentence becomes a specified factory seed and an
+architecture contract on **one** executable web stack. The factory
+stops parking on `specify_intent` / `provide_context` when the owner
+actually said what to build. Scaffold placeholders stay honest until
+that happens.
+
+### New
+
+`scripts/prompt_compiler.py`, `scripts/web_stack.py`,
+`factory/CF2_WEB_STACK.md`, `tests/test_prompt_compiler.py`.
+
+### Changed
+
+`scripts/crazy_admin.py` (`--prompt`, compile after owner ingest),
+`scripts/mcp_server.py` (`start_mission.prompt`; unstructured
+`context` compiles), `scripts/director.py` (placeholder still
+`provide_context`, CLI now `--prompt`).
+
+### Acceptance
+
+- `--prompt "build a habit tracker"` writes Goal/Success +
+  `architecture.json` (`stdlib-web`, `python3 -m src.app`, 8765).
+- Structured Goal+Success seeds (including MCP inline context) stay
+  verbatim.
+- `startproject` scaffold is not compiled; Director still asks for a
+  prompt.
+- `vite-react` is recorded, not executable. Unknown / non-executable
+  stacks fall back to `stdlib-web`.
+- Hand-authored `architecture.json` is not overwritten; compiler
+  output may replace a previous compiler write.
+- No npm allowlist, no KAE-Memory, no LangChain.
+
+---
+
 ## Slice A — Product intelligence service (P2/P5 inventory)
 
 ### Objective

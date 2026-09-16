@@ -14,6 +14,7 @@ below is retained as ancestry; it is not the current execution plan.
 | **P3** | MCP wraps the working engine (`start` / `status` / `continue` / `stop`) | `done` (engine) |
 | **P4** | Coding-agent adapter; factory-owned assignment; specialized roles later | `done` (P4a–P4f); agentic control; Cursor/Codex deferred |
 | **P5** | Broader product intelligence, dynamic teams, self-improving capabilities | `done` (P5-01 Director + P5b module loop); P5-02/P5-03 deferred |
+| **L0** | Prompt compiler + default `stdlib-web` stack | `done`; vite-react / preview UX later |
 
 Living checklists:
 
@@ -28,12 +29,14 @@ application` on `task_board_web`. P4c is the starting coding
 plugins (Claude/OpenAI; skip when no API key). P4d compiles a
 purpose-built execution assignment from evidence; executor `ok` is
 not acceptance. P4e observes runtime every beat and feeds
-`executor_result.json` into the next objective. Ollama is opt-in, not the default. P5a is the
-Director: `crazy-admin brief` / MCP `director_brief` names the next
-featured command. P5b is the nested module loop: finish one module
-before opening the next. Intelligence map:
-[CF2_INTELLIGENCE.md](CF2_INTELLIGENCE.md). MCP surface:
-[CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md).
+`executor_result.json` into the next objective. Ollama is opt-in,
+not the default. P5a is the Director: `crazy-admin brief` / MCP
+`director_brief` names the next featured command. P5b is the nested
+module loop: finish one module before opening the next. L0 compiles
+a raw owner prompt into a specified seed on the default
+`stdlib-web` stack ([CF2_WEB_STACK.md](CF2_WEB_STACK.md)).
+Intelligence map: [CF2_INTELLIGENCE.md](CF2_INTELLIGENCE.md). MCP
+surface: [CF2_MCP_SURFACE.md](CF2_MCP_SURFACE.md).
 
 ## Ancestry (documentation bootstrap → local apprentice)
 
