@@ -378,12 +378,91 @@ Slice 4 friction (informs integration):
   is ephemeral and must not be persisted as the registry path.
 - Runtime `listen_port` / data files live in the workbench; two
   workspaces would collide if started. Not started in this slice.
-- `repo_scope` is advisory. AgentExecutor can still write other
-  allowed tops *inside* the isolated tree. Enforcing scope needs a
-  later apply filter. Existing ALLOWED_TOPS confinement is unchanged.
+- `repo_scope` is an **apply** boundary when it is strong (nested
+  file/dir paths). Empty or top-level-only scope falls back to
+  `ALLOWED_TOPS`. AgentExecutor can still write other allowed tops
+  *inside* the isolated tree; out-of-scope files are not applied.
 - Validation/runtime still assume the project mapping's `app_path`
   and `task_root`. Canonical `factory_tasks` is not remapped.
 - `.env` / secret names are not copied. No secret inheritance.
+
+## Slice 4B — Safe task-result integration
+
+`scripts/task_integration.py` applies one isolated workspace result
+to the canonical workbench under Factory authority.
+
+```text
+isolated result
+  → collect changed files (Git/filesystem, not worker prose)
+  → path authorization (ALLOWED_TOPS / BLOCKED_PARTS / secrets)
+  → repo_scope (strong) or Factory policy (weak/empty)
+  → overlap / stale-revision checks
+  → backup → apply add/modify/delete → canonical validation
+  → success, or rollback + preserve workspace
+```
+
+Workspace completion is not integration. Integration is not claim
+verification. No git merge, cherry-pick, push, or auto-commit.
+
+### Overlap / conflict detection
+
+For each eligible path, compare the canonical file digest to the
+workspace `baseline_hashes` captured at create time.
+
+- Canonical digest == baseline → non-overlapping; apply is allowed.
+- Canonical missing on a modify → conflict (deleted/recreated).
+- Canonical digest != baseline, and != workspace result → **overlap**.
+- Canonical digest already equals the workspace result → treat as
+  already applied, not a conflict.
+- Unrelated canonical dirt (paths the worker did not change) does
+  **not** block integration.
+- Git HEAD moving since `base_revision` is noted; blocking is still
+  per-file, not global-clean.
+
+Non-Git / bounded-copy workbenches use the same hash comparison.
+`base_revision` may be empty; isolation is still a snapshot.
+
+Unsafe paths (engine, `.git`, secrets, traversal, symlink escape)
+refuse the whole apply. Out-of-scope and runtime artifacts are
+omitted from the apply set without blocking in-scope files.
+
+### Rollback
+
+Before each write/delete, current canonical bytes are copied to
+`factory_workspaces/<project>/<id>/apply_backup/`. On apply error or
+validation `failed`/`blocked`/`error`, backups are restored and added
+files are removed. The workspace tree is preserved for diagnosis.
+This is not a Git transaction.
+
+### Runtime / data artifacts
+
+SQLite/`.db`/`.pyc` under the workspace are never applied.
+`data/*.json` is treated as runtime state unless the path is in a
+**strong** `repo_scope`. Seed JSON that should be product source must
+be declared in scope. This is a known limitation, not a complete
+classifier.
+
+### `repo_scope`
+
+- **strong**: nested path such as `src/app.py` — out-of-scope files
+  are listed in `rejected_changes` and not applied.
+- **weak** (only `src` / `tests` / …) or **empty**: fall back to
+  `ALLOWED_TOPS` (`scope_confidence=factory_policy`). Current graph
+  `affected_scope` is often empty or claim-file-only, so it is not
+  yet a complete confinement mechanism.
+
+### Live AgentExecutor switch (not this slice)
+
+Still required before auto-routing Codex into workspaces:
+
+- `factory_advance` / mission loop must create a workspace, bind,
+  execute, then `integrate_workspace` instead of writing `app_path`.
+- Validation/runtime today assume the registry `app_path` and
+  canonical `factory_tasks`.
+- Isolated previews would collide on `listen_port` / data files.
+- Binding must stay ephemeral (never persist workspace path into
+  `config/projects.yaml`).
+- One live sequential Codex proof in a workspace, then assess.
 
 ## A10 — File conflict prep
 
@@ -401,11 +480,12 @@ safe-to-parallelize. Dependency independence alone is insufficient.
 
 ## Track B — Pattern intelligence (not this slice)
 
-Slice 5 will add archetypes, feature patterns, UX patterns, and
-reference entries with a small schema, loader, and search. Patterns
-are advisory. Owner intent and architecture remain authoritative.
-Do not couple runtime to external repositories. Slice 6 may let one
-benchmark’s task expansion *read* pattern metadata.
+The pattern library remains a later slice: archetypes, feature
+patterns, UX patterns, and reference entries with a small schema,
+loader, and search. Patterns are advisory. Owner intent and
+architecture remain authoritative. Do not couple runtime to
+external repositories. A later slice may let one benchmark's task
+expansion *read* pattern metadata.
 
 ---
 
@@ -425,7 +505,8 @@ debug tooling only.
 
 ## Recommended next slice
 
-**Safe task-result integration:** take one isolated workspace result
-and apply it to the canonical workbench under Factory authority
-(changed-file list, path confinement, no worker merge/push). Still
-one worker at a time. Pattern library remains a separate slice.
+Pause and assess this primitive end-to-end before parallel workers.
+The next capability is either **one opt-in isolated live Codex run**
+(still sequential, Factory apply + validation + evidence) or the
+**pattern library** (advisory metadata). Do not enable concurrent
+workers until conflict detection has been used on a real coding beat.
