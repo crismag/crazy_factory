@@ -80,14 +80,17 @@ The default web stack is [CF2_WEB_STACK.md](../CF2_WEB_STACK.md).
 
 ## Next State Transition
 
-L0-01…L0-09 are landed. A no-key `--prompt "build a habit
+L0-01…L0-11 are landed. A no-key `--prompt "build a habit
 tracker"` still compiles and serves a generic CRUD preview, but
 that is **`RUNNABLE_PREVIEW`**, not product COMPLETE. A follow-up
 prompt stays a delta, invalidates prior acceptance, and re-opens
 the mission until the delta is VERIFIED against compiled claims.
+AgentExecutor missions no longer false-stop on an inner Ollama
+`planning_contract_rejected` leftover; the inner Coder chain still
+requires an owner-authorized valid `planned_task.json`.
 Next is a **keyed Claude/OpenAI product-specific benchmark**, then
 L0-06 MCP packaging and L0-07 `vite-react`. Do not start
-Cursor/Codex adapters, UI, network MCP, or KAE-Memory from this
+LangChain, UI, network MCP, or KAE-Memory from this
 reading.
 Evidence: [POST_L0_CAPABILITY_ASSESSMENT.md](../../docs/report/context/crazy-factory-2.0/POST_L0_CAPABILITY_ASSESSMENT.md).
 See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and

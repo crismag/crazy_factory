@@ -165,7 +165,7 @@ Acceptance (P5a):
 
 | | |
 | --- | --- |
-| Status | **done** through L0-10. No-key generic CRUD is `RUNNABLE_PREVIEW`, not COMPLETE. Habit-class claims require behavioral evidence. Vite-react remains later. |
+| Status | **done** through L0-11. No-key generic CRUD is `RUNNABLE_PREVIEW`, not COMPLETE. Habit-class claims require behavioral evidence. AgentExecutor missions skip the Ollama planning-contract blocker. Vite-react remains later. |
 | Target | A raw owner sentence becomes a specified factory seed on one executable web stack. |
 | Success | `crazy-admin run id --prompt "…"` and MCP `start_mission.prompt` write Goal/Success + `architecture.json` instead of parking on `specify_intent`. Follow-up prompts on a specified product are deltas. |
 | Evidence | `scripts/prompt_compiler.py`, live pack [prompt_build_2026-09-16](../docs/report/context/crazy-factory-2.0/prompt_build_2026-09-16/), [POST_L0_CAPABILITY_ASSESSMENT.md](../docs/report/context/crazy-factory-2.0/POST_L0_CAPABILITY_ASSESSMENT.md) |
@@ -184,4 +184,5 @@ Acceptance:
 - [x] Re-open mission on a new owner delta (L0-08)
 - [x] Product-intent acceptance vs generic preview (L0-09)
 - [x] Habit-class claims use runtime/persistence/visible evidence (L0-10)
+- [x] AgentExecutor missions do not require an Ollama planning contract (L0-11)
 - [ ] npm / Vite executable stack (P1-07 / L0-07)

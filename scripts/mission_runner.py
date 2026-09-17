@@ -36,7 +36,7 @@ from conversation_delta import (
 )
 from execution_assignment import persist_judgment
 from flags import flag_active, set_flag
-from mission_state import load_state
+from mission_state import load_state, persist_state
 from objective_generator import (
     load_focus_module,
     load_objective,
@@ -44,6 +44,7 @@ from objective_generator import (
     persist_objective,
 )
 from owner_controls import set_capability
+from project_control import read_control
 from runtime_observer import RuntimeReport, observe_runtime, persist_runtime
 from workbench_growth import workbench_metrics
 
@@ -141,6 +142,63 @@ def _blocker(project: dict[str, Any], root: Path) -> str:
     return str(raw) if raw else ""
 
 
+def _allow_apply_enabled(project: dict[str, Any], root: Path) -> bool:
+    """True when this workbench's AgentExecutor apply switch is on."""
+    try:
+        raw = read_control(str(project["app_path"]), root)
+    except Exception:  # noqa: BLE001 - evaluate must not crash the loop
+        return False
+    caps = (raw or {}).get("capabilities") or {}
+    return caps.get("allow_apply") is True
+
+
+def _product_loop_blocker(project: dict[str, Any], root: Path) -> str:
+    """Blocker that can stop the product loop.
+
+    ``planning_contract_rejected`` is an inner-Coder gate. When AgentExecutor
+    is the implementation path (``allow_apply``), it is not a mission stop.
+    """
+    blocker = _blocker(project, root)
+    if blocker == "planning_contract_rejected" and _allow_apply_enabled(
+        project, root
+    ):
+        return ""
+    return blocker
+
+
+def _clear_stale_planning_blocker(
+    project: dict[str, Any], root: Path, outcome: str
+) -> None:
+    """Drop leftover inner-coder planning rejects after a product stop.
+
+    ``planning_contract_rejected`` is not a product-kernel gate. COMPLETE and
+    RUNNABLE_PREVIEW must not retain it as ``current_blocker``.
+    """
+    if outcome not in {COMPLETE, RUNNABLE_PREVIEW}:
+        return
+    state_dir = str(project.get("state_dir") or "state")
+    try:
+        factory_state, active_run, project_state = load_state(
+            root, state_dir, str(project["name"])
+        )
+    except Exception:  # noqa: BLE001 - evaluate must not crash the loop
+        return
+    if project_state.get("current_blocker") != "planning_contract_rejected":
+        return
+    project_state["current_blocker"] = None
+    active_run["current_blocker"] = None
+    try:
+        persist_state(
+            root=root,
+            state_dir=state_dir,
+            factory_state=factory_state,
+            active_run=active_run,
+            project_state=project_state,
+        )
+    except Exception:  # noqa: BLE001 - leftover hygiene is best-effort
+        return
+
+
 def _probe_runtime(project: dict[str, Any]) -> RuntimeReport:
     """Start-probe the workbench and persist evidence every beat."""
     app = Path(str(project["app_path"]))
@@ -161,7 +219,7 @@ def evaluate_mission(
         return HUMAN_REQUIRED, "owner stop flag is set"
     if flag_active("pause", root, state_dir):
         return HUMAN_REQUIRED, "owner pause flag is set"
-    blocker = _blocker(project, root)
+    blocker = _product_loop_blocker(project, root)
     if blocker in HUMAN_BLOCKERS:
         return HUMAN_REQUIRED, f"blocker={blocker}"
     if blocker in STUCK_BLOCKERS:
@@ -273,13 +331,15 @@ def evaluate_mission(
         heuristic_kind=heuristic.kind if heuristic else "implement",
         heuristic_stance="implement",
     )
-    return apply_rails(
+    outcome, why = apply_rails(
         decision,
         candidate_outcome=candidate,
         candidate_reason=why,
         accepted=acceptance.accepted,
         runtime_safe=runtime.safe,
     )
+    _clear_stale_planning_blocker(project, root, outcome)
+    return outcome, why
 
 
 @dataclass
@@ -362,7 +422,7 @@ def _record(
         index=index,
         evaluation=status,
         reason=reason,
-        blocker=_blocker(project, root),
+        blocker=_product_loop_blocker(project, root),
         source_files=src,
         test_files=tests,
         accepted=accepted,

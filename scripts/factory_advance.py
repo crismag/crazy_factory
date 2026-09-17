@@ -69,6 +69,7 @@ from owner_controls import (  # noqa: E402
 )
 from contract_stage import (  # noqa: E402
     contract_status_label,
+    is_skipped_agent_executor_contract,
     run_contract_stage,
 )
 from checkpoint_commit import (  # noqa: E402
@@ -645,7 +646,9 @@ def main(project: dict[str, Any] | None = None) -> int:
         contract_status_label(contract_result),
         reasons=contract_result.verdict.reasons,
     )
-    if not contract_result.verdict.valid:
+    if not contract_result.verdict.valid and not (
+        is_skipped_agent_executor_contract(contract_result)
+    ):
         msg.rejection("contract", contract_result.verdict.reasons)
 
     # Autonomous mode (owner-enabled, default OFF): the owner pre-delegates

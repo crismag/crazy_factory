@@ -7,12 +7,16 @@ an existing owner-authorized contract instead of clobbering it, and writing the
 two fixed contract files. The pure parse/validate/render rules live in
 :mod:`task_contract`; this module is the I/O and decision layer around them.
 
-Two invariants are upheld here:
+Three invariants are upheld here:
 
 - An owner-authorized valid contract is preserved, never regenerated, so owner
   authorization survives later advances until a Coder phase consumes it.
 - A contract is never authorized by the factory; ``authorized`` stays ``False``
   for every freshly generated contract regardless of verdict.
+- When AgentExecutor is the implementation path (``allow_apply``), the
+  Ollama planning contract is optional: it is not requested merely to fill
+  ``planned_task.json``, and a missing/rejected contract does not block the
+  beat. The inner Coder chain still requires ``is_contract_actionable``.
 """
 
 from __future__ import annotations
@@ -47,6 +51,12 @@ from task_contract import (
     validate_planned_task,
 )
 
+SOURCE_SKIPPED = "skipped"
+DECISION_SKIPPED_AGENT_EXECUTOR = "skipped_agent_executor"
+SKIP_REASON = (
+    "Planning contract not required; AgentExecutor is the implementation path."
+)
+
 
 @dataclass(frozen=True)
 class ContractResult:
@@ -55,7 +65,8 @@ class ContractResult:
     Attributes:
         task: Parsed planned task, or ``None`` when none could be produced.
         verdict: Validation verdict for the contract.
-        source: ``"ollama"``, ``"fallback"``, or ``"preserved"``.
+        source: ``"ollama"``, ``"fallback"``, ``"preserved"``, or
+            ``"skipped"``.
         detail: Human-readable explanation for reports.
         preserved: ``True`` when an existing owner-authorized valid contract
             was kept and no new contract was generated this run.
@@ -67,6 +78,39 @@ class ContractResult:
     detail: str
     preserved: bool = False
     decision: str = ""
+
+
+def agent_executor_path_active(factory_config: dict[str, Any]) -> bool:
+    """True when this beat writes workbench files via AgentExecutor.
+
+    ``proposal_application.allow_apply`` is the same switch that
+    ``factory_advance`` uses to call ``default_executor().execute``. The
+    inner Ollama Coder chain is a separate, still-gated path.
+    """
+    proposal_application = factory_config.get("proposal_application") or {}
+    return bool(proposal_application.get("allow_apply"))
+
+
+def skipped_agent_executor_contract() -> ContractResult:
+    """Return a non-blocking skip result for the AgentExecutor path.
+
+    ``authorized`` stays false (no task body). Inner Coder remains gated.
+    """
+    return ContractResult(
+        task=None,
+        verdict=ValidationVerdict(False, [SKIP_REASON]),
+        source=SOURCE_SKIPPED,
+        detail=SKIP_REASON,
+        decision=DECISION_SKIPPED_AGENT_EXECUTOR,
+    )
+
+
+def is_skipped_agent_executor_contract(result: ContractResult) -> bool:
+    """True when the contract stage skipped Ollama for AgentExecutor."""
+    return (
+        result.source == SOURCE_SKIPPED
+        or result.decision == DECISION_SKIPPED_AGENT_EXECUTOR
+    )
 
 
 def request_task_contract(
@@ -230,8 +274,10 @@ def run_contract_stage(
 
     If an owner-authorized valid contract already exists, it is preserved and
     no new contract is generated, so owner authorization survives later advances
-    until a Coder phase consumes it. Otherwise a fresh contract is requested,
-    validated, and written to the two fixed contract files.
+    until a Coder phase consumes it. If AgentExecutor is the implementation
+    path, Ollama is not called merely to populate ``planned_task.json`` and a
+    missing contract does not reject the beat. Otherwise a fresh contract is
+    requested, validated, and written to the two fixed contract files.
 
     Args:
         project_name: Active application workbench name.
@@ -278,6 +324,38 @@ def run_contract_stage(
             repo_root=root,
             allowed_roots=[task_root],
         )
+        return result, contract_json_path, planned_task_path
+
+    if agent_executor_path_active(factory_config):
+        # Do not call Ollama merely to populate planned_task.json. Keep any
+        # existing contract body (owner-review / leftover) and write a
+        # skipped diagnostic only when no file exists. authorized stays false.
+        result = skipped_agent_executor_contract()
+        if existing is None:
+            record = contract_to_dict(
+                None,
+                result.verdict,
+                result.source,
+                status="skipped",
+                decision=result.decision,
+            )
+            safe_write_json(
+                contract_json_path,
+                record,
+                repo_root=root,
+                allowed_roots=[task_root],
+            )
+            safe_write_text(
+                planned_task_path,
+                render_planned_task_md(
+                    result.task,
+                    result.verdict,
+                    source=result.source,
+                    detail=result.detail,
+                ),
+                repo_root=root,
+                allowed_roots=[task_root],
+            )
         return result, contract_json_path, planned_task_path
 
     result = request_task_contract(
@@ -366,6 +444,8 @@ def contract_status_label(contract_result: ContractResult) -> str:
     """
     if contract_result.preserved:
         return "authorized"
+    if is_skipped_agent_executor_contract(contract_result):
+        return "skipped"
     # Prefer the reviewer's graded decision over a bare valid/rejected so the
     # report distinguishes "needs_owner_review"/"repair" from a hard reject.
     if contract_result.decision:
