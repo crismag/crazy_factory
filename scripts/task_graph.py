@@ -151,6 +151,17 @@ def node_from_dict(raw: dict[str, Any]) -> TaskNode | None:
     )
 
 
+def get_task(graph: TaskGraph, task_id: str) -> TaskNode | None:
+    """Return the named node, or None. Does not invent a synthetic task."""
+    wanted = str(task_id or "").strip()
+    if not wanted:
+        return None
+    for node in graph.nodes:
+        if node.task_id == wanted:
+            return node
+    return None
+
+
 def graph_from_dict(raw: dict[str, Any]) -> TaskGraph:
     nodes: list[TaskNode] = []
     for item in raw.get("nodes") or []:

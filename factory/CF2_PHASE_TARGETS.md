@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** ORCH-02 — task graph primitive (`active`)
+**Current phase:** ORCH-03 — bounded context packet (`active`)
 **Last updated:** 2026-09-17
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -193,10 +193,10 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **active** (Slice 1–2). Context packet, worktrees, and pattern library remain later. |
-| Target | One objective can be projected into a grounded task graph without enabling a multi-agent swarm. |
-| Success | Durable, dependency-aware, revision-aware tasks with claim/evidence linkage; scheduler unchanged. |
-| Evidence | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md), `scripts/task_graph.py`, `tests/test_task_graph.py` |
+| Status | **active** (Slice 3). Isolated workspaces and pattern library remain later. |
+| Target | A selected graph task becomes a bounded, revision-aware execution packet. |
+| Success | Task identity, intent revision, claim/evidence targets, and context refs reach the assignment; stale packets cannot silently execute. |
+| Evidence | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md), `scripts/execution_assignment.py`, `tests/test_context_packet.py` |
 
 Acceptance:
 
@@ -205,6 +205,6 @@ Acceptance:
 - [x] Task graph persists beside `current_objective.json` without changing `next_execute_objective` priority
 - [x] Nodes carry dependencies, claim ids, evidence targets, and context refs
 - [x] No parallel coding, no specialist swarm, no pattern lock-in
-- [ ] Context packet (Slice 3)
+- [x] Context packet (Slice 3)
 - [ ] Isolated task workspace (Slice 4)
 - [ ] Pattern library seed (Slice 5)

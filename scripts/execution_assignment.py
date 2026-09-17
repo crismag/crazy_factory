@@ -18,6 +18,12 @@ The nine task-intelligence questions are answered here, deterministically:
 8. What constitutes success?             acceptance criteria
 9. How will we know the result is good?  verification expectations
 
+When a graph ``TaskNode`` is supplied, the assignment is also a bounded
+context packet: selected claims, context refs, architecture/repo
+slices, and the intent revision it was built against. Stale packets
+are marked, never rewritten to look current. Completing a task does
+not verify product claims — Factory evidence remains independent.
+
 Passing tests is evidence, not product quality. Executor ``ok`` is not
 acceptance. Blind "fix the errors" is not the recovery stance.
 """
@@ -29,10 +35,16 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from architecture import load_contract
 from control_intelligence import load_decision
-from conversation_delta import delta_prompts
+from conversation_delta import delta_prompts, load_deltas
 from diagnosis_packet import DiagnosisPacket, executor_slice
-from product_intent import unsatisfied_claims
+from product_intent import (
+    intent_capabilities,
+    intent_revision,
+    load_intent,
+    unsatisfied_claims,
+)
 
 ALLOWED_TOPS = (
     "src",
@@ -57,9 +69,35 @@ BLOCKED_PARTS = (
 )
 SEED_CHARS = 2000
 ARCH_CHARS = 1500
+INTENT_CHARS = 500
 INVENTORY_CAP = 40
 ASSIGNMENT_FILE = "execution_assignment.md"
+ASSIGNMENT_JSON = "execution_assignment.json"
 JUDGMENT_FILE = "judgment.json"
+_ARCH_SLICE_KEYS = (
+    "stack",
+    "start_command",
+    "listen_port",
+    "src_dirs",
+    "test_dirs",
+    "forbidden_imports",
+    "forbidden_dirs",
+    "forbidden_names",
+    "required_files",
+    "title",
+)
+DEFAULT_CONSTRAINTS = (
+    (
+        "Write only under src/, tests/, data/, docs/, README.md, "
+        "architecture.json, and requirements.txt."
+    ),
+    "Never write scripts/, factory/, config/, .git/, or engine source.",
+    "Do not push, merge, delete, or rewrite git history.",
+    "Do not invent a product when the seed is a placeholder.",
+    "Executor completion is not acceptance; tests and runtime are.",
+    "Banner or title text is not product evidence.",
+    "Task completion does not verify product claims; Factory evidence does.",
+)
 
 STANCE_BIRTH = "birth"
 STANCE_IMPLEMENT = "implement"
@@ -90,17 +128,18 @@ class ExecutionAssignment:
     architecture_excerpt: str = ""
     owner_deltas: list[str] = field(default_factory=list)
     previous_executor: str = ""
-    constraints: tuple[str, ...] = (
-        (
-            "Write only under src/, tests/, data/, docs/, README.md, "
-            "architecture.json, and requirements.txt."
-        ),
-        "Never write scripts/, factory/, config/, .git/, or engine source.",
-        "Do not push, merge, delete, or rewrite git history.",
-        "Do not invent a product when the seed is a placeholder.",
-        "Executor completion is not acceptance; tests and runtime are.",
-        "Banner or title text is not product evidence.",
-    )
+    constraints: tuple[str, ...] = DEFAULT_CONSTRAINTS
+    task_id: str = ""
+    parent_objective_id: str = ""
+    intent_revision: int = 0
+    stale: bool = False
+    stale_reason: str = ""
+    context_refs: tuple[str, ...] = ()
+    claim_ids: tuple[str, ...] = ()
+    evidence_targets: tuple[str, ...] = ()
+    repo_scope: tuple[str, ...] = ()
+    selection_notes: tuple[str, ...] = ()
+    owner_intent_slice: str = ""
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -197,6 +236,258 @@ def _architecture_excerpt(app: Path) -> str:
         return ""
 
 
+def path_in_scope(rel: str, scope: tuple[str, ...]) -> bool:
+    """True when ``rel`` equals or sits under a declared scope path."""
+    path = str(rel).replace("\\", "/").lstrip("./")
+    if not path or not scope:
+        return False
+    for raw in scope:
+        item = str(raw).replace("\\", "/").lstrip("./")
+        if not item:
+            continue
+        if path == item:
+            return True
+        if path.startswith(item.rstrip("/") + "/"):
+            return True
+        if item.startswith(path.rstrip("/") + "/"):
+            return True
+    return False
+
+
+def is_stale_assignment(
+    assignment: ExecutionAssignment, current_revision: int
+) -> bool:
+    """True when a packet was built against a different intent revision."""
+    return int(assignment.intent_revision) != int(current_revision)
+
+
+def assignment_from_dict(raw: dict[str, Any]) -> ExecutionAssignment | None:
+    """Rebuild an assignment from persisted JSON. Does not bump revision."""
+    if not raw:
+        return None
+    constraints = raw.get("constraints")
+    if not isinstance(constraints, (list, tuple)) or not constraints:
+        constraints = DEFAULT_CONSTRAINTS
+    return ExecutionAssignment(
+        objective_id=str(raw.get("objective_id") or ""),
+        kind=str(raw.get("kind") or ""),
+        title=str(raw.get("title") or ""),
+        why=str(raw.get("why") or ""),
+        gap=str(raw.get("gap") or ""),
+        focus=str(raw.get("focus") or ""),
+        stance=str(raw.get("stance") or ""),
+        success=[str(x) for x in (raw.get("success") or [])],
+        verification=[str(x) for x in (raw.get("verification") or [])],
+        inventory=[str(x) for x in (raw.get("inventory") or [])],
+        missing=[str(x) for x in (raw.get("missing") or [])],
+        validation_summary=str(raw.get("validation_summary") or ""),
+        runtime_summary=str(raw.get("runtime_summary") or ""),
+        evidence=str(raw.get("evidence") or ""),
+        seed_excerpt=str(raw.get("seed_excerpt") or ""),
+        architecture_excerpt=str(raw.get("architecture_excerpt") or ""),
+        owner_deltas=[str(x) for x in (raw.get("owner_deltas") or [])],
+        previous_executor=str(raw.get("previous_executor") or ""),
+        constraints=tuple(str(x) for x in constraints),
+        task_id=str(raw.get("task_id") or ""),
+        parent_objective_id=str(raw.get("parent_objective_id") or ""),
+        intent_revision=int(raw.get("intent_revision") or 0),
+        stale=bool(raw.get("stale")),
+        stale_reason=str(raw.get("stale_reason") or ""),
+        context_refs=tuple(
+            str(x) for x in (raw.get("context_refs") or []) if str(x)
+        ),
+        claim_ids=tuple(
+            str(x) for x in (raw.get("claim_ids") or []) if str(x)
+        ),
+        evidence_targets=tuple(
+            str(x) for x in (raw.get("evidence_targets") or []) if str(x)
+        ),
+        repo_scope=tuple(
+            str(x) for x in (raw.get("repo_scope") or []) if str(x)
+        ),
+        selection_notes=tuple(
+            str(x) for x in (raw.get("selection_notes") or []) if str(x)
+        ),
+        owner_intent_slice=str(raw.get("owner_intent_slice") or ""),
+    )
+
+
+def load_assignment(task_root: Path) -> ExecutionAssignment | None:
+    """Load the persisted packet. Missing/invalid → None."""
+    raw = _load_json(task_root / ASSIGNMENT_JSON)
+    if not raw:
+        return None
+    return assignment_from_dict(raw)
+
+
+def _architecture_slice(
+    contract: dict[str, Any] | None,
+    scope: tuple[str, ...],
+    notes: list[str],
+) -> str:
+    """Smallest safe architecture subset. Does not invent domain modules."""
+    if not contract:
+        return ""
+    notes.append(
+        "architecture.json is monolithic; packet carries a key subset, "
+        "not domain-addressable slices."
+    )
+    data: dict[str, Any] = {}
+    for key in _ARCH_SLICE_KEYS:
+        if key not in contract:
+            continue
+        data[key] = contract[key]
+    files = data.get("required_files")
+    if scope and isinstance(files, list):
+        kept = [str(item) for item in files if path_in_scope(str(item), scope)]
+        data["required_files"] = kept
+        if not kept:
+            notes.append(
+                "required_files did not intersect task affected_scope; "
+                "scope linkage is weak."
+            )
+    return json.dumps(data, sort_keys=True)
+
+
+def _filter_inventory(
+    paths: list[str], scope: tuple[str, ...], notes: list[str]
+) -> list[str]:
+    if not scope:
+        notes.append(
+            "affected_scope empty; inventory is a capped path list, "
+            "not a relevance selection."
+        )
+        return paths
+    kept = [path for path in paths if path_in_scope(path, scope)]
+    for item in scope:
+        text = str(item).replace("\\", "/").lstrip("./")
+        if text and text not in kept:
+            kept.append(text)
+    if not kept:
+        notes.append(
+            "no workbench files intersect affected_scope; claim-to-module "
+            "linkage is absent."
+        )
+    return kept[:INVENTORY_CAP]
+
+
+def _repo_scope_refs(scope: tuple[str, ...]) -> tuple[str, ...]:
+    refs: list[str] = []
+    for item in scope:
+        text = str(item).replace("\\", "/").lstrip("./")
+        if text:
+            refs.append(f"file:{text}")
+    return tuple(refs)
+
+
+def _owner_intent_slice(project: dict[str, Any], root: Path) -> str:
+    prompt = str(load_intent(project, root).get("original_prompt") or "")
+    return _excerpt(prompt, INTENT_CHARS)
+
+
+def _delta_prompts_for_task(
+    project: dict[str, Any], root: Path, task: Any
+) -> list[str]:
+    task_id = str(getattr(task, "task_id", "") or "")
+    kind = str(getattr(task, "kind", "") or "")
+    wanted = ""
+    if task_id.startswith("TASK-DELTA-"):
+        wanted = task_id[len("TASK-DELTA-") :]
+    refs = tuple(getattr(task, "context_refs", ()) or ())
+    for ref in refs:
+        if str(ref).startswith("owner_delta:"):
+            wanted = str(ref).split(":", 1)[-1]
+            break
+    if kind != "delta" and not wanted:
+        return []
+    found: list[str] = []
+    for entry in load_deltas(project, root):
+        if wanted and str(entry.get("id") or "") != wanted:
+            continue
+        prompt = str(entry.get("prompt") or "").strip()
+        if prompt:
+            found.append(prompt)
+        if wanted:
+            break
+    return found
+
+
+def _selected_capabilities(project: dict[str, Any], root: Path, task: Any):
+    wanted = tuple(getattr(task, "claim_ids", ()) or ())
+    if not wanted:
+        return []
+    by_id = {cap.id: cap for cap in intent_capabilities(project, root)}
+    selected = []
+    for claim_id in wanted:
+        cap = by_id.get(str(claim_id))
+        if cap is not None:
+            selected.append(cap)
+    return selected
+
+
+def _context_refs_for(
+    *,
+    revision: int,
+    objective_id: str,
+    task: Any | None,
+    claim_ids: tuple[str, ...],
+    evidence_targets: tuple[str, ...],
+    repo_refs: tuple[str, ...],
+    has_arch: bool,
+) -> tuple[str, ...]:
+    refs: list[str] = [f"product_intent@revision-{int(revision)}"]
+    if objective_id:
+        refs.append(f"objective:{objective_id}")
+    if task is not None:
+        for item in getattr(task, "context_refs", ()) or ():
+            text = str(item)
+            if text and text not in refs:
+                refs.append(text)
+        task_id = str(getattr(task, "task_id", "") or "")
+        if task_id:
+            refs.append(f"task:{task_id}")
+    for claim_id in claim_ids:
+        ref = f"claim:{claim_id}"
+        if ref not in refs:
+            refs.append(ref)
+    for kind in evidence_targets:
+        ref = f"evidence:{kind}"
+        if ref not in refs:
+            refs.append(ref)
+    if has_arch and "architecture:architecture.json" not in refs:
+        refs.append("architecture:architecture.json")
+    for ref in repo_refs:
+        if ref not in refs:
+            refs.append(ref)
+    return tuple(refs)
+
+
+def _constraints_with_architecture(
+    contract: dict[str, Any] | None,
+) -> tuple[str, ...]:
+    extra: list[str] = []
+    if contract:
+        forbidden = contract.get("forbidden_imports") or []
+        if isinstance(forbidden, list) and forbidden:
+            extra.append(
+                "Architecture forbids imports: "
+                + ", ".join(str(item) for item in forbidden[:8])
+            )
+        extra.append(
+            "Do not overwrite architecture.json because task prose "
+            "disagrees with the contract."
+        )
+    extra.append("Factory owns integration; workers do not deploy.")
+    # DEFAULT already has no-push; keep architecture-specific extras unique.
+    seen = set(DEFAULT_CONSTRAINTS)
+    out = list(DEFAULT_CONSTRAINTS)
+    for item in extra:
+        if item not in seen:
+            out.append(item)
+            seen.add(item)
+    return tuple(out)
+
+
 def _seed_excerpt(project: dict[str, Any], root: Path) -> str:
     app = _app_dir(project, root)
     seed = app / str(project.get("seed_file") or "docs/seed.md")
@@ -261,8 +552,104 @@ def compile_assignment(
     objective: Any,
     *,
     packet: DiagnosisPacket | None = None,
+    task: Any | None = None,
 ) -> ExecutionAssignment:
-    """Answer the task-intelligence questions from existing artifacts."""
+    """Answer the task-intelligence questions from existing artifacts.
+
+    ``task`` is optional. Legacy objective execution stays valid without
+    a graph node. A stale ``TaskNode`` is recorded, not rewritten to the
+    current revision.
+    """
+    current_rev = intent_revision(project, root)
+    task_rev = int(getattr(task, "intent_revision", 0) or 0) if task else 0
+    if task is not None and task_rev != int(current_rev):
+        return _stale_packet(project, root, objective, task, current_rev)
+    return _compile_current(
+        project,
+        root,
+        objective,
+        packet=packet,
+        task=task,
+        current_rev=current_rev,
+    )
+
+
+def _stale_packet(
+    project: dict[str, Any],
+    root: Path,
+    objective: Any,
+    task: Any,
+    current_rev: int,
+) -> ExecutionAssignment:
+    """Preserve the historical packet identity. Do not fill current intent."""
+    task_rev = int(getattr(task, "intent_revision", 0) or 0)
+    claim_ids = tuple(
+        str(item) for item in (getattr(task, "claim_ids", ()) or ()) if item
+    )
+    evidence = tuple(
+        str(item)
+        for item in (getattr(task, "evidence_targets", ()) or ())
+        if item
+    )
+    refs = tuple(
+        str(item) for item in (getattr(task, "context_refs", ()) or ()) if item
+    )
+    scope = tuple(
+        str(item) for item in (getattr(task, "affected_scope", ()) or ()) if item
+    )
+    return ExecutionAssignment(
+        objective_id=str(getattr(objective, "id", "") or "")
+        or str(getattr(task, "parent_objective_id", "") or ""),
+        kind=str(
+            getattr(task, "kind", "") or getattr(objective, "kind", "") or ""
+        ),
+        title=str(
+            getattr(task, "title", "")
+            or getattr(objective, "title", "")
+            or ""
+        ),
+        why=str(
+            getattr(task, "purpose", "")
+            or getattr(objective, "why", "")
+            or ""
+        ),
+        gap=str(getattr(objective, "gap", "") or ""),
+        focus=str(
+            getattr(task, "purpose", "")
+            or getattr(objective, "focus", "")
+            or ""
+        ),
+        stance=STANCE_IMPLEMENT,
+        task_id=str(getattr(task, "task_id", "") or ""),
+        parent_objective_id=str(getattr(task, "parent_objective_id", "") or ""),
+        intent_revision=task_rev,
+        stale=True,
+        stale_reason=(
+            f"assignment revision {task_rev} != current intent "
+            f"revision {current_rev}; regenerate against current state"
+        ),
+        context_refs=refs,
+        claim_ids=claim_ids,
+        evidence_targets=evidence,
+        repo_scope=tuple(f"file:{item}" for item in scope),
+        selection_notes=(
+            "stale packet; current owner intent was not copied in",
+        ),
+        constraints=_constraints_with_architecture(
+            load_contract(str(_app_dir(project, root)))
+        ),
+    )
+
+
+def _compile_current(
+    project: dict[str, Any],
+    root: Path,
+    objective: Any,
+    *,
+    packet: DiagnosisPacket | None,
+    task: Any | None,
+    current_rev: int,
+) -> ExecutionAssignment:
     task_root = _task_dir(project, root)
     app = _app_dir(project, root)
     validation = _load_json(task_root / "validation_result.json")
@@ -298,6 +685,13 @@ def compile_assignment(
     preview = app / "src" / "app.py"
     if deltas and preview.is_file() and stance == STANCE_BIRTH:
         stance = STANCE_IMPLEMENT
+    notes: list[str] = []
+    scope = tuple(
+        str(item)
+        for item in (getattr(task, "affected_scope", ()) or ())
+        if item
+    ) if task is not None else ()
+    contract = load_contract(str(app))
     success: list[str] = []
     verification: list[str] = []
     missing: list[str] = []
@@ -313,40 +707,154 @@ def compile_assignment(
             "Allowlisted validation (compile, pytest, lint) passes.",
             "Declared start command runs if architecture sets one.",
         ]
-    claim_gaps = unsatisfied_claims(project, root)
-    if claim_gaps:
-        success = [cap.claim for cap in claim_gaps] + success
+    claim_ids: tuple[str, ...] = ()
+    evidence_targets: tuple[str, ...] = ()
+    if task is not None:
+        selected = _selected_capabilities(project, root, task)
+        claim_ids = tuple(cap.id for cap in selected) or tuple(
+            str(item)
+            for item in (getattr(task, "claim_ids", ()) or ())
+            if item
+        )
+        evidence_targets = tuple(
+            str(item)
+            for item in (getattr(task, "evidence_targets", ()) or ())
+            if item
+        )
+        if not evidence_targets:
+            kinds: list[str] = []
+            for cap in selected:
+                kinds.extend(str(item) for item in (cap.evidence or ()) if item)
+            evidence_targets = tuple(dict.fromkeys(kinds))
+        if selected:
+            success = (
+                [cap.claim for cap in selected]
+                + [
+                    "Factory evidence, not this assignment, verifies claims."
+                ]
+                + success
+            )
+        else:
+            notes.append(
+                "task claim_ids did not match compiled capabilities; "
+                "claim-to-module linkage is absent."
+            )
+    else:
+        claim_gaps = unsatisfied_claims(project, root)
+        if claim_gaps:
+            success = [cap.claim for cap in claim_gaps] + success
+            claim_ids = tuple(cap.id for cap in claim_gaps)
+            kinds = []
+            for cap in claim_gaps:
+                kinds.extend(str(item) for item in (cap.evidence or ()) if item)
+            evidence_targets = tuple(dict.fromkeys(kinds))
     if not verification:
         verification = [
             "python3 -m compileall on workbench sources",
             "pytest on workbench tests when present",
             "runtime probe when start_command is declared",
         ]
+        if evidence_targets:
+            verification.append(
+                "Factory will collect independent evidence: "
+                + ", ".join(evidence_targets)
+            )
     prev_note = ""
     if prev_files:
-        prev_note = (
-            f"provider={previous.get('provider') or '?'} "
-            f"wrote {', '.join(prev_files[:12])}"
+        relevant = prev_files
+        if task is not None and scope:
+            relevant = [name for name in prev_files if path_in_scope(name, scope)]
+            if not relevant and stance not in {STANCE_REPAIR, STANCE_INVESTIGATE}:
+                notes.append(
+                    "prior executor writes omitted; files outside task scope"
+                )
+                relevant = []
+        if relevant:
+            prev_note = (
+                f"provider={previous.get('provider') or '?'} "
+                f"wrote {', '.join(relevant[:12])}"
+            )
+    inventory = _inventory(app)
+    if task is not None:
+        inventory = _filter_inventory(inventory, scope, notes)
+        owner_deltas = _delta_prompts_for_task(project, root, task)
+        seed_excerpt = ""
+        owner_slice = _owner_intent_slice(project, root)
+        arch_excerpt = _architecture_slice(contract, scope, notes)
+        title = str(
+            getattr(task, "title", "")
+            or getattr(objective, "title", "")
+            or ""
         )
+        why = str(
+            getattr(task, "purpose", "")
+            or getattr(objective, "why", "")
+            or ""
+        )
+        focus = str(
+            getattr(task, "purpose", "")
+            or getattr(objective, "focus", "")
+            or ""
+        )
+        task_id = str(getattr(task, "task_id", "") or "")
+        parent_id = str(getattr(task, "parent_objective_id", "") or "") or str(
+            getattr(objective, "id", "") or ""
+        )
+    else:
+        owner_deltas = deltas[-5:]
+        seed_excerpt = _seed_excerpt(project, root)
+        owner_slice = _owner_intent_slice(project, root) or _excerpt(
+            seed_excerpt, INTENT_CHARS
+        )
+        arch_excerpt = _architecture_excerpt(app)
+        title = str(getattr(objective, "title", "") or "")
+        why = str(getattr(objective, "why", "") or "")
+        focus = str(getattr(objective, "focus", "") or "")
+        task_id = ""
+        parent_id = str(getattr(objective, "id", "") or "")
+        notes.append(
+            "legacy objective packet; no TaskNode selected"
+        )
+    repo_refs = _repo_scope_refs(scope)
+    refs = _context_refs_for(
+        revision=current_rev,
+        objective_id=str(getattr(objective, "id", "") or ""),
+        task=task,
+        claim_ids=claim_ids,
+        evidence_targets=evidence_targets,
+        repo_refs=repo_refs,
+        has_arch=bool(contract or arch_excerpt),
+    )
     return ExecutionAssignment(
         objective_id=str(getattr(objective, "id", "") or ""),
-        kind=kind,
-        title=str(getattr(objective, "title", "") or ""),
-        why=str(getattr(objective, "why", "") or ""),
+        kind=str(getattr(objective, "kind", "") or kind),
+        title=title,
+        why=why,
         gap=str(getattr(objective, "gap", "") or ""),
-        focus=str(getattr(objective, "focus", "") or ""),
+        focus=focus,
         stance=stance,
         success=success,
         verification=verification,
-        inventory=_inventory(app),
+        inventory=inventory,
         missing=missing,
         validation_summary=val_text,
         runtime_summary=run_text,
         evidence=evidence,
-        seed_excerpt=_seed_excerpt(project, root),
-        architecture_excerpt=_architecture_excerpt(app),
-        owner_deltas=deltas[-5:],
+        seed_excerpt=seed_excerpt,
+        architecture_excerpt=arch_excerpt,
+        owner_deltas=owner_deltas,
         previous_executor=prev_note,
+        constraints=_constraints_with_architecture(contract),
+        task_id=task_id,
+        parent_objective_id=parent_id,
+        intent_revision=current_rev,
+        stale=False,
+        context_refs=refs,
+        claim_ids=claim_ids,
+        evidence_targets=evidence_targets,
+        repo_scope=repo_refs,
+        selection_notes=tuple(dict.fromkeys(notes)),
+        owner_intent_slice=owner_slice,
     )
 
 
@@ -355,36 +863,93 @@ def render_assignment(assignment: ExecutionAssignment) -> str:
     def bullets(items: list[str]) -> str:
         return "\n".join(f"- {item}" for item in items) if items else "- (none)"
 
-    sections = [
-        "# Engineering assignment",
-        "## Objective",
-        f"- id: `{assignment.objective_id}`",
-        f"- kind: `{assignment.kind}`",
-        f"- title: {assignment.title}",
-        f"- gap: {assignment.gap}",
-        f"- why: {assignment.why}",
-        f"- stance: `{assignment.stance}`",
-        "",
-        _stance_instructions(assignment.stance),
-        "",
-        "### Focus",
-        assignment.focus or "(whole workbench)",
-        "",
-        "## Success",
-        bullets(assignment.success),
-        "",
-        "## Verification (factory will run these; do not self-certify)",
-        bullets(assignment.verification),
-        "",
-        "## Constraints",
-        bullets(list(assignment.constraints)),
-        "",
-        "## Current workbench",
-        bullets(assignment.inventory),
-        "",
-        "## Missing required files",
-        bullets(assignment.missing),
-    ]
+    sections = ["# Engineering assignment"]
+    if assignment.stale:
+        sections.extend(
+            [
+                "## STALE CONTEXT — DO NOT EXECUTE",
+                assignment.stale_reason
+                or "intent revision does not match current owner intent",
+                "Regenerate this packet against current product_intent.",
+                "",
+            ]
+        )
+    sections.extend(
+        [
+            "## Objective",
+            f"- id: `{assignment.objective_id}`",
+            f"- kind: `{assignment.kind}`",
+            f"- title: {assignment.title}",
+            f"- gap: {assignment.gap}",
+            f"- why: {assignment.why}",
+            f"- stance: `{assignment.stance}`",
+            f"- intent_revision: `{assignment.intent_revision}`",
+        ]
+    )
+    if assignment.task_id:
+        sections.extend(
+            [
+                f"- task_id: `{assignment.task_id}`",
+                f"- parent_objective_id: `{assignment.parent_objective_id}`",
+            ]
+        )
+    sections.extend(
+        [
+            "",
+            _stance_instructions(assignment.stance),
+            "",
+            "### Focus",
+            assignment.focus or "(whole workbench)",
+            "",
+            "## Success",
+            bullets(assignment.success),
+            "",
+            "## Verification (factory will run these; do not self-certify)",
+            bullets(assignment.verification),
+            "",
+            "## Constraints",
+            bullets(list(assignment.constraints)),
+            "",
+            "## Current workbench",
+            bullets(assignment.inventory),
+            "",
+            "## Missing required files",
+            bullets(assignment.missing),
+        ]
+    )
+    if assignment.context_refs:
+        sections.extend(
+            ["", "## Context refs", bullets(list(assignment.context_refs))]
+        )
+    if assignment.claim_ids:
+        sections.extend(
+            [
+                "",
+                "## Product claims this task should enable",
+                "These are expectations, not verified evidence.",
+                bullets(list(assignment.claim_ids)),
+            ]
+        )
+    if assignment.evidence_targets:
+        sections.extend(
+            [
+                "",
+                "## Evidence targets (Factory collects these)",
+                bullets(list(assignment.evidence_targets)),
+            ]
+        )
+    if assignment.repo_scope:
+        sections.extend(
+            [
+                "",
+                "## Repository scope (inspect the workbench; contents omitted)",
+                bullets(list(assignment.repo_scope)),
+            ]
+        )
+    if assignment.selection_notes:
+        sections.extend(
+            ["", "## Selection notes", bullets(list(assignment.selection_notes))]
+        )
     if assignment.owner_deltas:
         sections.extend(
             [
@@ -415,6 +980,10 @@ def render_assignment(assignment: ExecutionAssignment) -> str:
         sections.extend(
             ["", "## architecture.json", assignment.architecture_excerpt]
         )
+    if assignment.owner_intent_slice and not assignment.seed_excerpt:
+        sections.extend(
+            ["", "## Owner intent", assignment.owner_intent_slice]
+        )
     if assignment.seed_excerpt:
         sections.extend(["", "## Seed", assignment.seed_excerpt])
     sections.extend(
@@ -432,10 +1001,20 @@ def render_assignment(assignment: ExecutionAssignment) -> str:
 
 
 def persist_assignment(assignment: ExecutionAssignment, task_root: Path) -> Path:
-    """Write the assignment markdown under the workbench task root."""
+    """Write assignment markdown + JSON. Does not rewrite historical revision."""
     task_root.mkdir(parents=True, exist_ok=True)
     path = task_root / ASSIGNMENT_FILE
     path.write_text(render_assignment(assignment), encoding="utf-8")
+    payload = asdict(assignment)
+    payload["constraints"] = list(assignment.constraints)
+    payload["context_refs"] = list(assignment.context_refs)
+    payload["claim_ids"] = list(assignment.claim_ids)
+    payload["evidence_targets"] = list(assignment.evidence_targets)
+    payload["repo_scope"] = list(assignment.repo_scope)
+    payload["selection_notes"] = list(assignment.selection_notes)
+    (task_root / ASSIGNMENT_JSON).write_text(
+        json.dumps(payload, indent=2) + "\n", encoding="utf-8"
+    )
     return path
 
 
@@ -477,7 +1056,13 @@ def assignment_record(assignment: ExecutionAssignment) -> dict[str, Any]:
     """Compact JSON for executor_result.json."""
     data = asdict(assignment)
     data["constraints"] = list(assignment.constraints)
+    data["context_refs"] = list(assignment.context_refs)
+    data["claim_ids"] = list(assignment.claim_ids)
+    data["evidence_targets"] = list(assignment.evidence_targets)
+    data["repo_scope"] = list(assignment.repo_scope)
+    data["selection_notes"] = list(assignment.selection_notes)
     data.pop("seed_excerpt", None)
     data.pop("architecture_excerpt", None)
     data.pop("evidence", None)
+    data.pop("owner_intent_slice", None)
     return data
