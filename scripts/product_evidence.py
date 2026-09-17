@@ -65,7 +65,7 @@ MAX_BODY = 200_000
 
 _ISO_DATE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
 _STREAK_NUM = re.compile(
-    r"(?:streak|consecutive|run)\W{0,32}(\d+)|(\d+)\W{0,12}days?\b",
+    r"(?:streak|consecutive|run)\W{0,32}(\d+)",
     re.IGNORECASE,
 )
 _WEEKDAYS = (
@@ -148,10 +148,15 @@ class _PageParser(HTMLParser):
         self.links: list[str] = []
         self.chunks: list[str] = []
         self._form: dict[str, Any] | None = None
+        self._skip = 0
 
     def handle_starttag(
         self, tag: str, attrs: list[tuple[str, str | None]]
     ) -> None:
+        if tag in {"style", "script", "head"}:
+            self._skip += 1
+        if self._skip:
+            return
         ad = {k: (v or "") for k, v in attrs}
         if tag == "a" and ad.get("href"):
             self.links.append(ad["href"])
@@ -181,10 +186,17 @@ class _PageParser(HTMLParser):
             self.chunks.append(ad["datetime"])
 
     def handle_endtag(self, tag: str) -> None:
+        if tag in {"style", "script", "head"} and self._skip:
+            self._skip -= 1
+            return
+        if self._skip:
+            return
         if tag == "form":
             self._form = None
 
     def handle_data(self, data: str) -> None:
+        if self._skip:
+            return
         text = unescape(data)
         if text.strip():
             self.chunks.append(text)
@@ -424,21 +436,26 @@ def _fill_date(form: dict[str, Any], day: str) -> dict[str, str]:
     return payload
 
 
-def _window_around(html: str, token: str, radius: int = 500) -> str:
+def _window_around(html: str, token: str, radius: int = 400) -> str:
     text = _visible_text(html)
     low = text.lower()
     needle = token.lower()
-    at = low.find(needle)
-    if at < 0:
-        return text
-    start = max(0, at - radius)
-    return text[start : at + len(token) + radius]
+    parts: list[str] = []
+    cursor = 0
+    while True:
+        at = low.find(needle, cursor)
+        if at < 0:
+            break
+        lo = max(0, at - radius)
+        parts.append(text[lo : at + len(token) + radius])
+        cursor = at + len(needle)
+    return " ".join(parts) if parts else text
 
 
 def _streak_number(text: str) -> int | None:
     best: int | None = None
     for match in _STREAK_NUM.finditer(text):
-        raw = match.group(1) or match.group(2)
+        raw = match.group(1)
         if raw is None:
             continue
         try:
