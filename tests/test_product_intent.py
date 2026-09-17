@@ -11,16 +11,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from conversation_delta import (  # noqa: E402
+from conversation_delta import (
     STATUS_CLAIMED,
     STATUS_PENDING,
-    STATUS_VERIFIED,
     append_delta,
     load_deltas,
     mark_deltas_claimed,
     refresh_delta_verification,
 )
-from product_intent import (  # noqa: E402
+from product_intent import (
     claim_satisfied,
     fallback_capabilities,
     intent_revision,
@@ -28,7 +27,7 @@ from product_intent import (  # noqa: E402
     unsatisfied_claims,
     workbench_probes,
 )
-from prompt_compiler import compile_into_workbench  # noqa: E402
+from prompt_compiler import compile_into_workbench
 
 
 def _write(path: Path, text: str) -> None:
@@ -133,7 +132,7 @@ class ProbeTests(unittest.TestCase):
                 )
             )
 
-    def test_real_habit_symbols_satisfy_claims(self) -> None:
+    def test_real_habit_symbols_are_not_enough(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             app = root / "apps" / "habit"
@@ -153,13 +152,13 @@ class ProbeTests(unittest.TestCase):
             )
             _write(
                 app / "data/habits.json",
-                json.dumps(
-                    [{"name": "run", "completed_on": "2026-09-16"}]
-                )
+                json.dumps([{"name": "run", "completed_on": "2026-09-16"}])
                 + "\n",
             )
-            gaps = unsatisfied_claims(project, root)
-            self.assertEqual(gaps, [], [c.id for c in gaps])
+            gaps = {c.id for c in unsatisfied_claims(project, root)}
+            self.assertIn("define_habits", gaps)
+            self.assertIn("dated_completion", gaps)
+            self.assertIn("persist_habits", gaps)
 
 
 class DeltaLifecycleTests(unittest.TestCase):
@@ -198,7 +197,7 @@ class DeltaLifecycleTests(unittest.TestCase):
             )
             refresh_delta_verification(project, root)
             self.assertEqual(
-                load_deltas(project, root)[0]["status"], STATUS_VERIFIED
+                load_deltas(project, root)[0]["status"], STATUS_CLAIMED
             )
 
 

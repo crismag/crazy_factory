@@ -30,7 +30,7 @@ from product_intent import (
     intent_capabilities,
     intent_revision,
     persist_acceptance,
-    unsatisfied_claims,
+    score_claims,
 )
 from proposal_applier import _is_placeholder_body
 from workbench_growth import workbench_metrics
@@ -288,8 +288,10 @@ def evaluate_acceptance(
         and contracts_satisfied
     )
 
-    refresh_delta_verification(project, root)
-    product_gaps = unsatisfied_claims(project, root)
+    scores = score_claims(project, root)
+    unsatisfied_ids = {s.cap.id for s in scores if not s.ok}
+    refresh_delta_verification(project, root, unsatisfied_ids=unsatisfied_ids)
+    product_gaps = [s.cap for s in scores if not s.ok]
     delta_open = open_deltas(project, root)
     rev = intent_revision(project, root)
     claims = intent_capabilities(project, root)
@@ -322,6 +324,15 @@ def evaluate_acceptance(
             "accepted": accepted,
             "unsatisfied": [c.id for c in product_gaps],
             "open_deltas": [str(d.get("id") or "") for d in delta_open],
+            "evidence": [
+                {
+                    "id": s.cap.id,
+                    "ok": s.ok,
+                    "kind": s.kind,
+                    "detail": s.detail,
+                }
+                for s in scores
+            ],
         },
     )
 

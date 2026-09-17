@@ -182,12 +182,9 @@ def render_banner_html(prompts: list[str]) -> str:
     """HTML snippet a stdlib preview can embed after the heading."""
     if not prompts:
         return (
-            f"<aside class='owner-deltas'>{BANNER_START}"
-            f"{BANNER_END}</aside>"
+            f"<aside class='owner-deltas'>{BANNER_START}{BANNER_END}</aside>"
         )
-    items = "".join(
-        f"<li>{html.escape(text)}</li>" for text in prompts[-5:]
-    )
+    items = "".join(f"<li>{html.escape(text)}</li>" for text in prompts[-5:])
     return (
         f"<aside class='owner-deltas'>{BANNER_START}"
         "<p>Requested changes</p>"
@@ -314,13 +311,17 @@ def mark_deltas_claimed(project: dict[str, Any], root: Path) -> None:
 
 
 def refresh_delta_verification(
-    project: dict[str, Any], root: Path
+    project: dict[str, Any],
+    root: Path,
+    *,
+    unsatisfied_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Promote CLAIMED/PENDING to VERIFIED only when probes pass."""
+    """Promote CLAIMED/PENDING to VERIFIED only when claims are evidenced."""
     entries = load_deltas(project, root)
     if not entries:
         return entries
-    unsatisfied_ids = {cap.id for cap in unsatisfied_claims(project, root)}
+    if unsatisfied_ids is None:
+        unsatisfied_ids = {cap.id for cap in unsatisfied_claims(project, root)}
     changed = False
     for entry in entries:
         if entry["status"] not in OPEN_STATUSES:
