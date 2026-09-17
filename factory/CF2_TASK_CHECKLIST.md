@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** Codex CLI coding adapter (read-only `codex exec`)
+**Current focus:** Evaluator recognizes Codex as a coding capability
 **Last updated:** 2026-09-17
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -78,6 +78,7 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-P4-08 | DONE | `crazy-admin run --seed` and MCP `start_mission` reach COMPLETE | owner-path tests |
 | CF2-P4-09 | DEFERRED | Cursor / Codex IDE adapters | later providers; not MCP verbs |
 | CF2-P4-13 | DONE | Codex CLI adapter (`codex exec --sandbox read-only --json`) | `scripts/codex_executor.py`, `tests/test_codex_executor.py` |
+| CF2-P4-14 | DONE | Evaluator treats an available coding executor as another implementation beat | `coding_executor_available`; Codex + keys → MORE_WORK, none → RUNNABLE_PREVIEW |
 | CF2-P4-10 | DONE | Purpose-built execution assignment from evidence (not “implement this”) | `execution_assignment.py`, `executor_slice` |
 | CF2-P4-11 | DONE | Observe runtime every beat; next objective reads `executor_result.json` | `evaluate_mission` + `_annotate_with_executor` |
 | CF2-P4-12 | DONE | Agentic control: attempt log, working memory, model-decided beats | `control_intelligence.py` |

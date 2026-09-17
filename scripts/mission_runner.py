@@ -18,15 +18,16 @@ deletes, or writes outside the workbench.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import factory_advance
 import factory_messaging as msg
 from acceptance_check import evaluate_acceptance
-from coding_llm import resolve_coding_backend
+from agent_executor import coding_executor_available
 from control_intelligence import apply_rails, load_decision, reason_control
 from conversation_delta import (
     STATUS_PENDING,
@@ -216,7 +217,7 @@ def evaluate_mission(
         gaps = "; ".join(acceptance.unsatisfied_product[:4]) or (
             "; ".join(acceptance.reasons) or "product claims unsatisfied"
         )
-        if resolve_coding_backend() is not None:
+        if coding_executor_available():
             if beat >= max_beats:
                 candidate, why = (
                     BUDGET_EXHAUSTED,
@@ -566,9 +567,7 @@ def load_mission_snapshot(
         runtime_path = Path(str(task_root)) / "runtime_result.json"
         if runtime_path.is_file():
             try:
-                runtime = json.loads(
-                    runtime_path.read_text(encoding="utf-8")
-                )
+                runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                 runtime = None
             if isinstance(runtime, dict):
@@ -581,9 +580,7 @@ def load_mission_snapshot(
         preview_path = Path(str(task_root)) / "preview.json"
         if preview_path.is_file():
             try:
-                preview = json.loads(
-                    preview_path.read_text(encoding="utf-8")
-                )
+                preview = json.loads(preview_path.read_text(encoding="utf-8"))
             except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                 preview = None
             if isinstance(preview, dict):

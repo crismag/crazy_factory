@@ -238,6 +238,16 @@ class CodexCodingExecutor:
         self.logged_in = logged_in
         self.run_exec = run_exec
 
+    def can_implement(self) -> bool:
+        binary = self.binary
+        if binary is None:
+            binary = resolve_codex_bin()
+        if not binary:
+            return False
+        if self.logged_in is not None:
+            return bool(self.logged_in)
+        return codex_is_logged_in(binary)
+
     def execute(self, request: ExecutorRequest) -> ExecutorResult:
         binary = self.binary
         if binary is None:

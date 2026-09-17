@@ -17,8 +17,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import crazy_admin as ca  # noqa: E402
-from agent_executor import (  # noqa: E402
+import crazy_admin as ca
+from agent_executor import (
     CloudCodingExecutor,
     ExecutorRequest,
     ExecutorResult,
@@ -26,11 +26,12 @@ from agent_executor import (  # noqa: E402
     StdlibWebExecutor,
     apply_executor_result,
     build_request,
+    coding_executor_available,
     default_executor,
     seed_looks_like_stdlib_task_board,
 )
-from mcp_server import call_tool  # noqa: E402
-from mission_runner import COMPLETE, run_mission  # noqa: E402
+from mcp_server import call_tool
+from mission_runner import COMPLETE, run_mission
 
 SEED = ROOT / "examples" / "seeds" / "task_board_web.md"
 _CLOUD_ENV = (
@@ -261,6 +262,56 @@ class DefaultExecutorTests(unittest.TestCase):
             )
         self.assertFalse(result.ok)
         self.assertEqual(result.files, {})
+
+
+class CodingExecutorAvailabilityTests(unittest.TestCase):
+    def test_default_chain_without_keys_cannot_implement(self) -> None:
+        with patch.dict(os.environ, _env_without_cloud(), clear=True):
+            self.assertFalse(coding_executor_available())
+            self.assertFalse(default_executor().can_implement())
+            self.assertFalse(StdlibWebExecutor().can_implement())
+            self.assertFalse(CloudCodingExecutor().can_implement())
+
+    def test_openai_key_is_an_implementation_capability(self) -> None:
+        with patch.dict(
+            os.environ,
+            _env_without_cloud(OPENAI_API_KEY="sk-test"),
+            clear=True,
+        ):
+            self.assertTrue(coding_executor_available())
+            self.assertTrue(CloudCodingExecutor().can_implement())
+
+    def test_forced_codex_counts_only_when_authenticated(self) -> None:
+        env = _env_without_cloud(CRAZY_FACTORY_EXECUTOR="codex")
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch(
+                "codex_executor.resolve_codex_bin",
+                return_value="/tmp/fake-codex",
+            ),
+            patch(
+                "codex_executor.codex_is_logged_in",
+                return_value=True,
+            ),
+        ):
+            self.assertTrue(coding_executor_available())
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch(
+                "codex_executor.resolve_codex_bin",
+                return_value="/tmp/fake-codex",
+            ),
+            patch(
+                "codex_executor.codex_is_logged_in",
+                return_value=False,
+            ),
+        ):
+            self.assertFalse(coding_executor_available())
+        with (
+            patch.dict(os.environ, env, clear=True),
+            patch("codex_executor.resolve_codex_bin", return_value=None),
+        ):
+            self.assertFalse(coding_executor_available())
 
 
 class CloudCodingExecutorTests(unittest.TestCase):
