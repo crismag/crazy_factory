@@ -184,6 +184,8 @@ def _iter_app_files(app: Path) -> list[Path]:
         if not item.is_dir():
             continue
         for path in sorted(item.rglob("*")):
+            if path.is_symlink():
+                continue
             if not path.is_file() or _sensitive(path):
                 continue
             if any(part in _SKIP_DIR_NAMES for part in path.parts):

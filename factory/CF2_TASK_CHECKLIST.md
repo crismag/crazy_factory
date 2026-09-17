@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** Orchestration — isolated task workspace
+**Current focus:** Orchestration — safe task-result integration
 **Last updated:** 2026-09-17
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -124,8 +124,9 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-ORCH-02 | DONE | Task graph primitive (deps, claims, refs; no scheduler change) | `scripts/task_graph.py`, `tests/test_task_graph.py` |
 | CF2-ORCH-03 | DONE | Bounded context packet (evolve `execution_assignment`) | `execution_assignment.py`, `tests/test_context_packet.py` |
 | CF2-ORCH-04 | DONE | Isolated task workspace / worktree lifecycle | `scripts/task_workspace.py`, `tests/test_task_workspace.py` |
-| CF2-ORCH-05 | PLANNED | Pattern library foundation (archetypes, features, UX, refs) | Slice 5 |
-| CF2-ORCH-06 | PLANNED | Task expansion consumes patterns as advisory metadata | Slice 6 |
+| CF2-ORCH-05 | DONE | Safe task-result integration (Factory apply + rollback) | `scripts/task_integration.py`, `tests/test_task_integration.py` |
+| CF2-ORCH-06 | PLANNED | Pattern library foundation (archetypes, features, UX, refs) | after isolated live run |
+| CF2-ORCH-07 | PLANNED | Task expansion consumes patterns as advisory metadata | later |
 
 ---
 

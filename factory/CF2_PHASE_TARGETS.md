@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** ORCH-04 — isolated task workspace (`active`)
+**Current phase:** ORCH-05 — safe task-result integration (`active`)
 **Last updated:** 2026-09-17
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -193,10 +193,10 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **active** (Slice 4). Pattern library remains later. |
-| Target | A selected task can run in an isolated Factory-owned workspace without touching the canonical tree. |
-| Success | Create/inspect/result/cleanup; Git base recorded or explicitly unavailable; no merge. |
-| Evidence | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md), `scripts/task_workspace.py`, `tests/test_task_workspace.py` |
+| Status | **active** (Slice 4B). Pattern library remains later. |
+| Target | One isolated task result can be inspected, authorized, and applied to the canonical workbench under Factory authority. |
+| Success | Unsafe/overlapping/stale results refused; validation failure rolls back; claims stay unverified until evidence. |
+| Evidence | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md), `scripts/task_integration.py`, `tests/test_task_integration.py` |
 
 Acceptance:
 
@@ -207,4 +207,5 @@ Acceptance:
 - [x] No parallel coding, no specialist swarm, no pattern lock-in
 - [x] Context packet (Slice 3)
 - [x] Isolated task workspace (Slice 4)
-- [ ] Pattern library seed (Slice 5)
+- [x] Safe task-result integration (Slice 4B)
+- [ ] Pattern library seed / isolated live Codex workspace run
