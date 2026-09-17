@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
 from checkpoint_commit import CheckpointResult, checkpoint_status_label
 from coder_proposal import ProposalResult, coder_status_label
-from contract_stage import ContractResult
+from contract_stage import ContractResult, is_skipped_agent_executor_contract
 from planning_roles import RoleResult
 from proposal_applier import ApplicationResult, application_status_label
 from repo_tools import resolve_repo_path, safe_load_json, safe_write_json
@@ -647,6 +647,26 @@ def _apply_contract_state(
             "An owner-authorized valid contract exists in planned_task.json. "
             "Holding for the Coder phase (not yet implemented); no new "
             "contract was generated. Application writes remain disabled."
+        )
+        return
+
+    if is_skipped_agent_executor_contract(contract_result):
+        # AgentExecutor missions do not require an Ollama task contract.
+        # Never self-authorize. Clear a leftover planning_contract_rejected
+        # so COMPLETE/MORE_WORK traces are not stamped with a false blocker.
+        _record_contract_status(
+            factory_state,
+            active_run,
+            project_state,
+            "skipped",
+            list(contract_result.verdict.reasons),
+        )
+        project_state["contract_authorized"] = False
+        _clear_failure_state(factory_state, active_run, project_state)
+        active_run["resume_from"] = (
+            "AgentExecutor implementation path: inner planning contract was "
+            "not required this beat. Inner Coder remains gated until an "
+            "owner-authorized valid planned_task.json exists."
         )
         return
 

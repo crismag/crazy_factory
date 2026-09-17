@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** Behavioral product evidence for habit-class claims
+**Current focus:** Optional planning contract on AgentExecutor path
 **Last updated:** 2026-09-17
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -112,6 +112,7 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-L0-08 | DONE | Re-open mission when a follow-up delta arrives (COMPLETE is not a tombstone) | `conversation_delta` lifecycle; `tests/test_mission_runner.py` |
 | CF2-L0-09 | DONE | Product-intent acceptance (generic CRUD preview ≠ requested product) | `product_intent.py`, `RUNNABLE_PREVIEW`, `tests/test_product_intent.py` |
 | CF2-L0-10 | DONE | Habit-class claims verified by runtime/persistence/visible evidence | `product_evidence.py`, `tests/test_product_evidence.py` |
+| CF2-L0-11 | DONE | Planning contract optional on AgentExecutor path; inner Coder gate preserved | `contract_stage.py`, `tests/test_planning_contract_optional.py` |
 
 ---
 

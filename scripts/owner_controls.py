@@ -325,6 +325,17 @@ def describe_next(
             "advance, or run an advance to re-plan.\n"
             "  bin/crazy-admin advance"
         )
+    if status == "skipped":
+        return (
+            "Current state: planning_contract_skipped\n\n"
+            "The inner Ollama planning contract is not required on the "
+            "AgentExecutor implementation path. Inner Coder remains gated "
+            "until an owner-authorized valid planned_task.json exists.\n\n"
+            "Do not authorize a skipped contract.\n\n"
+            "Recommended action:\n"
+            "  Continue the mission.\n"
+            "  bin/crazy-admin run"
+        )
     if status != "valid":
         reason_lines = "\n".join(f"  {r}" for r in reasons) or "  (no detail)"
         return (
