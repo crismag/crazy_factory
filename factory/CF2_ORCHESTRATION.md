@@ -476,6 +476,14 @@ the existing file-map adapter writes through `apply_executor_result`
 into the isolated tree, not the canonical workbench. Integration
 does not use the worker's file list as authority.
 
+Live disposable probe (2026-09-17): `TASK-CLAIM-greet_name` on a
+non-Git greet app. Codex proposed `src/app.py` + `tests/test_app.py`.
+Independent collect agreed. Strong `repo_scope` (`file:src/app.py`)
+applied only `src/app.py` and rejected the test as `out_of_scope`.
+Canonical tree stayed untouched until Factory apply. Validation
+passed. `greet_name` flipped false→true via Factory static evidence
+(`def greet`), not Codex prose. Default `run`/`advance` untouched.
+
 ## A10 — File conflict prep
 
 `scopes_overlap` / `is_parallelizable` detect:
