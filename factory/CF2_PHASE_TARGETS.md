@@ -8,8 +8,8 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** L0-08 — re-open on conversational delta (`planned`)
-**Last updated:** 2026-09-16
+**Current phase:** ORCH-02 — task graph primitive (`active`)
+**Last updated:** 2026-09-17
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
 
@@ -186,3 +186,25 @@ Acceptance:
 - [x] Habit-class claims use runtime/persistence/visible evidence (L0-10)
 - [x] AgentExecutor missions do not require an Ollama planning contract (L0-11)
 - [ ] npm / Vite executable stack (P1-07 / L0-07)
+
+---
+
+## ORCH — Orchestration readiness
+
+| | |
+| --- | --- |
+| Status | **active** (Slice 1–2). Context packet, worktrees, and pattern library remain later. |
+| Target | One objective can be projected into a grounded task graph without enabling a multi-agent swarm. |
+| Success | Durable, dependency-aware, revision-aware tasks with claim/evidence linkage; scheduler unchanged. |
+| Evidence | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md), `scripts/task_graph.py`, `tests/test_task_graph.py` |
+
+Acceptance:
+
+- [x] Current objective → assignment → executor → evidence path audited
+- [x] Context authority documented (intent/evidence outrank planning prose)
+- [x] Task graph persists beside `current_objective.json` without changing `next_execute_objective` priority
+- [x] Nodes carry dependencies, claim ids, evidence targets, and context refs
+- [x] No parallel coding, no specialist swarm, no pattern lock-in
+- [ ] Context packet (Slice 3)
+- [ ] Isolated task workspace (Slice 4)
+- [ ] Pattern library seed (Slice 5)

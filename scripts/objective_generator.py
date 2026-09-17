@@ -496,4 +496,10 @@ def next_execute_objective(
             else None,
             task_root,
         )
+    try:
+        from task_graph import sync_task_graph
+
+        sync_task_graph(project, root, objective=obj)
+    except Exception:  # noqa: BLE001, S110 - graph is not the scheduler
+        pass
     return obj

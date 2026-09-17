@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** Optional planning contract on AgentExecutor path
+**Current focus:** Orchestration — task graph primitive
 **Last updated:** 2026-09-17
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -113,6 +113,19 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-L0-09 | DONE | Product-intent acceptance (generic CRUD preview ≠ requested product) | `product_intent.py`, `RUNNABLE_PREVIEW`, `tests/test_product_intent.py` |
 | CF2-L0-10 | DONE | Habit-class claims verified by runtime/persistence/visible evidence | `product_evidence.py`, `tests/test_product_evidence.py` |
 | CF2-L0-11 | DONE | Planning contract optional on AgentExecutor path; inner Coder gate preserved | `contract_stage.py`, `tests/test_planning_contract_optional.py` |
+
+---
+
+## ORCH — Orchestration readiness + pattern foundation
+
+| ID | Status | Task | Evidence |
+| --- | --- | --- | --- |
+| CF2-ORCH-01 | DONE | Current-state audit (context flow, authority, reuse) | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md) |
+| CF2-ORCH-02 | DONE | Task graph primitive (deps, claims, refs; no scheduler change) | `scripts/task_graph.py`, `tests/test_task_graph.py` |
+| CF2-ORCH-03 | PLANNED | Bounded context packet (evolve `execution_assignment`) | Slice 3 |
+| CF2-ORCH-04 | PLANNED | Isolated task workspace / worktree lifecycle | Slice 4 |
+| CF2-ORCH-05 | PLANNED | Pattern library foundation (archetypes, features, UX, refs) | Slice 5 |
+| CF2-ORCH-06 | PLANNED | Task expansion consumes patterns as advisory metadata | Slice 6 |
 
 ---
 
