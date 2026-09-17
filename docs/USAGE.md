@@ -55,6 +55,12 @@ bin/crazy-admin run todo_app --seed examples/seeds/task_board_web.md
 
 # Local Ollama coder (optional; not the starting path)
 export CRAZY_FACTORY_EXECUTOR=ollama
+
+# Codex CLI (optional; ChatGPT device-auth, read-only exec)
+# Codex proposes a file map; Crazy Factory still applies it.
+export PATH="$HOME/.local/bin:$PATH"
+export CRAZY_FACTORY_EXECUTOR=codex
+bin/crazy-admin run todo_app --seed path/to/seed.md
 ```
 
 Aliases: `CRAZY_FACTORY_ANTHROPIC_API_KEY`,

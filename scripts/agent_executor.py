@@ -24,7 +24,9 @@ Default chain:
    locked that stack. Live missions still prefer the cloud plugin.
 
 ``LlmFileExecutor`` (Ollama) is opt-in via
-``CRAZY_FACTORY_EXECUTOR=ollama``. None of the backends write engine
+``CRAZY_FACTORY_EXECUTOR=ollama``. Codex CLI is opt-in via
+``CRAZY_FACTORY_EXECUTOR=codex`` (read-only ``codex exec``; the
+factory still applies the file map). None of the backends write engine
 source, push, merge, or delete.
 """
 
@@ -483,15 +485,19 @@ def default_executor() -> AgentExecutor:
     """Cloud coding plugin first; stdlib web closes preview + proof seed.
 
     Ollama is not the starting coding model. Force it with
-    ``CRAZY_FACTORY_EXECUTOR=ollama``. Force a vendor with
-    ``openai`` / ``anthropic``. Force the deterministic stdlib
-    actuator with ``stdlib_web``.
+    ``CRAZY_FACTORY_EXECUTOR=ollama``. Force Codex CLI with
+    ``codex``. Force a vendor with ``openai`` / ``anthropic``.
+    Force the deterministic stdlib actuator with ``stdlib_web``.
     """
     forced = (os.environ.get("CRAZY_FACTORY_EXECUTOR") or "").strip().lower()
     if forced == "stdlib_web":
         return StdlibWebExecutor()
     if forced == "ollama":
         return LlmFileExecutor()
+    if forced == "codex":
+        from codex_executor import CodexCodingExecutor
+
+        return CodexCodingExecutor()
     if forced in {"openai", "anthropic", "claude", "cloud"}:
         prefer = None if forced == "cloud" else forced
         return CloudCodingExecutor(provider=prefer)
