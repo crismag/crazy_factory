@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** ORCH-06 — opt-in isolated Codex task (`active`)
+**Current phase:** ORCH-07 — pattern library foundation (`active`)
 **Last updated:** 2026-09-17
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -193,10 +193,10 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **active** (Slice 4C). Default AgentExecutor path unchanged. |
-| Target | One selected TaskNode can run Codex in an isolated workspace, then Factory apply + validate + evidence. |
-| Success | Canonical tree untouched until Factory apply; cleanup only after successful integration; claims scored independently. |
-| Evidence | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md), `scripts/isolated_task_run.py`, `tests/test_isolated_task_run.py` |
+| Status | **active** (Slice 5). Patterns are advisory only. |
+| Target | Factory-owned catalog of archetypes, features, UX patterns, and references with deterministic search. |
+| Success | Loader/search work; owner intent and architecture are not rewritten; execution/evidence paths do not import the library yet. |
+| Evidence | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md), `scripts/pattern_library.py`, `tests/test_pattern_library.py` |
 
 Acceptance:
 
@@ -209,4 +209,5 @@ Acceptance:
 - [x] Isolated task workspace (Slice 4)
 - [x] Safe task-result integration (Slice 4B)
 - [x] Opt-in isolated Codex task pipeline (Slice 4C)
-- [ ] Pattern library seed
+- [x] Pattern library seed (Slice 5)
+- [ ] Task expansion consumes advisory pattern hits (Slice 6)

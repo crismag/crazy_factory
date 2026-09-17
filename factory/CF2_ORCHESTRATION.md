@@ -498,14 +498,22 @@ safe-to-parallelize. Dependency independence alone is insufficient.
 
 ---
 
-## Track B — Pattern intelligence (not this slice)
+## Track B — Pattern intelligence
 
-The pattern library remains a later slice: archetypes, feature
-patterns, UX patterns, and reference entries with a small schema,
-loader, and search. Patterns are advisory. Owner intent and
-architecture remain authoritative. Do not couple runtime to
-external repositories. A later slice may let one benchmark's task
-expansion *read* pattern metadata.
+Slice 5 adds a Factory-owned catalog (`factory/patterns/catalog.json`)
+and a deterministic loader/search (`scripts/pattern_library.py`).
+
+Kinds: `archetype`, `feature`, `ux`, `reference`.
+
+Authority is always `advisory`. Owner intent and `architecture.json`
+outrank every hit. Search is token overlap, not embeddings, and does
+not fetch remote repositories.
+
+This slice does **not** inject patterns into `ExecutionAssignment`,
+the task graph, isolated workspaces, or product evidence. Slice 6
+may let task expansion *read* `search_patterns` / `match_for_intent`.
+
+Inspect: `crazy-admin patterns [query] [--kind …] [--applies-to …]`.
 
 ---
 
@@ -525,8 +533,6 @@ debug tooling only.
 
 ## Recommended next slice
 
-The isolated live path is now an explicit opt-in, not the default
-mission loop. Pause before parallel workers. The pattern library
-can enter as advisory metadata on the packet. Do not enable
-concurrent workers until a live isolated Codex beat has been
-assessed.
+Let task expansion or the bounded packet *read* advisory pattern
+hits (Slice 6) without letting them override owner intent,
+architecture, or COMPLETE. Still no parallel workers.

@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "authority": "advisory",
+  "notes": "Factory-owned catalog. Owner intent and architecture outrank these entries. No embeddings, no remote fetch.",
+  "patterns": [
+    {
+      "pattern_id": "archetype.stdlib-web",
+      "kind": "archetype",
+      "title": "Python stdlib web app",
+      "summary": "Local HTML/CSS/JS served by python3 -m src.app on port 8765 with JSON files under data/. First executable Crazy Factory stack.",
+      "tags": ["stdlib-web", "python", "http", "preview", "json"],
+      "applies_to": ["stdlib-web"],
+      "source_refs": ["factory/CF2_WEB_STACK.md", "scripts/web_stack.py"]
+    },
+    {
+      "pattern_id": "archetype.habit-tracker",
+      "kind": "archetype",
+      "title": "Habit tracker product class",
+      "summary": "Define habits, record dated completions, persist across restart, show streak and weekly view. Claims are verified by runtime, persistence, and visible evidence — not identifier names.",
+      "tags": ["habit", "tracker", "streak", "weekly", "persistence"],
+      "applies_to": ["stdlib-web", "habit"],
+      "source_refs": ["scripts/product_evidence.py", "scripts/product_intent.py"]
+    },
+    {
+      "pattern_id": "feature.json-file-persistence",
+      "kind": "feature",
+      "title": "JSON file persistence",
+      "summary": "Store application records as JSON under data/. Restart must observe the same records. File presence is not sufficient evidence.",
+      "tags": ["persist", "json", "data", "restart"],
+      "applies_to": ["stdlib-web"],
+      "source_refs": ["scripts/product_evidence.py"]
+    },
+    {
+      "pattern_id": "feature.dated-completion",
+      "kind": "feature",
+      "title": "Dated completion",
+      "summary": "A completion is stored or returned with an associated calendar date. Do not require a specific field name.",
+      "tags": ["completion", "date", "habit", "record"],
+      "applies_to": ["habit"],
+      "source_refs": ["scripts/product_evidence.py"]
+    },
+    {
+      "pattern_id": "feature.habit-streak",
+      "kind": "feature",
+      "title": "Habit streak",
+      "summary": "A known completion history produces an observable or computable streak. Do not require current_streak or streak_count identifiers.",
+      "tags": ["streak", "habit", "consecutive", "visible"],
+      "applies_to": ["habit"],
+      "source_refs": ["scripts/product_evidence.py"]
+    },
+    {
+      "pattern_id": "feature.weekly-view",
+      "kind": "feature",
+      "title": "Weekly view",
+      "summary": "The running app shows or returns a week-scoped view of completions. Prefer visible or API evidence over CSS class names.",
+      "tags": ["weekly", "week", "calendar", "view", "habit"],
+      "applies_to": ["habit"],
+      "source_refs": ["scripts/product_evidence.py"]
+    },
+    {
+      "pattern_id": "ux.form-and-list",
+      "kind": "ux",
+      "title": "Form and list",
+      "summary": "A reachable HTML UI that can create a record through a form and then show it in a list or table.",
+      "tags": ["form", "list", "html", "preview", "create"],
+      "applies_to": ["stdlib-web"],
+      "source_refs": ["scripts/stdlib_preview.py"]
+    },
+    {
+      "pattern_id": "ux.preview-first",
+      "kind": "ux",
+      "title": "Preview-first loop",
+      "summary": "Stand up a localhost HTTP UI early so runtime observation can probe a real page, then keep iterating on that preview.",
+      "tags": ["preview", "http", "localhost", "observe"],
+      "applies_to": ["stdlib-web"],
+      "source_refs": ["factory/CF2_WEB_STACK.md", "scripts/runtime_observer.py"]
+    },
+    {
+      "pattern_id": "reference.web-stack",
+      "kind": "reference",
+      "title": "Default web stack record",
+      "summary": "stdlib-web is executable; vite-react is recorded and not executable until npm is allowlisted.",
+      "tags": ["stack", "stdlib-web", "vite-react", "npm"],
+      "applies_to": ["stdlib-web", "vite-react"],
+      "source_refs": ["factory/CF2_WEB_STACK.md"]
+    },
+    {
+      "pattern_id": "reference.task-board-seed",
+      "kind": "reference",
+      "title": "Task-board web seed",
+      "summary": "First stdlib-web benchmark seed used to prove prompt to runnable preview.",
+      "tags": ["seed", "task-board", "benchmark"],
+      "applies_to": ["stdlib-web"],
+      "source_refs": ["examples/seeds/task_board_web.md"]
+    }
+  ]
+}
