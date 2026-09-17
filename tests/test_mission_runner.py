@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -13,8 +14,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import crazy_admin as ca  # noqa: E402
-from mission_runner import (  # noqa: E402
+import crazy_admin as ca
+from mission_runner import (
     BUDGET_EXHAUSTED,
     COMPLETE,
     HUMAN_REQUIRED,
@@ -24,11 +25,11 @@ from mission_runner import (  # noqa: E402
     load_mission_snapshot,
     run_mission,
 )
-from objective_generator import (  # noqa: E402
+from objective_generator import (
     KIND_REPAIR_RUNTIME,
     next_execute_objective,
 )
-from project_control import read_control  # noqa: E402
+from project_control import read_control
 
 
 def _bootstrap_repo(root: Path) -> None:
@@ -378,7 +379,7 @@ class EvaluateTests(unittest.TestCase):
                 "    return items\n",
             )
             project = ca.resolve_project(ca.load_registry(root), "demo")
-            status, reason = evaluate_mission(
+            status, _reason = evaluate_mission(
                 project, root, beat=0, max_beats=5
             )
             self.assertEqual(status, "MORE_WORK")
@@ -407,17 +408,70 @@ class ProductAcceptanceMissionTests(unittest.TestCase):
 
             compile_into_workbench(project, root, "build a habit tracker")
             _make_accepted(app)
-            result = run_mission(
-                project,
-                root,
-                max_beats=3,
-                apply_profile=False,
-                advance=lambda _p: 0,
-            )
+            with patch(
+                "mission_runner.coding_executor_available",
+                return_value=False,
+            ):
+                result = run_mission(
+                    project,
+                    root,
+                    max_beats=3,
+                    apply_profile=False,
+                    advance=lambda _p: 0,
+                )
             self.assertEqual(result.outcome, RUNNABLE_PREVIEW, result.reason)
             self.assertNotEqual(result.outcome, COMPLETE)
             self.assertEqual(result.beats, 0)
             self.assertIn("product claims", result.reason)
+            self.assertIn("no coding plugin", result.reason)
+
+    def test_available_coding_executor_keeps_claims_as_more_work(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("habit", "apps/habit", root=root)
+            app = root / "apps/habit"
+            project = ca.resolve_project(ca.load_registry(root), "habit")
+            from prompt_compiler import compile_into_workbench
+
+            compile_into_workbench(project, root, "build a habit tracker")
+            _make_accepted(app)
+            with patch(
+                "mission_runner.coding_executor_available",
+                return_value=True,
+            ):
+                status, reason = evaluate_mission(
+                    project, root, beat=0, max_beats=5
+                )
+            self.assertEqual(status, "MORE_WORK", reason)
+            self.assertNotEqual(status, RUNNABLE_PREVIEW)
+            self.assertIn("product claims unsatisfied", reason)
+            self.assertNotIn("no coding plugin", reason)
+
+    def test_unavailable_codex_selection_stays_runnable_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("habit", "apps/habit", root=root)
+            app = root / "apps/habit"
+            project = ca.resolve_project(ca.load_registry(root), "habit")
+            from prompt_compiler import compile_into_workbench
+
+            compile_into_workbench(project, root, "build a habit tracker")
+            _make_accepted(app)
+            with (
+                patch.dict(os.environ, {"CRAZY_FACTORY_EXECUTOR": "codex"}),
+                patch("codex_executor.resolve_codex_bin", return_value=None),
+            ):
+                result = run_mission(
+                    project,
+                    root,
+                    max_beats=2,
+                    apply_profile=False,
+                    advance=lambda _p: 0,
+                )
+            self.assertEqual(result.outcome, RUNNABLE_PREVIEW, result.reason)
+            self.assertIn("no coding plugin", result.reason)
 
     def test_planning_reject_does_not_override_runnable_preview(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -434,13 +488,17 @@ class ProductAcceptanceMissionTests(unittest.TestCase):
             state = json.loads(state_path.read_text(encoding="utf-8"))
             state["current_blocker"] = "planning_contract_rejected"
             _write(state_path, json.dumps(state, indent=2))
-            result = run_mission(
-                project,
-                root,
-                max_beats=3,
-                apply_profile=False,
-                advance=lambda _p: 0,
-            )
+            with patch(
+                "mission_runner.coding_executor_available",
+                return_value=False,
+            ):
+                result = run_mission(
+                    project,
+                    root,
+                    max_beats=3,
+                    apply_profile=False,
+                    advance=lambda _p: 0,
+                )
             self.assertEqual(result.outcome, RUNNABLE_PREVIEW, result.reason)
             self.assertNotEqual(result.outcome, "RECOVERABLE_FAILURE")
 
@@ -462,13 +520,17 @@ class ProductAcceptanceMissionTests(unittest.TestCase):
             compile_into_workbench(project, root, "build a habit tracker")
             seed = (app / "docs/seed.md").read_text(encoding="utf-8")
             _make_accepted(app)
-            first = run_mission(
-                project,
-                root,
-                max_beats=2,
-                apply_profile=False,
-                advance=lambda _p: 0,
-            )
+            with patch(
+                "mission_runner.coding_executor_available",
+                return_value=False,
+            ):
+                first = run_mission(
+                    project,
+                    root,
+                    max_beats=2,
+                    apply_profile=False,
+                    advance=lambda _p: 0,
+                )
             self.assertEqual(first.outcome, RUNNABLE_PREVIEW)
             append_delta(
                 project, root, "add a streak counter and a weekly view"

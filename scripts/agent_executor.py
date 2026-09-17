@@ -109,6 +109,10 @@ class AgentExecutor(Protocol):
 
     name: str
 
+    def can_implement(self) -> bool:
+        """True when this backend can take another implementation beat."""
+        ...
+
     def execute(self, request: ExecutorRequest) -> ExecutorResult:
         """Return workbench files or a skipped/failed result."""
         ...
@@ -151,9 +155,7 @@ def build_request(
     packet: Any = None,
 ) -> ExecutorRequest:
     """Pack a purpose-built assignment plus failure evidence."""
-    assignment = compile_assignment(
-        project, root, objective, packet=packet
-    )
+    assignment = compile_assignment(project, root, objective, packet=packet)
     task = project.get("task_root") or "factory_tasks"
     task_root = Path(str(task))
     if not task_root.is_absolute():
@@ -271,6 +273,9 @@ class CloudCodingExecutor:
     def __init__(self, provider: str | None = None) -> None:
         self.prefer = provider
 
+    def can_implement(self) -> bool:
+        return resolve_coding_backend(prefer=self.prefer) is not None
+
     def execute(self, request: ExecutorRequest) -> ExecutorResult:
         pack = resolve_coding_backend(prefer=self.prefer)
         if pack is None:
@@ -317,6 +322,11 @@ class LlmFileExecutor:
     """One-shot Ollama file-map backend. Opt-in; skips when down."""
 
     name = "ollama_files"
+
+    def can_implement(self) -> bool:
+        # Opt-in local coder; availability is probed at execute time.
+        # Do not treat a down Ollama as a configured implementation beat.
+        return False
 
     def execute(self, request: ExecutorRequest) -> ExecutorResult:
         model = (
@@ -379,6 +389,9 @@ class StdlibWebExecutor:
     """Stdlib HTTP actuator: task-board fixture, else generic preview."""
 
     name = "stdlib_web"
+
+    def can_implement(self) -> bool:
+        return False
 
     def execute(self, request: ExecutorRequest) -> ExecutorResult:
         if seed_looks_like_stdlib_task_board(request.seed_text):
@@ -467,6 +480,9 @@ class ChainedExecutor:
     def __init__(self, backends: list[AgentExecutor]) -> None:
         self.backends = backends
 
+    def can_implement(self) -> bool:
+        return any(backend.can_implement() for backend in self.backends)
+
     def execute(self, request: ExecutorRequest) -> ExecutorResult:
         last = ExecutorResult(
             ok=False,
@@ -501,6 +517,15 @@ def default_executor() -> AgentExecutor:
     if forced in {"openai", "anthropic", "claude", "cloud"}:
         prefer = None if forced == "cloud" else forced
         return CloudCodingExecutor(provider=prefer)
-    return ChainedExecutor(
-        [CloudCodingExecutor(), StdlibWebExecutor()]
-    )
+    return ChainedExecutor([CloudCodingExecutor(), StdlibWebExecutor()])
+
+
+def coding_executor_available() -> bool:
+    """True when the selected executor can take another implementation beat.
+
+    This is the evaluator's capability question, not a vendor-name check.
+    Anthropic/OpenAI keys, an authenticated Codex CLI, and other coding
+    plugins count when they are the selected backend and actually
+    available. The stdlib fixture and skipped backends do not.
+    """
+    return default_executor().can_implement()

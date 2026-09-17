@@ -158,6 +158,23 @@ class CodexExecutorMockTests(unittest.TestCase):
         self.assertFalse(out.ok)
         self.assertEqual(out.reason, "codex_not_authenticated")
 
+    def test_can_implement_requires_binary_and_login(self) -> None:
+        self.assertFalse(
+            CodexCodingExecutor(binary="", logged_in=True).can_implement()
+        )
+        self.assertFalse(
+            CodexCodingExecutor(
+                binary="/tmp/fake-codex",
+                logged_in=False,
+            ).can_implement()
+        )
+        self.assertTrue(
+            CodexCodingExecutor(
+                binary="/tmp/fake-codex",
+                logged_in=True,
+            ).can_implement()
+        )
+
     def test_file_map_is_confined_and_not_written_by_codex(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
