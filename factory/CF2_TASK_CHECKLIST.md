@@ -3,7 +3,7 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** Orchestration — task graph primitive
+**Current focus:** Orchestration — bounded context packet
 **Last updated:** 2026-09-17
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
@@ -122,7 +122,7 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | --- | --- | --- | --- |
 | CF2-ORCH-01 | DONE | Current-state audit (context flow, authority, reuse) | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md) |
 | CF2-ORCH-02 | DONE | Task graph primitive (deps, claims, refs; no scheduler change) | `scripts/task_graph.py`, `tests/test_task_graph.py` |
-| CF2-ORCH-03 | PLANNED | Bounded context packet (evolve `execution_assignment`) | Slice 3 |
+| CF2-ORCH-03 | DONE | Bounded context packet (evolve `execution_assignment`) | `execution_assignment.py`, `tests/test_context_packet.py` |
 | CF2-ORCH-04 | PLANNED | Isolated task workspace / worktree lifecycle | Slice 4 |
 | CF2-ORCH-05 | PLANNED | Pattern library foundation (archetypes, features, UX, refs) | Slice 5 |
 | CF2-ORCH-06 | PLANNED | Task expansion consumes patterns as advisory metadata | Slice 6 |

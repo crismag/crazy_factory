@@ -153,11 +153,22 @@ def build_request(
     *,
     objective: Any,
     packet: Any = None,
+    task: Any = None,
 ) -> ExecutorRequest:
-    """Pack a purpose-built assignment plus failure evidence."""
-    assignment = compile_assignment(project, root, objective, packet=packet)
-    task = project.get("task_root") or "factory_tasks"
-    task_root = Path(str(task))
+    """Pack a purpose-built assignment plus failure evidence.
+
+    A stale selected task is not executed. Context is regenerated from
+    the current objective so owner intent cannot silently lag.
+    """
+    assignment = compile_assignment(
+        project, root, objective, packet=packet, task=task
+    )
+    if assignment.stale:
+        assignment = compile_assignment(
+            project, root, objective, packet=packet, task=None
+        )
+    task_root_value = project.get("task_root") or "factory_tasks"
+    task_root = Path(str(task_root_value))
     if not task_root.is_absolute():
         task_root = root / task_root
     validation = assignment.validation_summary or _json_reason(

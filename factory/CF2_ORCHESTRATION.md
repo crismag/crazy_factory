@@ -229,16 +229,44 @@ Not adopted yet: `RUNNING`, `IMPLEMENTED`, `VALIDATING`, `FAILED`.
 Those would conflate “executor wrote files” with “product verified”
 if introduced without a consumer. Task completion ≠ claim verification.
 
-### ContextPacket (Slice 3, not implemented)
+### ContextPacket (Slice 3)
 
-Evolve `ExecutionAssignment`, do not fork:
+`ExecutionAssignment` **is** the bounded packet. A selected `TaskNode`
+is optional. Legacy `compile_assignment(project, root, objective)`
+still builds a valid objective-oriented assignment (`task_id` empty).
 
-- `owner_intent_slice`, `product_claims_slice`, `task`,
-  `architecture_slice`, `repo_slice`, `relevant_history`,
-  `evidence_slice`, `constraints`, `validation_expectations`
-- Prefer `context_refs` (`product_intent@revision-4`,
-  `claim:event_persistence`, `file:src/app.py`) over blob copies
-- Reject or mark stale when `intent_revision` disagrees
+When `task=` is supplied and `task.intent_revision` matches current
+intent:
+
+- identity: `task_id`, `parent_objective_id`, `intent_revision`
+- `claim_ids` / `evidence_targets` from that node only
+- `context_refs` (provenance pointers, not blobs)
+- `repo_scope` as `file:…` paths from `affected_scope`
+- architecture **key subset** (stack, start, forbidden imports,
+  intersecting `required_files`) — the file is still monolithic
+- owner intent as a short original-prompt slice
+- owner deltas only when the node is a delta task
+- prior executor writes only if they intersect scope or the stance
+  is repair/investigate
+
+Stale tasks (`task.intent_revision != current`): the returned packet
+keeps the **old** revision, sets `stale=True`, and does **not** copy
+current owner intent. `build_request` regenerates from the current
+objective instead of executing the stale packet. Persisted
+`execution_assignment.json` is never rewritten to pretend it was
+built under a newer revision.
+
+Completing the assignment does not verify claims. Factory evidence
+remains independent.
+
+Bounded selection friction (do not paper over with huge packets):
+
+- `architecture.json` has no domain/module addresses
+- many graph nodes still have empty `affected_scope`
+- claims do not map to modules except via `Capability.files`
+- executor history is a file-list note, not structured attempts
+- the live AgentExecutor path still compiles the **objective** packet
+  (no auto-selected graph node) so current Codex behavior is unchanged
 
 ### Context refs (this slice)
 
@@ -373,8 +401,8 @@ debug tooling only.
 
 ## Recommended next slice
 
-**Slice 3 — Context packet:** evolve `ExecutionAssignment` to carry
-the selected task’s `context_refs`, reject or flag stale
-`intent_revision`, and exclude global blobs. Keep one scheduled
-objective. Then Slice 4 (isolated workspace) and Slice 5 (pattern
-library seed).
+**Slice 4 — Isolated task workspace:** one implementation worker in a
+Factory-owned worktree/workbench, recorded base revision, changed-file
+report, validate, integrate, cleanup. Context packets already name
+`repo_scope` / `task_id` / `intent_revision`. Do not enable parallel
+coding. Pattern library remains Slice 5.
