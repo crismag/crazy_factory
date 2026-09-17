@@ -348,18 +348,42 @@ Do not expose agent topology to end users.
 
 ---
 
-## A9 — Workspace isolation (assessment only)
+## A9 — Workspace isolation
 
-Today: one workbench `app_path`, Factory applies the file map,
-validation runs in that tree, git of the customer app is the durable
-artifact. No per-task worktree, no recorded base revision per task,
-no merge of parallel workers.
+Today's live path still writes one `app_path` workbench.
 
-Slice 4 should add: create workspace, record base revision, report
-changed files, validate, Factory-owned integration, cleanup. Not
-this slice. Do not enable parallel coding.
+Slice 4 adds an opt-in primitive (`scripts/task_workspace.py`):
 
----
+- Location: `factory_workspaces/<project>/<workspace_id>/tree`
+  (gitignored; never mixed into customer source).
+- `worktree` when `<app>/.git` exists (detached HEAD at recorded SHA).
+- `copy` of allowed application tops otherwise. A workbench that only
+  lives inside the Factory repo is **not** treated as a Git base.
+- Record: task_id, intent_revision, base_revision or explicit
+  `git_base_available=False`, changed files from Git/filesystem.
+- `bind_project_to_workspace` points `app_path` at the tree without
+  rewriting `config/projects.yaml`.
+- Stale intent marks the workspace `stale` and refuses reuse.
+- Cleanup removes only that workspace (worktree-aware). No merge.
+
+Live AgentExecutor does not auto-create workspaces.
+
+Slice 4 friction (informs integration):
+
+- Embedded `apps/*` workbenches are gitignored and usually **not** Git
+  repos; isolation is a bounded copy and `base_revision` is empty.
+- Workbenches routinely have uncommitted files; a worktree is HEAD
+  only (`canonical_dirty`).
+- `config/projects.yaml` still has one canonical `app_path`. Binding
+  is ephemeral and must not be persisted as the registry path.
+- Runtime `listen_port` / data files live in the workbench; two
+  workspaces would collide if started. Not started in this slice.
+- `repo_scope` is advisory. AgentExecutor can still write other
+  allowed tops *inside* the isolated tree. Enforcing scope needs a
+  later apply filter. Existing ALLOWED_TOPS confinement is unchanged.
+- Validation/runtime still assume the project mapping's `app_path`
+  and `task_root`. Canonical `factory_tasks` is not remapped.
+- `.env` / secret names are not copied. No secret inheritance.
 
 ## A10 — File conflict prep
 
@@ -401,8 +425,7 @@ debug tooling only.
 
 ## Recommended next slice
 
-**Slice 4 — Isolated task workspace:** one implementation worker in a
-Factory-owned worktree/workbench, recorded base revision, changed-file
-report, validate, integrate, cleanup. Context packets already name
-`repo_scope` / `task_id` / `intent_revision`. Do not enable parallel
-coding. Pattern library remains Slice 5.
+**Safe task-result integration:** take one isolated workspace result
+and apply it to the canonical workbench under Factory authority
+(changed-file list, path confinement, no worker merge/push). Still
+one worker at a time. Pattern library remains a separate slice.

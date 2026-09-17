@@ -8,7 +8,7 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** ORCH-03 — bounded context packet (`active`)
+**Current phase:** ORCH-04 — isolated task workspace (`active`)
 **Last updated:** 2026-09-17
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
@@ -193,10 +193,10 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **active** (Slice 3). Isolated workspaces and pattern library remain later. |
-| Target | A selected graph task becomes a bounded, revision-aware execution packet. |
-| Success | Task identity, intent revision, claim/evidence targets, and context refs reach the assignment; stale packets cannot silently execute. |
-| Evidence | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md), `scripts/execution_assignment.py`, `tests/test_context_packet.py` |
+| Status | **active** (Slice 4). Pattern library remains later. |
+| Target | A selected task can run in an isolated Factory-owned workspace without touching the canonical tree. |
+| Success | Create/inspect/result/cleanup; Git base recorded or explicitly unavailable; no merge. |
+| Evidence | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md), `scripts/task_workspace.py`, `tests/test_task_workspace.py` |
 
 Acceptance:
 
@@ -206,5 +206,5 @@ Acceptance:
 - [x] Nodes carry dependencies, claim ids, evidence targets, and context refs
 - [x] No parallel coding, no specialist swarm, no pattern lock-in
 - [x] Context packet (Slice 3)
-- [ ] Isolated task workspace (Slice 4)
+- [x] Isolated task workspace (Slice 4)
 - [ ] Pattern library seed (Slice 5)
