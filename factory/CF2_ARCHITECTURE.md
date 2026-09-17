@@ -67,7 +67,7 @@ They must not be the thing the owner cranks with `advance`.
 | **P4** | Better agents: coding-agent adapter, then specialized roles | **done (P4a–P4f)**; agentic control active |
 | **P5** | Broader product intelligence, dynamic teams, self-improve | **done (P5-01 Director)**; P5-02/P5-03 deferred |
 | **L0** | Prompt compiler + default `stdlib-web` stack | **done** (through L0-11); [CF2_WEB_STACK.md](CF2_WEB_STACK.md) |
-| **ORCH** | Task graph + bounded context packet (no swarm) | **active** (packet); [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md) |
+| **ORCH** | Task graph + packet + isolated workspace (no swarm) | **active** (workspaces); [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md) |
 
 P5-01 is the Director (owner-facing brief + featured MCP). Do not
 start dynamic teams, factory self-mutation, or UI from this slice.

@@ -88,11 +88,12 @@ the mission until the delta is VERIFIED against compiled claims.
 AgentExecutor missions no longer false-stop on an inner Ollama
 `planning_contract_rejected` leftover; the inner Coder chain still
 requires an owner-authorized valid `planned_task.json`.
-Orchestration Slice 3 is landed: `ExecutionAssignment` is a bounded,
-revision-aware context packet when a graph task is selected. Stale
-intent revisions are marked and not executed. The live AgentExecutor
-path still compiles the objective packet (no auto-selected node).
-Next is isolated task workspaces (Slice 4), then a small pattern
+Orchestration Slice 4 is landed: a selected task can get a
+Factory-owned isolated workspace (`git worktree` when the workbench
+is its own repo, bounded copy otherwise). Canonical trees stay
+untouched. Live AgentExecutor/Codex still write the canonical
+workbench. Next is **safe task-result integration** (apply a
+workspace diff only under Factory authority), then the pattern
 library. Do not start LangChain, UI, network MCP, KAE-Memory, or
 parallel coding agents from this reading.
 Evidence: [POST_L0_CAPABILITY_ASSESSMENT.md](../../docs/report/context/crazy-factory-2.0/POST_L0_CAPABILITY_ASSESSMENT.md).
