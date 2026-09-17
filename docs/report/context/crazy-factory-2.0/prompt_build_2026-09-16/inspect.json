@@ -1,0 +1,243 @@
+{
+  "project_id": "habit_probe",
+  "intended_goal": "build a habit tracker",
+  "placeholder_intent": false,
+  "source": "seed+architecture",
+  "demo_ready": true,
+  "blocking_question": "No material gap currently blocks a demo: acceptance evidence is complete.",
+  "workbench": {
+    "source_files": 2,
+    "test_files": 2,
+    "lines_of_code": 252
+  },
+  "modules": [
+    {
+      "id": "init",
+      "name": "init",
+      "paths": [
+        "src/__init__.py"
+      ],
+      "test_paths": [],
+      "behaviors": [],
+      "maturity": "IMPLEMENTED",
+      "evidence": [
+        "declared in architecture: src/__init__.py",
+        "present in architecture.json",
+        "real source exists: src/__init__.py"
+      ],
+      "gaps": [
+        "no tests on disk for this module"
+      ]
+    },
+    {
+      "id": "app",
+      "name": "app",
+      "paths": [
+        "src/app.py"
+      ],
+      "test_paths": [
+        "tests/test_app.py"
+      ],
+      "behaviors": [],
+      "maturity": "VERIFIED",
+      "evidence": [
+        "declared in architecture: src/app.py",
+        "declared in architecture: tests/test_app.py",
+        "present in architecture.json",
+        "source and tests exist on disk"
+      ],
+      "gaps": []
+    },
+    {
+      "id": "model",
+      "name": "model",
+      "paths": [
+        "src/model.py"
+      ],
+      "test_paths": [
+        "tests/test_model.py"
+      ],
+      "behaviors": [],
+      "maturity": "VERIFIED",
+      "evidence": [
+        "declared in architecture: src/model.py",
+        "declared in architecture: tests/test_model.py",
+        "present in architecture.json",
+        "source and tests exist on disk"
+      ],
+      "gaps": []
+    },
+    {
+      "id": "readme",
+      "name": "readme",
+      "paths": [
+        "README.md"
+      ],
+      "test_paths": [],
+      "behaviors": [],
+      "maturity": "IMPLEMENTED",
+      "evidence": [
+        "declared in architecture: README.md",
+        "present in architecture.json",
+        "real source exists: README.md"
+      ],
+      "gaps": [
+        "no tests on disk for this module"
+      ]
+    },
+    {
+      "id": "architecture",
+      "name": "architecture",
+      "paths": [
+        "architecture.json"
+      ],
+      "test_paths": [],
+      "behaviors": [],
+      "maturity": "IMPLEMENTED",
+      "evidence": [
+        "declared in architecture: architecture.json",
+        "present in architecture.json",
+        "real source exists: architecture.json"
+      ],
+      "gaps": [
+        "no tests on disk for this module"
+      ]
+    },
+    {
+      "id": "requirements",
+      "name": "requirements",
+      "paths": [
+        "requirements.txt"
+      ],
+      "test_paths": [],
+      "behaviors": [],
+      "maturity": "IMPLEMENTED",
+      "evidence": [
+        "declared in architecture: requirements.txt",
+        "present in architecture.json",
+        "real source exists: requirements.txt"
+      ],
+      "gaps": [
+        "no tests on disk for this module"
+      ]
+    }
+  ],
+  "dimensions": [
+    {
+      "name": "product_completeness",
+      "status": "ready",
+      "evidence": [
+        "2 source / 2 test file(s), 252 LOC"
+      ],
+      "gaps": []
+    },
+    {
+      "name": "requirements_coverage",
+      "status": "ready",
+      "evidence": [
+        "goal: build a habit tracker",
+        "5 success criterion(s)"
+      ],
+      "gaps": []
+    },
+    {
+      "name": "architecture_coherence",
+      "status": "ready",
+      "evidence": [
+        "8 required files"
+      ],
+      "gaps": []
+    },
+    {
+      "name": "contract_completeness",
+      "status": "ready",
+      "evidence": [
+        "planned_task.json present"
+      ],
+      "gaps": []
+    },
+    {
+      "name": "implementation_completeness",
+      "status": "partial",
+      "evidence": [
+        "6 module(s) implemented or verified"
+      ],
+      "gaps": [
+        "init: no tests on disk for this module",
+        "readme: no tests on disk for this module",
+        "architecture: no tests on disk for this module",
+        "requirements: no tests on disk for this module"
+      ]
+    },
+    {
+      "name": "automated_validation",
+      "status": "ready",
+      "evidence": [
+        "status=passed"
+      ],
+      "gaps": []
+    },
+    {
+      "name": "integration_completeness",
+      "status": "partial",
+      "evidence": [
+        "2 verified module(s)"
+      ],
+      "gaps": [
+        "2/6 modules verified"
+      ]
+    },
+    {
+      "name": "demo_readiness",
+      "status": "ready",
+      "evidence": [
+        "acceptance.accepted=true"
+      ],
+      "gaps": []
+    },
+    {
+      "name": "documentation_readiness",
+      "status": "ready",
+      "evidence": [
+        "docs/seed.md or README.md present"
+      ],
+      "gaps": []
+    }
+  ],
+  "material_gaps": [
+    "init: no tests on disk for this module",
+    "readme: no tests on disk for this module",
+    "architecture: no tests on disk for this module",
+    "requirements: no tests on disk for this module",
+    "2/6 modules verified"
+  ],
+  "objectives": [],
+  "success_criteria": [
+    "A person can use the habit tracker UI in a browser on localhost.",
+    "Core create / list / update / delete flows work without placeholders.",
+    "Data persists across process restart (JSON under data/).",
+    "python3 -m compileall and pytest pass.",
+    "`python3 -m src.app` starts and answers HTTP."
+  ],
+  "constraints": [
+    "Python 3 standard library only (http.server, pathlib, json).",
+    "No npm, no frameworks, no database server.",
+    "Persist application data as JSON under data/.",
+    "Keep the implementation small and testable.",
+    "Serve a usable HTML UI on localhost."
+  ],
+  "assessed_at": "2026-09-16T21:19:23Z",
+  "focus_module": {
+    "id": "init",
+    "name": "init",
+    "maturity": "IMPLEMENTED",
+    "gaps": [
+      "no tests on disk for this module"
+    ],
+    "paths": [
+      "src/__init__.py"
+    ],
+    "test_paths": [],
+    "open": true
+  }
+}

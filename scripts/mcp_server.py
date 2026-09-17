@@ -15,6 +15,7 @@ Inventory tools (power-user; same engine, not the conversation):
     advance_project, get_findings, get_objectives, reconcile_project
 
 ``start_mission`` accepts a prompt, seed/context, and target in one call.
+``continue_mission`` accepts an optional follow-up prompt as a delta.
 ``inspect_project`` / ``get_status`` include mission outcome, artifact,
 and trace. ``director_brief`` is the owner-facing combination of
 product intelligence, mission snapshot, and one recommended next
@@ -158,7 +159,8 @@ TOOLS: list[dict[str, Any]] = [
                     "description": (
                         "Raw owner prompt compiled into docs/seed.md "
                         "and architecture.json on the default "
-                        "stdlib-web stack."
+                        "stdlib-web stack. On an already-specified "
+                        "product this is a follow-up delta."
                     ),
                 },
                 "context": {
@@ -195,12 +197,22 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "continue_mission",
         "description": (
-            "Resume an existing mission without re-applying the profile."
+            "Resume an existing mission without re-applying the "
+            "profile. Optional prompt is a conversational delta on "
+            "the specified product and does not recompile the seed."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "project_id": {"type": "string"},
+                "prompt": {
+                    "type": "string",
+                    "description": (
+                        "Follow-up owner request on the running "
+                        "product. Appended as a delta; does not "
+                        "replace Goal or architecture."
+                    ),
+                },
                 "max_beats": {"type": "integer"},
             },
             "required": ["project_id"],
@@ -534,19 +546,27 @@ def _call_tool(
         )
     if name == "continue_mission":
         project = _project(root, str(arguments["project_id"]))
+        ingested = None
+        if arguments.get("prompt"):
+            ingested = ingest_start_context(
+                project,
+                root,
+                prompt=str(arguments["prompt"]),
+            )
         max_beats = int(arguments.get("max_beats") or 12)
         result = run_closed_mission(
             project, root, max_beats=max_beats, apply_profile=False
         )
-        return _text_result(
-            {
-                "outcome": result.outcome,
-                "reason": result.reason,
-                "beats": result.beats,
-                "trace": result.trace_path,
-                "artifact": result.artifact,
-            }
-        )
+        payload = {
+            "outcome": result.outcome,
+            "reason": result.reason,
+            "beats": result.beats,
+            "trace": result.trace_path,
+            "artifact": result.artifact,
+        }
+        if ingested is not None:
+            payload["ingested"] = ingested
+        return _text_result(payload)
     if name == "stop_mission":
         project = _project(root, str(arguments["project_id"]))
         rel = request_stop(project, root)

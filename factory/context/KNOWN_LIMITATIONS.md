@@ -3,9 +3,14 @@
 ## Current Limitations
 
 - `crazy-admin run` closes the **process loop**. A raw `--prompt`
-  now compiles into a specified seed on `stdlib-web`. The coding
-  plugin still needs a live model (or the stdlib actuator for the
-  task-board proof). npm/browser journeys are still out of scope.
+  now compiles into a specified seed on `stdlib-web`. A follow-up
+  `--prompt` on that product is a delta, not a recompile. Live
+  no-key probe (2026-09-16): generic CRUD preview titled from the
+  prompt, mission **COMPLETE in 1 beat**; follow-up recorded as a
+  banner and 0-beat COMPLETE — not built. A coding-plugin key is
+  required for product-specific code; L0-08 must re-open work after
+  COMPLETE or the key never runs. npm/browser journeys are still
+  out of scope.
 - Default owner switches remain OFF. `run` enables an isolated
   workbench profile; other projects and the safety floor stay gated.
 - `max_files_per_run: 5` and `max_lines_per_file` still bound a single

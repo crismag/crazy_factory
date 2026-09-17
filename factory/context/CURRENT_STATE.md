@@ -59,7 +59,11 @@ The default web stack is [CF2_WEB_STACK.md](../CF2_WEB_STACK.md).
 - P5b nested module loop (`focus_module`, `current_module.json`)
 - L0 prompt compiler (`crazy-admin run --prompt`, MCP `start_mission.prompt`)
   on the default `stdlib-web` stack
+- L0-05 conversational deltas (`factory_tasks/deltas.jsonl`,
+  `docs/deltas.md`; follow-up `--prompt` / `continue_mission.prompt`)
 - tests (unit; live Ollama product builds are not in CI)
+- post-L0 live prompt-build assessment
+  ([POST_L0_CAPABILITY_ASSESSMENT.md](../../docs/report/context/crazy-factory-2.0/POST_L0_CAPABILITY_ASSESSMENT.md))
 
 ## Not Yet Available
 
@@ -69,7 +73,6 @@ The default web stack is [CF2_WEB_STACK.md](../CF2_WEB_STACK.md).
 - KAE-Memory / vector “AI memory”
 - LangChain / LangGraph / n8n / Cline
 - live Ollama as the coding model (P1-09; not the starting path)
-- conversational deltas on a running preview (L0-05)
 - Vite preview stack (L0-07)
 - dynamic role/skill acquisition (P5-02)
 - factory self-improvement that writes `scripts/` (P5-03)
@@ -77,11 +80,15 @@ The default web stack is [CF2_WEB_STACK.md](../CF2_WEB_STACK.md).
 
 ## Next State Transition
 
-L0 is landed: a raw owner prompt compiles into a specified seed and
-`architecture.json` on `stdlib-web`, and the stdlib actuator can
-stand up a reachable HTTP preview (`preview.json`) without a vendor
-key. Next productization gaps are conversational deltas, then
-`vite-react` once npm is confined. Do not start Cursor/Codex
-adapters, UI, network MCP, or KAE-Memory from this slice.
+L0-01…L0-05 are landed. A live no-key `--prompt "build a habit
+tracker"` compiled, served HTTP 200, and **COMPLETE**’d a generic
+CRUD page in one beat. A follow-up prompt was stored as a delta
+and shown as a banner; the second `run` was **0 beats**. Next
+factory gaps are **L0-08** (re-open on delta) and **L0-09**
+(product-intent acceptance), then a keyed Claude/OpenAI
+characterization, then L0-06 MCP packaging and L0-07 `vite-react`.
+Do not start Cursor/Codex adapters, UI, network MCP, or
+KAE-Memory from this reading.
+Evidence: [POST_L0_CAPABILITY_ASSESSMENT.md](../../docs/report/context/crazy-factory-2.0/POST_L0_CAPABILITY_ASSESSMENT.md).
 See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and
 [CF2_TASK_CHECKLIST.md](../CF2_TASK_CHECKLIST.md).

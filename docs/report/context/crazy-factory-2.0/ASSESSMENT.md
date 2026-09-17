@@ -1,5 +1,15 @@
 # Crazy Factory 2.0 — Independent Repository Assessment
 
+**Current capability reading (after L0-05):**
+[POST_L0_CAPABILITY_ASSESSMENT.md](POST_L0_CAPABILITY_ASSESSMENT.md)
+and live prompt-build
+[prompt_build_2026-09-16/](prompt_build_2026-09-16/).
+
+This file is the **Slice A repository map** from the restart
+(2026-09-16). Several claims below are historical (no MCP, no
+Director, Ollama-only, no closed loop). They were true at the audit;
+they are not the live ceiling.
+
 Generated: 2026-09-16
 Branch: `cursor/cf2-product-convergence-kernel-3f2d`
 Baseline: 519 unit tests on `main` (`d8b51d0`). Two pre-existing

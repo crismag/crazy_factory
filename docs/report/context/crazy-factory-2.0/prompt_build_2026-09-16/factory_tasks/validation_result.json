@@ -1,0 +1,31 @@
+{
+  "test_plan_id": "coherence-gate",
+  "status": "passed",
+  "executed": true,
+  "checks": [
+    {
+      "command": "python3 -m pip install -r requirements.txt",
+      "status": "passed",
+      "returncode": 0,
+      "detail": "exit code 0"
+    },
+    {
+      "command": "python3 -m compileall -q src tests",
+      "status": "passed",
+      "returncode": 0,
+      "detail": "exit code 0"
+    },
+    {
+      "command": "python3 -m pytest tests",
+      "status": "passed",
+      "returncode": 0,
+      "detail": "exit code 0"
+    },
+    {
+      "command": "python3 -m ruff check src tests",
+      "status": "passed",
+      "returncode": 0,
+      "detail": "exit code 0"
+    }
+  ]
+}

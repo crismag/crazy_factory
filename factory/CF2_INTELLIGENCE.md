@@ -96,14 +96,21 @@ evidence.
 | Write application files | `CloudCodingExecutor` | **Yes** — Claude preferred |
 | Inner Architect / Planner | `_chat_backend` cloud then Ollama | **Yes** (Ollama if no key) |
 | Prompt → seed + architecture | `prompt_compiler.compile_prompt` | **Yes** (fallback if no key) |
+| Follow-up prompt on specified product | `conversation_delta.append_delta` | No extra model call |
 | Task-board proof with no keys | `StdlibWebExecutor` | Fixture fallback only |
 
 ## Near-term boundary (not this slice)
 
+- Re-open mission on owner delta (L0-08) and product-intent
+  acceptance (L0-09) — live no-key prompt-build COMPLETE’d a
+  generic preview and ignored the follow-up as 0 beats
 - KAE-Memory / durable memory (discover need first)
 - specialized tool plugins (browser, security, a11y)
 - Cursor/Codex IDE adapters
 - network MCP
 - `vite-react` as an executable stack (npm still forbidden)
+
+Live reading:
+[POST_L0_CAPABILITY_ASSESSMENT.md](../docs/report/context/crazy-factory-2.0/POST_L0_CAPABILITY_ASSESSMENT.md).
 
 Default stack and compiler: [CF2_WEB_STACK.md](CF2_WEB_STACK.md).
