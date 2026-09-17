@@ -2,9 +2,10 @@
 """Compile owner intent into explicit product claims and score them.
 
 Natural language becomes capabilities with probes. COMPLETE may only
-follow when those claims are evidenced in source identifiers, domain
-files, and data fields — not because a title or banner quotes the
-prompt. Banner HTML and ``change_requests.json`` are ignored.
+follow when those claims are evidenced as capability — runtime,
+persistence, visible output, tests, or static source — not because a
+title or banner quotes the prompt, and not because an identifier list
+matched. Banner HTML and ``change_requests.json`` are ignored.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ _WORD = re.compile(r"[a-z][a-z0-9]+")
 
 @dataclass(frozen=True)
 class Capability:
-    """One explicit product claim with implementation probes."""
+    """One explicit product claim with admissible evidence kinds."""
 
     id: str
     claim: str
@@ -34,6 +35,7 @@ class Capability:
     fields: tuple[str, ...] = ()
     files: tuple[str, ...] = ()
     origin: str = "compile"
+    evidence: tuple[str, ...] = ()
 
 
 def _slug(text: str) -> str:
@@ -69,6 +71,7 @@ def _cap(
     fields: tuple[str, ...] = (),
     files: tuple[str, ...] = (),
     origin: str = "compile",
+    evidence: tuple[str, ...] = (),
 ) -> Capability:
     return Capability(
         id=cap_id,
@@ -77,6 +80,7 @@ def _cap(
         fields=fields,
         files=files,
         origin=origin,
+        evidence=evidence,
     )
 
 
@@ -91,34 +95,26 @@ def fallback_capabilities(
             _cap(
                 "define_habits",
                 "User can define habits.",
-                symbols=("add_habit", "create_habit", "habits"),
-                files=("data/habits.json",),
                 origin=origin,
+                evidence=("runtime",),
             ),
             _cap(
                 "record_completion",
                 "User can record completion for a habit.",
-                symbols=(
-                    "complete_habit",
-                    "check_in",
-                    "mark_habit",
-                    "completions",
-                ),
                 origin=origin,
+                evidence=("runtime",),
             ),
             _cap(
                 "dated_completion",
                 "Completion is associated with a date.",
-                symbols=("completed_on", "completion_date"),
-                fields=("completed_on", "completion_date", "checked_on"),
                 origin=origin,
+                evidence=("runtime",),
             ),
             _cap(
                 "persist_habits",
                 "Persisted habit state survives restart.",
-                symbols=("save_habits", "load_habits", "habits"),
-                files=("data/habits.json",),
                 origin=origin,
+                evidence=("persistence",),
             ),
         ]
         if "streak" in low:
@@ -160,9 +156,8 @@ def _streak_cap(origin: str) -> Capability:
         "habit_streaks",
         "Streak information is calculated from completion history "
         "and visible to the user.",
-        symbols=("current_streak", "streak_count", "compute_streak"),
-        fields=("streak", "current_streak"),
         origin=origin,
+        evidence=("visible", "runtime"),
     )
 
 
@@ -170,9 +165,8 @@ def _weekly_cap(origin: str) -> Capability:
     return _cap(
         "weekly_view",
         "A weekly representation of habit completion exists.",
-        symbols=("weekly_view", "week_view", "render_week"),
-        fields=("week", "weekly"),
         origin=origin,
+        evidence=("visible", "runtime"),
     )
 
 
@@ -211,6 +205,21 @@ def capability_from_dict(raw: dict[str, Any]) -> Capability | None:
         and ".." not in str(v)
     )
     origin = str(raw.get("origin") or "compile")
+    ev_raw = raw.get("evidence") or []
+    if isinstance(ev_raw, str):
+        ev_raw = [ev_raw]
+    if not isinstance(ev_raw, (list, tuple)):
+        ev_raw = []
+    allowed = {
+        "static",
+        "test",
+        "runtime",
+        "persistence",
+        "visible",
+    }
+    evidence = tuple(
+        str(item).strip() for item in ev_raw if str(item).strip() in allowed
+    )
     return Capability(
         id=cap_id,
         claim=claim,
@@ -218,6 +227,7 @@ def capability_from_dict(raw: dict[str, Any]) -> Capability | None:
         fields=fields,
         files=files,
         origin=origin,
+        evidence=evidence,
     )
 
 
@@ -390,39 +400,41 @@ def claim_satisfied(
     json_keys: set[str],
     files: set[str],
 ) -> bool:
-    """True when implementation probes hit source, not banner text."""
-    symbol_hit = not cap.symbols or any(
-        name in identifiers for name in cap.symbols
+    """Static-only probe. Habit-class claims use ``score_claims`` instead."""
+    from product_evidence import static_claim_satisfied
+
+    return static_claim_satisfied(
+        cap,
+        identifiers=identifiers,
+        json_keys=json_keys,
+        files=files,
     )
-    field_hit = not cap.fields or any(
-        name in json_keys or name in identifiers for name in cap.fields
+
+
+def score_claims(project: dict[str, Any], root: Path) -> list[Any]:
+    """Score compiled claims with the strongest practical evidence."""
+    from product_evidence import evaluate_claims
+
+    caps = intent_capabilities(project, root)
+    if not caps:
+        return []
+    app = _app_dir(project, root)
+    identifiers, json_keys, files = workbench_probes(app)
+    return evaluate_claims(
+        caps,
+        app=app,
+        identifiers=identifiers,
+        json_keys=json_keys,
+        files=files,
+        task_root=_task_dir(project, root),
     )
-    file_hit = not cap.files or any(name in files for name in cap.files)
-    needed = bool(cap.symbols or cap.fields or cap.files)
-    if not needed:
-        return False
-    return bool(symbol_hit and field_hit and file_hit)
 
 
 def unsatisfied_claims(
     project: dict[str, Any], root: Path
 ) -> list[Capability]:
     """Compiled + delta claims that the workbench does not evidence."""
-    caps = intent_capabilities(project, root)
-    if not caps:
-        return []
-    app = _app_dir(project, root)
-    identifiers, json_keys, files = workbench_probes(app)
-    return [
-        cap
-        for cap in caps
-        if not claim_satisfied(
-            cap,
-            identifiers=identifiers,
-            json_keys=json_keys,
-            files=files,
-        )
-    ]
+    return [score.cap for score in score_claims(project, root) if not score.ok]
 
 
 def persist_acceptance(
