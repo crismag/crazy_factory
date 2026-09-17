@@ -32,6 +32,7 @@ from typing import Any
 from control_intelligence import load_decision
 from conversation_delta import delta_prompts
 from diagnosis_packet import DiagnosisPacket, executor_slice
+from product_intent import unsatisfied_claims
 
 ALLOWED_TOPS = (
     "src",
@@ -98,6 +99,7 @@ class ExecutionAssignment:
         "Do not push, merge, delete, or rewrite git history.",
         "Do not invent a product when the seed is a placeholder.",
         "Executor completion is not acceptance; tests and runtime are.",
+        "Banner or title text is not product evidence.",
     )
 
 
@@ -311,6 +313,9 @@ def compile_assignment(
             "Allowlisted validation (compile, pytest, lint) passes.",
             "Declared start command runs if architecture sets one.",
         ]
+    claim_gaps = unsatisfied_claims(project, root)
+    if claim_gaps:
+        success = [cap.claim for cap in claim_gaps] + success
     if not verification:
         verification = [
             "python3 -m compileall on workbench sources",
@@ -442,6 +447,10 @@ def persist_judgment(
     accepted: bool,
     validation_passed: bool,
     runtime_status: str = "",
+    mechanical_ok: bool | None = None,
+    product_ok: bool | None = None,
+    intent_revision: int | None = None,
+    accepted_revision: int | None = None,
 ) -> Path:
     """Record that process success is not product quality."""
     task_root.mkdir(parents=True, exist_ok=True)
@@ -452,8 +461,13 @@ def persist_judgment(
         "accepted": accepted,
         "validation_passed": validation_passed,
         "runtime_status": runtime_status,
+        "mechanical_ok": mechanical_ok,
+        "product_ok": product_ok,
+        "intent_revision": intent_revision,
+        "accepted_revision": accepted_revision,
         "executor_ok_is_not_acceptance": True,
         "tests_passed_is_not_product_quality": True,
+        "title_or_banner_is_not_product_evidence": True,
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return path

@@ -26,7 +26,13 @@ from typing import Any, Callable
 import factory_advance
 import factory_messaging as msg
 from acceptance_check import evaluate_acceptance
+from coding_llm import resolve_coding_backend
 from control_intelligence import apply_rails, load_decision, reason_control
+from conversation_delta import (
+    STATUS_PENDING,
+    mark_deltas_claimed,
+    open_deltas,
+)
 from execution_assignment import persist_judgment
 from flags import flag_active, set_flag
 from mission_state import load_state
@@ -45,6 +51,7 @@ MORE_WORK = "MORE_WORK"
 RECOVERABLE = "RECOVERABLE_FAILURE"
 HUMAN_REQUIRED = "HUMAN_REQUIRED"
 BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
+RUNNABLE_PREVIEW = "RUNNABLE_PREVIEW"
 
 HUMAN_BLOCKERS = frozenset(
     {
@@ -163,24 +170,71 @@ def evaluate_mission(
         )
     runtime = _probe_runtime(project)
     acceptance = evaluate_acceptance(project, root)
-    if acceptance.accepted:
-        if not runtime.safe:
-            candidate, why = HUMAN_REQUIRED, f"runtime unsafe: {runtime.reason}"
-        elif runtime.required and not runtime.ok:
+    pending = [
+        entry
+        for entry in open_deltas(project, root)
+        if entry.get("status") == STATUS_PENDING
+    ]
+    runtime_ready = (not runtime.required) or runtime.ok
+    if not runtime.safe:
+        candidate, why = HUMAN_REQUIRED, f"runtime unsafe: {runtime.reason}"
+    elif acceptance.mechanical_ok and runtime.required and not runtime.ok:
+        if beat >= max_beats:
+            candidate, why = (
+                BUDGET_EXHAUSTED,
+                f"beat budget {max_beats} exhausted ({runtime.reason})",
+            )
+        else:
+            candidate, why = MORE_WORK, f"runtime: {runtime.reason}"
+    elif acceptance.accepted and runtime_ready:
+        extra = ""
+        if runtime.required:
+            extra = f" (runtime {runtime.status})"
+        candidate, why = (
+            COMPLETE,
+            "acceptance evidence is complete" + extra,
+        )
+    elif pending:
+        # Owner deltas reopen work even when an inner planning
+        # contract was rejected on a previous beat.
+        delta_id = str(pending[-1].get("id") or "delta")
+        if beat >= max_beats:
+            candidate, why = (
+                BUDGET_EXHAUSTED,
+                f"beat budget {max_beats} exhausted",
+            )
+        else:
+            candidate, why = (
+                MORE_WORK,
+                f"owner delta {delta_id} is unsatisfied product intent",
+            )
+    elif (
+        acceptance.mechanical_ok
+        and runtime_ready
+        and not acceptance.product_ok
+    ):
+        gaps = "; ".join(acceptance.unsatisfied_product[:4]) or (
+            "; ".join(acceptance.reasons) or "product claims unsatisfied"
+        )
+        if resolve_coding_backend() is not None:
             if beat >= max_beats:
                 candidate, why = (
                     BUDGET_EXHAUSTED,
-                    f"beat budget {max_beats} exhausted ({runtime.reason})",
+                    f"beat budget {max_beats} exhausted",
                 )
             else:
-                candidate, why = MORE_WORK, f"runtime: {runtime.reason}"
+                candidate, why = (
+                    MORE_WORK,
+                    f"product claims unsatisfied: {gaps}",
+                )
         else:
-            extra = ""
-            if runtime.required:
-                extra = f" (runtime {runtime.status})"
             candidate, why = (
-                COMPLETE,
-                "acceptance evidence is complete" + extra,
+                RUNNABLE_PREVIEW,
+                (
+                    "mechanical and runtime evidence passed; "
+                    "product claims are unsatisfied and no coding plugin "
+                    "is configured"
+                ),
             )
     elif beat >= max_beats:
         candidate, why = (
@@ -296,6 +350,10 @@ def _record(
                 accepted=accepted,
                 validation_passed=report.validation_passed,
                 runtime_status=runtime,
+                mechanical_ok=report.mechanical_ok,
+                product_ok=report.product_ok,
+                intent_revision=report.intent_revision,
+                accepted_revision=report.accepted_revision,
             )
         except (OSError, ValueError):
             pass
@@ -405,6 +463,7 @@ def run_mission(
         _select_objective()
         # Kernel stages still consume the relative registry mapping.
         advance_fn(project)
+        mark_deltas_claimed(view, root)
         beats += 1
         status, reason = evaluate_mission(
             view, root, beat=beats, max_beats=budget

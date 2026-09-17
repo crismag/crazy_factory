@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import crazy_admin as ca
 from agent_executor import ExecutorRequest, StdlibWebExecutor
 from conversation_delta import (
+    STATUS_PENDING,
     append_delta,
     has_specified_product,
     inject_preview_banner,
@@ -131,6 +132,16 @@ class PersistDeltaTests(unittest.TestCase):
             )
             self.assertEqual(changes[-1], "add a dark mode toggle")
             self.assertEqual(len(load_deltas(project, root)), 1)
+            self.assertEqual(
+                load_deltas(project, root)[0]["status"], STATUS_PENDING
+            )
+            accept = json.loads(
+                (app / "factory_tasks/product_acceptance.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertTrue(accept["stale"])
+            self.assertIsNone(accept["accepted_revision"])
 
     def test_placeholder_is_not_specified(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

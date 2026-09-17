@@ -1,0 +1,24 @@
+{
+  "first_prompt": "build a habit tracker",
+  "first_outcome": "RUNNABLE_PREVIEW",
+  "first_beats": 1,
+  "first_exit": 1,
+  "first_http": 200,
+  "generic_crud": true,
+  "product_complete": false,
+  "follow_up": "add a streak counter and a weekly view",
+  "goal_unchanged": true,
+  "architecture_unchanged_stack": "stdlib-web",
+  "delta_status": "CLAIMED",
+  "delta_verified": false,
+  "second_outcome": "RUNNABLE_PREVIEW",
+  "second_beats": 1,
+  "second_exit": 1,
+  "intent_revision": 2,
+  "accepted_revision": null,
+  "coding_keys": {
+    "anthropic": false,
+    "openai": false
+  },
+  "keyed_benchmark": "not run \u2014 no ANTHROPIC_API_KEY or OPENAI_API_KEY in this environment"
+}

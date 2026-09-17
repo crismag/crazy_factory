@@ -101,9 +101,8 @@ evidence.
 
 ## Near-term boundary (not this slice)
 
-- Re-open mission on owner delta (L0-08) and product-intent
-  acceptance (L0-09) — live no-key prompt-build COMPLETE’d a
-  generic preview and ignored the follow-up as 0 beats
+- Keyed Claude/OpenAI product-specific characterization (does the
+  coding plugin actually implement compiled claims, then deltas?)
 - KAE-Memory / durable memory (discover need first)
 - specialized tool plugins (browser, security, a11y)
 - Cursor/Codex IDE adapters

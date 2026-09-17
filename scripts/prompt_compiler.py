@@ -24,6 +24,11 @@ from typing import Any
 from coding_llm import resolve_coding_backend
 from control_intelligence import control_model_enabled
 from llm_interaction import structured_call
+from product_intent import (
+    capability_from_dict,
+    fallback_capabilities,
+    persist_intent,
+)
 from project_contract import parse_seed
 from web_stack import DEFAULT_STACK_ID, WebStack, resolve_stack, stack_record
 
@@ -47,8 +52,11 @@ _PRIMING = (
     "JSON keys: title, goal, constraints (array of strings), "
     "known_context, success (array of strings), screens (array), "
     "data (string), required_files (array), start_command, "
-    "listen_port (int), stack. Constraints must keep Python 3 "
-    "stdlib only. start_command must begin with python3."
+    "listen_port (int), stack, capabilities (array of objects with "
+    "id, claim, symbols, fields, files). Capabilities are explicit "
+    "product claims with implementation identifiers — not page titles. "
+    "Constraints must keep Python 3 stdlib only. start_command must "
+    "begin with python3."
 )
 
 
@@ -70,6 +78,7 @@ class CompiledProduct:
     source: str
     original_prompt: str
     provider: str = ""
+    capabilities: list[dict[str, Any]] | None = None
 
 
 def _is_placeholder_text(text: str) -> bool:
@@ -167,10 +176,8 @@ def fallback_product(prompt: str, stack: WebStack) -> CompiledProduct:
     goal = prompt.strip()
     if not goal.lower().startswith("build"):
         goal = f"Build {title}: {goal}"
-    success = [
-        f"A person can use the {title} UI in a browser on localhost.",
-        "Core create / list / update / delete flows work without placeholders.",
-        "Data persists across process restart (JSON under data/).",
+    caps = fallback_capabilities(prompt)
+    success = [c.claim for c in caps] + [
         "python3 -m compileall and pytest pass.",
         f"`{stack.start_command}` starts and answers HTTP.",
     ]
@@ -189,6 +196,7 @@ def fallback_product(prompt: str, stack: WebStack) -> CompiledProduct:
         stack=stack.id,
         source="fallback",
         original_prompt=prompt.strip(),
+        capabilities=[asdict(c) for c in caps],
     )
 
 
@@ -219,6 +227,20 @@ def _sanitize(
     success = _str_list(data.get("success")) or base.success
     constraints = _str_list(data.get("constraints")) or base.constraints
     title = str(data.get("title") or base.title).strip() or base.title
+    cap_payload: list[dict[str, Any]] = []
+    raw_caps = data.get("capabilities")
+    if isinstance(raw_caps, list):
+        for item in raw_caps:
+            if not isinstance(item, dict):
+                continue
+            cap = capability_from_dict(item)
+            if cap is not None:
+                cap_payload.append(asdict(cap))
+    if not cap_payload:
+        cap_payload = list(base.capabilities or [])
+    success = _str_list(data.get("success")) or [
+        str(c.get("claim") or "") for c in cap_payload if c.get("claim")
+    ] or base.success
     return CompiledProduct(
         title=title[:80],
         goal=goal,
@@ -236,6 +258,7 @@ def _sanitize(
         source="model",
         original_prompt=prompt.strip(),
         provider=provider,
+        capabilities=cap_payload,
     )
 
 
@@ -329,6 +352,22 @@ def persist_compiled(
     compile_path.write_text(
         json.dumps({**record, "product": asdict(product)}, indent=2) + "\n",
         encoding="utf-8",
+    )
+    caps = []
+    for raw in product.capabilities or []:
+        if isinstance(raw, dict):
+            cap = capability_from_dict(raw)
+            if cap:
+                caps.append(cap)
+    if not caps:
+        caps = fallback_capabilities(product.original_prompt)
+    persist_intent(
+        project,
+        root,
+        prompt=product.original_prompt,
+        capabilities=caps,
+        source=product.source,
+        revision=1,
     )
     return {
         "seed": str(seed_path),

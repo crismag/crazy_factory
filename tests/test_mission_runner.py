@@ -18,6 +18,7 @@ from mission_runner import (  # noqa: E402
     BUDGET_EXHAUSTED,
     COMPLETE,
     HUMAN_REQUIRED,
+    RUNNABLE_PREVIEW,
     enable_workbench_profile,
     evaluate_mission,
     load_mission_snapshot,
@@ -392,3 +393,113 @@ class EvaluateTests(unittest.TestCase):
             self.assertEqual(obj.kind, KIND_REPAIR_RUNTIME)
             snap = load_mission_snapshot(project, root)
             self.assertEqual(snap["runtime"]["status"], "missing")
+
+
+class ProductAcceptanceMissionTests(unittest.TestCase):
+    def test_generic_crud_is_runnable_preview_not_complete(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("habit", "apps/habit", root=root)
+            app = root / "apps/habit"
+            project = ca.resolve_project(ca.load_registry(root), "habit")
+            from prompt_compiler import compile_into_workbench
+
+            compile_into_workbench(project, root, "build a habit tracker")
+            _make_accepted(app)
+            result = run_mission(
+                project,
+                root,
+                max_beats=3,
+                apply_profile=False,
+                advance=lambda _p: 0,
+            )
+            self.assertEqual(result.outcome, RUNNABLE_PREVIEW, result.reason)
+            self.assertNotEqual(result.outcome, COMPLETE)
+            self.assertEqual(result.beats, 0)
+            self.assertIn("product claims", result.reason)
+
+    def test_planning_reject_does_not_override_runnable_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("habit", "apps/habit", root=root)
+            app = root / "apps/habit"
+            project = ca.resolve_project(ca.load_registry(root), "habit")
+            from prompt_compiler import compile_into_workbench
+
+            compile_into_workbench(project, root, "build a habit tracker")
+            _make_accepted(app)
+            state_path = app / "state/project_state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["current_blocker"] = "planning_contract_rejected"
+            _write(state_path, json.dumps(state, indent=2))
+            result = run_mission(
+                project,
+                root,
+                max_beats=3,
+                apply_profile=False,
+                advance=lambda _p: 0,
+            )
+            self.assertEqual(result.outcome, RUNNABLE_PREVIEW, result.reason)
+            self.assertNotEqual(result.outcome, "RECOVERABLE_FAILURE")
+
+    def test_owner_delta_reopens_mission(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _bootstrap_repo(root)
+            ca.startproject("habit", "apps/habit", root=root)
+            app = root / "apps/habit"
+            project = ca.resolve_project(ca.load_registry(root), "habit")
+            from conversation_delta import (
+                STATUS_CLAIMED,
+                STATUS_VERIFIED,
+                append_delta,
+                load_deltas,
+            )
+            from prompt_compiler import compile_into_workbench
+
+            compile_into_workbench(project, root, "build a habit tracker")
+            seed = (app / "docs/seed.md").read_text(encoding="utf-8")
+            _make_accepted(app)
+            first = run_mission(
+                project,
+                root,
+                max_beats=2,
+                apply_profile=False,
+                advance=lambda _p: 0,
+            )
+            self.assertEqual(first.outcome, RUNNABLE_PREVIEW)
+            append_delta(
+                project, root, "add a streak counter and a weekly view"
+            )
+            calls: list[int] = []
+
+            def tick(_project: dict) -> int:
+                calls.append(1)
+                return 0
+
+            second = run_mission(
+                project,
+                root,
+                max_beats=3,
+                apply_profile=False,
+                advance=tick,
+            )
+            self.assertGreaterEqual(second.beats, 1)
+            self.assertEqual(len(calls), second.beats)
+            self.assertNotEqual(second.outcome, COMPLETE)
+            self.assertEqual(
+                (app / "docs/seed.md").read_text(encoding="utf-8"), seed
+            )
+            entries = load_deltas(project, root)
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0]["status"], STATUS_CLAIMED)
+            self.assertNotEqual(entries[0]["status"], STATUS_VERIFIED)
+            obj = json.loads(
+                (app / "factory_tasks/current_objective.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(obj["kind"], "implement_delta")
+            self.assertIn("streak", obj["gap"].lower())

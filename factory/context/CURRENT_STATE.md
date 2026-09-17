@@ -80,15 +80,15 @@ The default web stack is [CF2_WEB_STACK.md](../CF2_WEB_STACK.md).
 
 ## Next State Transition
 
-L0-01…L0-05 are landed. A live no-key `--prompt "build a habit
-tracker"` compiled, served HTTP 200, and **COMPLETE**’d a generic
-CRUD page in one beat. A follow-up prompt was stored as a delta
-and shown as a banner; the second `run` was **0 beats**. Next
-factory gaps are **L0-08** (re-open on delta) and **L0-09**
-(product-intent acceptance), then a keyed Claude/OpenAI
-characterization, then L0-06 MCP packaging and L0-07 `vite-react`.
-Do not start Cursor/Codex adapters, UI, network MCP, or
-KAE-Memory from this reading.
+L0-01…L0-09 are landed. A no-key `--prompt "build a habit
+tracker"` still compiles and serves a generic CRUD preview, but
+that is **`RUNNABLE_PREVIEW`**, not product COMPLETE. A follow-up
+prompt stays a delta, invalidates prior acceptance, and re-opens
+the mission until the delta is VERIFIED against compiled claims.
+Next is a **keyed Claude/OpenAI product-specific benchmark**, then
+L0-06 MCP packaging and L0-07 `vite-react`. Do not start
+Cursor/Codex adapters, UI, network MCP, or KAE-Memory from this
+reading.
 Evidence: [POST_L0_CAPABILITY_ASSESSMENT.md](../../docs/report/context/crazy-factory-2.0/POST_L0_CAPABILITY_ASSESSMENT.md).
 See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and
 [CF2_TASK_CHECKLIST.md](../CF2_TASK_CHECKLIST.md).

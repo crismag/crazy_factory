@@ -104,6 +104,11 @@ class FallbackCompileTests(unittest.TestCase):
         self.assertTrue(product.start_command.startswith("python3"))
         self.assertEqual(product.listen_port, 8765)
         self.assertIn("habit", product.title.lower())
+        ids = {c["id"] for c in (product.capabilities or [])}
+        self.assertIn("define_habits", ids)
+        self.assertTrue(
+            any("define habits" in s.lower() for s in product.success)
+        )
 
     def test_unknown_stack_falls_back_to_default(self) -> None:
         product = compile_prompt("make a notes app", stack_id="vite-react")

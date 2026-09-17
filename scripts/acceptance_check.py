@@ -25,13 +25,25 @@ from typing import Any
 
 from architecture import load_contract, missing_required
 from completion import open_items, parse_checklist
+from conversation_delta import open_deltas, refresh_delta_verification
+from product_intent import (
+    intent_capabilities,
+    intent_revision,
+    persist_acceptance,
+    unsatisfied_claims,
+)
 from proposal_applier import _is_placeholder_body
 from workbench_growth import workbench_metrics
 
 
 @dataclass(frozen=True)
 class AcceptanceReport:
-    """Deterministic acceptance verdict for a project."""
+    """Deterministic acceptance verdict for a project.
+
+    ``accepted`` is product-level: mechanical evidence plus product
+    claims for the current intent revision. Mechanical-only success
+    is ``mechanical_ok`` and must not be treated as COMPLETE.
+    """
 
     accepted: bool
     required_present: bool
@@ -40,6 +52,12 @@ class AcceptanceReport:
     validation_passed: bool
     has_code: bool = True
     contracts_satisfied: bool = True
+    mechanical_ok: bool = True
+    product_ok: bool = True
+    intent_revision: int = 0
+    accepted_revision: int | None = None
+    unsatisfied_product: list[str] = field(default_factory=list)
+    open_delta_ids: list[str] = field(default_factory=list)
     missing_files: list[str] = field(default_factory=list)
     stub_files: list[str] = field(default_factory=list)
     open_items: list[str] = field(default_factory=list)
@@ -261,7 +279,7 @@ def evaluate_acceptance(
             f"unmet file-contract interfaces: {', '.join(contract_gaps)}"
         )
 
-    accepted = (
+    mechanical_ok = (
         has_code
         and required_present
         and no_stub_sources
@@ -269,6 +287,44 @@ def evaluate_acceptance(
         and validation_passed
         and contracts_satisfied
     )
+
+    refresh_delta_verification(project, root)
+    product_gaps = unsatisfied_claims(project, root)
+    delta_open = open_deltas(project, root)
+    rev = intent_revision(project, root)
+    claims = intent_capabilities(project, root)
+    # No compiled claims and no open deltas: vacuous product_ok so
+    # pre-L0 workbenches (and _make_accepted fixtures) still complete.
+    product_ok = not product_gaps and not delta_open
+    if claims and product_gaps:
+        reasons.append(
+            "product claims unsatisfied: "
+            + ", ".join(c.id for c in product_gaps[:6])
+        )
+    if delta_open:
+        reasons.append(
+            "open owner deltas: "
+            + ", ".join(str(d.get("id") or "?") for d in delta_open[:6])
+        )
+
+    accepted = mechanical_ok and product_ok
+    accepted_rev = rev if accepted and rev else None
+    persist_acceptance(
+        project,
+        root,
+        {
+            "intent_revision": rev,
+            "accepted_revision": accepted_rev,
+            "implementation_revision": rev if mechanical_ok else None,
+            "stale": not product_ok,
+            "mechanical_ok": mechanical_ok,
+            "product_ok": product_ok,
+            "accepted": accepted,
+            "unsatisfied": [c.id for c in product_gaps],
+            "open_deltas": [str(d.get("id") or "") for d in delta_open],
+        },
+    )
+
     return AcceptanceReport(
         accepted=accepted,
         required_present=required_present,
@@ -277,6 +333,12 @@ def evaluate_acceptance(
         validation_passed=validation_passed,
         has_code=has_code,
         contracts_satisfied=contracts_satisfied,
+        mechanical_ok=mechanical_ok,
+        product_ok=product_ok,
+        intent_revision=rev,
+        accepted_revision=accepted_rev,
+        unsatisfied_product=[c.claim for c in product_gaps],
+        open_delta_ids=[str(d.get("id") or "") for d in delta_open],
         missing_files=missing,
         stub_files=stub_files,
         open_items=open_now,
@@ -298,6 +360,8 @@ def render_acceptance(report: AcceptanceReport) -> str:
         ("checklist complete", report.checklist_complete),
         ("validation passed", report.validation_passed),
         ("file-contracts satisfied", report.contracts_satisfied),
+        ("mechanical evidence", report.mechanical_ok),
+        ("product claims satisfied", report.product_ok),
     ]
     lines.extend(f"  [{'x' if ok else ' '}] {label}" for label, ok in checks)
     if report.reasons:

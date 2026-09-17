@@ -27,6 +27,7 @@ from llm_interaction import structured_call
 KIND_CODE_BIRTH = "code_birth"
 KIND_COMPLETE = "complete"
 KIND_IMPLEMENT = "implement"
+KIND_IMPLEMENT_DELTA = "implement_delta"
 KIND_REPAIR_PROGRESS = "repair_progress"
 KIND_REPAIR_RUNTIME = "repair_runtime"
 KIND_REPAIR_VALIDATION = "repair_validation"
@@ -49,15 +50,24 @@ MORE_WORK = "MORE_WORK"
 RECOVERABLE = "RECOVERABLE_FAILURE"
 HUMAN_REQUIRED = "HUMAN_REQUIRED"
 BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
+RUNNABLE_PREVIEW = "RUNNABLE_PREVIEW"
 
 ALLOWED_OUTCOMES = frozenset(
-    {COMPLETE, MORE_WORK, RECOVERABLE, HUMAN_REQUIRED, BUDGET_EXHAUSTED}
+    {
+        COMPLETE,
+        MORE_WORK,
+        RECOVERABLE,
+        HUMAN_REQUIRED,
+        BUDGET_EXHAUSTED,
+        RUNNABLE_PREVIEW,
+    }
 )
 ALLOWED_KINDS = frozenset(
     {
         KIND_CODE_BIRTH,
         KIND_SPECIFY,
         KIND_IMPLEMENT,
+        KIND_IMPLEMENT_DELTA,
         KIND_REPAIR_RUNTIME,
         KIND_REPAIR_VALIDATION,
         KIND_REPAIR_PROGRESS,
@@ -80,16 +90,18 @@ _CONTROL_SYSTEM = (
     "continuation, objective selection, engineering stance, quality "
     "judgment, and recovery. You do not write application files. "
     "Respond with ONLY JSON. Never claim COMPLETE when files, tests, "
-    "or a declared start command are still failing. Never override an "
-    "owner stop flag or beat budget. Safety floor: no push, merge, "
-    "delete, or engine-source writes."
+    "or a declared start command are still failing. Never claim "
+    "COMPLETE when compiled product claims are unsatisfied. Never "
+    "override an owner stop flag or beat budget. Safety floor: no "
+    "push, merge, delete, or engine-source writes."
 )
 _CONTROL_PRIMING = (
     "Respond with JSON keys: outcome, quality_ok, kind, stance, "
     "title, focus, rationale, recovery, director_why, memory_notes. "
     "outcome is one of COMPLETE, MORE_WORK, RECOVERABLE_FAILURE, "
-    "HUMAN_REQUIRED, BUDGET_EXHAUSTED. kind is one of code_birth, "
-    "specify_intent, implement, repair_runtime, repair_validation, "
+    "HUMAN_REQUIRED, BUDGET_EXHAUSTED, RUNNABLE_PREVIEW. kind is one "
+    "of code_birth, specify_intent, implement, implement_delta, "
+    "repair_runtime, repair_validation, "
     "repair_progress, complete. stance is one of birth, implement, "
     "repair, investigate, need_context. recovery is continue, retry, "
     "park, or human. quality_ok is boolean."
@@ -384,6 +396,9 @@ def apply_rails(
         return HUMAN_REQUIRED, candidate_reason
     if not runtime_safe:
         return HUMAN_REQUIRED, candidate_reason
+    if candidate_outcome == RUNNABLE_PREVIEW:
+        # No coding plugin: do not burn budget or fake COMPLETE.
+        return RUNNABLE_PREVIEW, candidate_reason
     if candidate_outcome == COMPLETE:
         if decision.source == "model" and (
             not decision.quality_ok or decision.outcome == MORE_WORK

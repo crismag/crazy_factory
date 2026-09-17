@@ -1,0 +1,40 @@
+{
+  "project_id": "habit_accept",
+  "outcome": "RUNNABLE_PREVIEW",
+  "reason": "mechanical and runtime evidence passed; product claims are unsatisfied and no coding plugin is configured",
+  "beats": 1,
+  "max_beats": 4,
+  "profile_enabled": [
+    "allow_apply",
+    "allow_validation",
+    "allow_remediation",
+    "allow_autonomous"
+  ],
+  "artifact": "/workspace/apps/habit_accept",
+  "records": [
+    {
+      "index": 0,
+      "evaluation": "MORE_WORK",
+      "reason": "owner delta delta-1 is unsatisfied product intent",
+      "blocker": "planning_contract_rejected",
+      "source_files": 2,
+      "test_files": 2,
+      "accepted": false,
+      "runtime": "running",
+      "objective": "OBJ-DELTA-delta-1:implement_delta",
+      "at": "2026-09-16T21:42:14Z"
+    },
+    {
+      "index": 1,
+      "evaluation": "RUNNABLE_PREVIEW",
+      "reason": "mechanical and runtime evidence passed; product claims are unsatisfied and no coding plugin is configured",
+      "blocker": "planning_contract_rejected",
+      "source_files": 2,
+      "test_files": 2,
+      "accepted": false,
+      "runtime": "running",
+      "objective": "OBJ-DELTA-delta-1:implement_delta",
+      "at": "2026-09-16T21:42:14Z"
+    }
+  ]
+}

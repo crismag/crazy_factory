@@ -37,7 +37,7 @@ get_status               → pipeline + mission snapshot without a brief
 | `pick_project` | Several workbenches; no id given | `list_projects`, then brief one |
 | `provide_context` | Placeholder seed (“describe what”) | `start_mission` with `prompt` / `seed` / `context` |
 | `start` | Real context, no mission yet | `start_mission` |
-| `continue` | `MORE_WORK`, recoverable, or `BUDGET_EXHAUSTED` | `continue_mission` |
+| `continue` | `MORE_WORK`, recoverable, `BUDGET_EXHAUSTED`, or `RUNNABLE_PREVIEW` | `continue_mission` |
 | `done` | Mission `COMPLETE` | none — do not re-crank |
 | `human` | `HUMAN_REQUIRED` | none — do not continue blindly; `get_status` to read the blocker |
 
@@ -46,8 +46,9 @@ Director never recommends it as the next autonomous step.
 
 When the mission is `COMPLETE` but product intelligence still lists
 gaps, those gaps are **caveats** on `done`, not a reason to call
-`continue_mission` (that would no-op: already-accepted workbenches
-exit with zero beats).
+`continue_mission`. `RUNNABLE_PREVIEW` is **not** `done`: mechanical
+and runtime evidence passed, product claims did not; continue with a
+coding plugin.
 
 ---
 

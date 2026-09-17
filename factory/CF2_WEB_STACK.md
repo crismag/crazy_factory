@@ -29,10 +29,13 @@ URL. The process is still killed after the probe — this is evidence,
 not a long-running dev server.
 
 A follow-up owner prompt on a specified product is a conversational
-delta (`factory_tasks/deltas.jsonl`, `docs/deltas.md`). It does not
-recompile Goal or architecture. The stdlib preview reads
-`data/change_requests.json` so the HTTP page can show the requested
-change without a coding-plugin key.
+delta (`factory_tasks/deltas.json` + `deltas.jsonl`, `docs/deltas.md`)
+with a lifecycle (`PENDING` → `CLAIMED` → `VERIFIED`). It does not
+recompile Goal or architecture. Banner HTML and
+`data/change_requests.json` are owner-visible, never product
+evidence. Compiled product claims live in `product_intent.json`.
+No-key generic CRUD may reach `RUNNABLE_PREVIEW`; COMPLETE requires
+the current intent revision to be evidenced.
 
 Evidence: `scripts/web_stack.py`, `scripts/prompt_compiler.py`,
 `scripts/stdlib_preview.py`, `scripts/conversation_delta.py`.

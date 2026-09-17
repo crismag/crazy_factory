@@ -1,0 +1,14 @@
+{
+  "outcome": "RUNNABLE_PREVIEW",
+  "reason": "mechanical and runtime evidence passed; product claims are unsatisfied and no coding plugin is configured",
+  "accepted": false,
+  "validation_passed": true,
+  "runtime_status": "running",
+  "mechanical_ok": true,
+  "product_ok": false,
+  "intent_revision": 2,
+  "accepted_revision": null,
+  "executor_ok_is_not_acceptance": true,
+  "tests_passed_is_not_product_quality": true,
+  "title_or_banner_is_not_product_evidence": true
+}

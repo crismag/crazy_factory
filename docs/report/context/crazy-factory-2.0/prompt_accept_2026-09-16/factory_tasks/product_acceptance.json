@@ -1,0 +1,20 @@
+{
+  "intent_revision": 2,
+  "accepted_revision": null,
+  "implementation_revision": 2,
+  "stale": true,
+  "mechanical_ok": true,
+  "product_ok": false,
+  "accepted": false,
+  "unsatisfied": [
+    "define_habits",
+    "record_completion",
+    "dated_completion",
+    "persist_habits",
+    "habit_streaks",
+    "weekly_view"
+  ],
+  "open_deltas": [
+    "delta-1"
+  ]
+}
