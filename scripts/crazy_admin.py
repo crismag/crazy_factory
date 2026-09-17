@@ -1043,6 +1043,25 @@ def main(argv: list[str] | None = None) -> int:
     )
     stopc.add_argument("project_id", nargs="?", default=None)
     stopc.add_argument("--path", default=None)
+    iso = sub.add_parser(
+        "isolated-task",
+        help=(
+            "opt-in: one TaskNode through an isolated workspace, "
+            "then Factory-owned apply (does not change default run)"
+        ),
+    )
+    iso.add_argument("project_id", nargs="?", default=None)
+    iso.add_argument("--path", default=None)
+    iso.add_argument(
+        "--task",
+        default=None,
+        help="TaskNode id (else CRAZY_FACTORY_TASK_ID, else first ready task)",
+    )
+    iso.add_argument(
+        "--keep-workspace",
+        action="store_true",
+        help="do not cleanup the workspace after successful integration",
+    )
     adv = sub.add_parser("advance")
     adv.add_argument("project_id", nargs="?", default=None)
     adv.add_argument("--path", default=None)
@@ -1269,6 +1288,28 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
         rel = stop_mission(project, root)
         print(f"Stop requested for '{project['name']}' ({rel}).")
         return 0
+    if args.command == "isolated-task":
+        from isolated_task_run import (
+            IsolatedTaskError,
+            render_isolated_run,
+            run_isolated_task,
+        )
+
+        project = _resolve_project_arg(root, args.project_id, path=args.path)
+        try:
+            result = run_isolated_task(
+                project,
+                root,
+                task_id=str(getattr(args, "task", "") or ""),
+                cleanup_on_success=not bool(
+                    getattr(args, "keep_workspace", False)
+                ),
+            )
+        except IsolatedTaskError as exc:
+            msg.eprint(f"isolated-task failed: {exc}")
+            return 2
+        print(render_isolated_run(result), end="")
+        return 0 if result.ok else 1
     if args.command == "serve-mcp":
         from mcp_server import serve as serve_mcp
 

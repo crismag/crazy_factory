@@ -451,18 +451,30 @@ classifier.
   `affected_scope` is often empty or claim-file-only, so it is not
   yet a complete confinement mechanism.
 
-### Live AgentExecutor switch (not this slice)
+### Live AgentExecutor switch (not default)
 
-Still required before auto-routing Codex into workspaces:
+Default `factory_advance` still writes the canonical `app_path`.
 
-- `factory_advance` / mission loop must create a workspace, bind,
-  execute, then `integrate_workspace` instead of writing `app_path`.
-- Validation/runtime today assume the registry `app_path` and
-  canonical `factory_tasks`.
-- Isolated previews would collide on `listen_port` / data files.
-- Binding must stay ephemeral (never persist workspace path into
-  `config/projects.yaml`).
-- One live sequential Codex proof in a workspace, then assess.
+Slice 4C adds an **opt-in** path (`scripts/isolated_task_run.py`,
+`crazy-admin isolated-task`, `CRAZY_FACTORY_ISOLATED_TASK=1` +
+optional `CRAZY_FACTORY_TASK_ID`):
+
+1. select a `TaskNode`
+2. compile the bounded packet
+3. create an isolated workspace
+4. run AgentExecutor/Codex with `app_path` bound to that tree
+5. apply the file map **into the workspace only** (Codex stays
+   read-only)
+6. collect the workspace result independently
+7. Factory `integrate_workspace`
+8. score product evidence on the canonical app
+9. preserve the workspace on failure; cleanup only after successful
+   integration
+
+Codex sandbox is unchanged (`read-only`). The special case is that
+the existing file-map adapter writes through `apply_executor_result`
+into the isolated tree, not the canonical workbench. Integration
+does not use the worker's file list as authority.
 
 ## A10 — File conflict prep
 
@@ -505,8 +517,8 @@ debug tooling only.
 
 ## Recommended next slice
 
-Pause and assess this primitive end-to-end before parallel workers.
-The next capability is either **one opt-in isolated live Codex run**
-(still sequential, Factory apply + validation + evidence) or the
-**pattern library** (advisory metadata). Do not enable concurrent
-workers until conflict detection has been used on a real coding beat.
+The isolated live path is now an explicit opt-in, not the default
+mission loop. Pause before parallel workers. The pattern library
+can enter as advisory metadata on the packet. Do not enable
+concurrent workers until a live isolated Codex beat has been
+assessed.
