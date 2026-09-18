@@ -209,7 +209,7 @@ class PatternConsumeTests(unittest.TestCase):
             self.assertEqual(assignment.pattern_ids, ())
             self.assertEqual(assignment.pattern_notes, ())
             self.assertNotIn(
-                "Advisory patterns", render_assignment(assignment)
+                ADVISORY_PATTERN_HEADING, render_assignment(assignment)
             )
 
     def test_missing_catalog_does_not_block_the_packet(self) -> None:
