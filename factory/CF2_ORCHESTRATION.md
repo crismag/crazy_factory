@@ -8,7 +8,7 @@ It does not rewrite the proven product loop.
 Plan of record: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Task graph primitive: `scripts/task_graph.py`.
 
-**Last updated:** 2026-09-17
+**Last updated:** 2026-09-18
 
 ---
 
@@ -158,6 +158,9 @@ executor self-report
         ↓
 historical / stale planning prose
         (TASK_EXPANSION.md, NEXT_ACTION.md, leftover planned_task.json)
+        ↓
+advisory pattern catalog hits
+        (pattern_ids / pattern_notes on the bounded packet)
 ```
 
 Reconciliation example from the kickoff:
@@ -509,9 +512,12 @@ Authority is always `advisory`. Owner intent and `architecture.json`
 outrank every hit. Search is token overlap, not embeddings, and does
 not fetch remote repositories.
 
-This slice does **not** inject patterns into `ExecutionAssignment`,
-the task graph, isolated workspaces, or product evidence. Slice 6
-may let task expansion *read* `search_patterns` / `match_for_intent`.
+This slice does **not** inject patterns into the task graph,
+isolated workspaces, product evidence, or `factory_advance`
+scheduling. Slice 6 lets the bounded packet *read*
+`match_for_intent` as `pattern_ids` / `pattern_notes` below owner
+intent and architecture. Stale packets omit current hits. Patterns
+never rewrite claims, repo scope, or COMPLETE.
 
 Inspect: `crazy-admin patterns [query] [--kind …] [--applies-to …]`.
 
@@ -533,6 +539,6 @@ debug tooling only.
 
 ## Recommended next slice
 
-Let task expansion or the bounded packet *read* advisory pattern
-hits (Slice 6) without letting them override owner intent,
-architecture, or COMPLETE. Still no parallel workers.
+Keep the default live AgentExecutor path writing the canonical
+workbench until isolated-task is an explicit opt-in. Do not grow
+TaskNodes from pattern hits, and still no parallel workers.

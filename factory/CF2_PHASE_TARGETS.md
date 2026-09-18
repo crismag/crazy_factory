@@ -8,8 +8,8 @@ Companion: [CF2_TASK_CHECKLIST.md](CF2_TASK_CHECKLIST.md) (task-level).
 Plan: [CF2_ARCHITECTURE.md](CF2_ARCHITECTURE.md).
 Audit: [../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md](../docs/report/context/crazy-factory-2.0/P0_AUTONOMOUS_LOOP.md).
 
-**Current phase:** ORCH-07 — pattern library foundation (`active`)
-**Last updated:** 2026-09-17
+**Current phase:** ORCH-08 — packet consumes advisory patterns (`active`)
+**Last updated:** 2026-09-18
 
 Status vocabulary: `done` · `active` · `planned` · `deferred`
 
@@ -193,10 +193,10 @@ Acceptance:
 
 | | |
 | --- | --- |
-| Status | **active** (Slice 5). Patterns are advisory only. |
-| Target | Factory-owned catalog of archetypes, features, UX patterns, and references with deterministic search. |
-| Success | Loader/search work; owner intent and architecture are not rewritten; execution/evidence paths do not import the library yet. |
-| Evidence | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md), `scripts/pattern_library.py`, `tests/test_pattern_library.py` |
+| Status | **active** (Slice 6). Patterns are advisory only. |
+| Target | Bounded packet reads ranked catalog hits without outranking owner intent, architecture, or COMPLETE. |
+| Success | `compile_assignment` attaches `pattern_ids` / `pattern_notes`; stale packets omit hits; scheduler/evidence/graph stay uncoupled. |
+| Evidence | [CF2_ORCHESTRATION.md](CF2_ORCHESTRATION.md), `scripts/execution_assignment.py`, `tests/test_pattern_consume.py` |
 
 Acceptance:
 
@@ -210,4 +210,4 @@ Acceptance:
 - [x] Safe task-result integration (Slice 4B)
 - [x] Opt-in isolated Codex task pipeline (Slice 4C)
 - [x] Pattern library seed (Slice 5)
-- [ ] Task expansion consumes advisory pattern hits (Slice 6)
+- [x] Task expansion consumes advisory pattern hits (Slice 6)

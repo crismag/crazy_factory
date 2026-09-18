@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Advisory pattern library (orchestration Slice 5).
+"""Advisory pattern library (orchestration Slice 5–6).
 
 Archetypes, feature patterns, UX patterns, and references live in a
 Factory-owned catalog. Search is deterministic token overlap.
 
 Patterns do not schedule work, do not verify claims, do not override
 owner intent or architecture, and do not fetch remote repositories.
-Task expansion may *read* these entries in a later slice.
+The bounded packet *reads* these entries as advisory metadata.
 """
 
 from __future__ import annotations
@@ -182,7 +182,7 @@ def match_for_intent(
     root: Path | None = None,
     limit: int = 6,
 ) -> list[PatternHit]:
-    """Convenience search for a later packet slice. Advisory only."""
+    """Convenience search for the bounded packet. Advisory only."""
     query = " ".join(part for part in (prompt, stack_id) if part)
     return search_patterns(
         query,

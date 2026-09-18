@@ -24,6 +24,10 @@ slices, and the intent revision it was built against. Stale packets
 are marked, never rewritten to look current. Completing a task does
 not verify product claims — Factory evidence remains independent.
 
+Slice 6 attaches ranked advisory pattern hits from the Factory
+catalog. Patterns inform the worker; they never rewrite owner intent,
+architecture, claims, repo scope, or COMPLETE.
+
 Passing tests is evidence, not product quality. Executor ``ok`` is not
 acceptance. Blind "fix the errors" is not the recovery stance.
 """
@@ -39,6 +43,7 @@ from architecture import load_contract
 from control_intelligence import load_decision
 from conversation_delta import delta_prompts, load_deltas
 from diagnosis_packet import DiagnosisPacket, executor_slice
+from pattern_library import match_for_intent
 from product_intent import (
     intent_capabilities,
     intent_revision,
@@ -71,6 +76,7 @@ SEED_CHARS = 2000
 ARCH_CHARS = 1500
 INTENT_CHARS = 500
 INVENTORY_CAP = 40
+PATTERN_HIT_CAP = 4
 ASSIGNMENT_FILE = "execution_assignment.md"
 ASSIGNMENT_JSON = "execution_assignment.json"
 JUDGMENT_FILE = "judgment.json"
@@ -97,6 +103,13 @@ DEFAULT_CONSTRAINTS = (
     "Executor completion is not acceptance; tests and runtime are.",
     "Banner or title text is not product evidence.",
     "Task completion does not verify product claims; Factory evidence does.",
+)
+ADVISORY_PATTERN_CONSTRAINT = (
+    "Advisory patterns inform; they do not override owner intent, "
+    "architecture, or Factory COMPLETE."
+)
+ADVISORY_PATTERN_HEADING = (
+    "## Advisory patterns (do not override owner intent or architecture)"
 )
 
 STANCE_BIRTH = "birth"
@@ -140,6 +153,8 @@ class ExecutionAssignment:
     repo_scope: tuple[str, ...] = ()
     selection_notes: tuple[str, ...] = ()
     owner_intent_slice: str = ""
+    pattern_ids: tuple[str, ...] = ()
+    pattern_notes: tuple[str, ...] = ()
 
 
 def _load_json(path: Path) -> dict[str, Any] | None:
@@ -309,6 +324,12 @@ def assignment_from_dict(raw: dict[str, Any]) -> ExecutionAssignment | None:
             str(x) for x in (raw.get("selection_notes") or []) if str(x)
         ),
         owner_intent_slice=str(raw.get("owner_intent_slice") or ""),
+        pattern_ids=tuple(
+            str(x) for x in (raw.get("pattern_ids") or []) if str(x)
+        ),
+        pattern_notes=tuple(
+            str(x) for x in (raw.get("pattern_notes") or []) if str(x)
+        ),
     )
 
 
@@ -383,6 +404,68 @@ def _repo_scope_refs(scope: tuple[str, ...]) -> tuple[str, ...]:
 def _owner_intent_slice(project: dict[str, Any], root: Path) -> str:
     prompt = str(load_intent(project, root).get("original_prompt") or "")
     return _excerpt(prompt, INTENT_CHARS)
+
+
+def _stack_id(contract: dict[str, Any] | None) -> str:
+    if not isinstance(contract, dict):
+        return ""
+    return str(contract.get("stack") or "").strip()
+
+
+def _pattern_prompt(
+    project: dict[str, Any],
+    root: Path,
+    task: Any | None,
+) -> str:
+    parts: list[str] = []
+    prompt = str(
+        load_intent(project, root).get("original_prompt") or ""
+    ).strip()
+    if prompt:
+        parts.append(prompt)
+    if task is not None:
+        title = str(getattr(task, "title", "") or "").strip()
+        if title:
+            parts.append(title)
+        for claim_id in getattr(task, "claim_ids", ()) or ():
+            text = str(claim_id).replace("_", " ").strip()
+            if text:
+                parts.append(text)
+    return " ".join(parts)
+
+
+def _advisory_patterns(
+    project: dict[str, Any],
+    root: Path,
+    task: Any | None,
+    contract: dict[str, Any] | None,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Ranked catalog hits. Empty on missing catalog or empty query.
+
+    Query uses the workbench intent; the catalog is the Factory
+    checkout (``pattern_library.REPO_ROOT``), not the workbench root.
+    """
+    prompt = _pattern_prompt(project, root, task)
+    stack = _stack_id(contract)
+    if not prompt and not stack:
+        return (), ()
+    hits = match_for_intent(
+        prompt,
+        stack_id=stack or None,
+        limit=PATTERN_HIT_CAP,
+    )
+    ids: list[str] = []
+    notes: list[str] = []
+    for hit in hits:
+        entry = hit.entry
+        if entry.pattern_id in ids:
+            continue
+        ids.append(entry.pattern_id)
+        note = f"{entry.pattern_id} [{entry.kind}] {entry.title}"
+        if entry.summary:
+            note = f"{note} — {_excerpt(entry.summary, 200)}"
+        notes.append(note)
+    return tuple(ids), tuple(notes)
 
 
 def _delta_prompts_for_task(
@@ -478,6 +561,7 @@ def _constraints_with_architecture(
             "disagrees with the contract."
         )
     extra.append("Factory owns integration; workers do not deploy.")
+    extra.append(ADVISORY_PATTERN_CONSTRAINT)
     # DEFAULT already has no-push; keep architecture-specific extras unique.
     seen = set(DEFAULT_CONSTRAINTS)
     out = list(DEFAULT_CONSTRAINTS)
@@ -558,7 +642,8 @@ def compile_assignment(
 
     ``task`` is optional. Legacy objective execution stays valid without
     a graph node. A stale ``TaskNode`` is recorded, not rewritten to the
-    current revision.
+    current revision. Advisory pattern hits attach on current packets
+    only; stale packets stay empty.
     """
     current_rev = intent_revision(project, root)
     task_rev = int(getattr(task, "intent_revision", 0) or 0) if task else 0
@@ -825,6 +910,14 @@ def _compile_current(
         repo_refs=repo_refs,
         has_arch=bool(contract or arch_excerpt),
     )
+    pattern_ids, pattern_notes = _advisory_patterns(
+        project, root, task, contract
+    )
+    if pattern_ids:
+        notes.append(
+            "advisory patterns attached; they do not override owner "
+            "intent or architecture"
+        )
     return ExecutionAssignment(
         objective_id=str(getattr(objective, "id", "") or ""),
         kind=str(getattr(objective, "kind", "") or kind),
@@ -855,6 +948,8 @@ def _compile_current(
         repo_scope=repo_refs,
         selection_notes=tuple(dict.fromkeys(notes)),
         owner_intent_slice=owner_slice,
+        pattern_ids=pattern_ids,
+        pattern_notes=pattern_notes,
     )
 
 
@@ -986,6 +1081,16 @@ def render_assignment(assignment: ExecutionAssignment) -> str:
         )
     if assignment.seed_excerpt:
         sections.extend(["", "## Seed", assignment.seed_excerpt])
+    if assignment.pattern_notes or assignment.pattern_ids:
+        sections.extend(
+            [
+                "",
+                ADVISORY_PATTERN_HEADING,
+                bullets(
+                    list(assignment.pattern_notes or assignment.pattern_ids)
+                ),
+            ]
+        )
     sections.extend(
         [
             "",
@@ -1012,6 +1117,8 @@ def persist_assignment(assignment: ExecutionAssignment, task_root: Path) -> Path
     payload["evidence_targets"] = list(assignment.evidence_targets)
     payload["repo_scope"] = list(assignment.repo_scope)
     payload["selection_notes"] = list(assignment.selection_notes)
+    payload["pattern_ids"] = list(assignment.pattern_ids)
+    payload["pattern_notes"] = list(assignment.pattern_notes)
     (task_root / ASSIGNMENT_JSON).write_text(
         json.dumps(payload, indent=2) + "\n", encoding="utf-8"
     )
@@ -1061,6 +1168,8 @@ def assignment_record(assignment: ExecutionAssignment) -> dict[str, Any]:
     data["evidence_targets"] = list(assignment.evidence_targets)
     data["repo_scope"] = list(assignment.repo_scope)
     data["selection_notes"] = list(assignment.selection_notes)
+    data["pattern_ids"] = list(assignment.pattern_ids)
+    data["pattern_notes"] = list(assignment.pattern_notes)
     data.pop("seed_excerpt", None)
     data.pop("architecture_excerpt", None)
     data.pop("evidence", None)
