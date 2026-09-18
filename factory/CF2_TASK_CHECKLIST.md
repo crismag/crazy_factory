@@ -3,8 +3,8 @@
 Living TODO. Check items off only with evidence (test, artifact, or
 trace). Phase gates live in [CF2_PHASE_TARGETS.md](CF2_PHASE_TARGETS.md).
 
-**Current focus:** Orchestration — pattern library foundation
-**Last updated:** 2026-09-17
+**Current focus:** Orchestration — packet consumes advisory patterns
+**Last updated:** 2026-09-18
 
 Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 
@@ -127,7 +127,7 @@ Status: `DONE` · `ACTIVE` · `PLANNED` · `DEFERRED`
 | CF2-ORCH-05 | DONE | Safe task-result integration (Factory apply + rollback) | `scripts/task_integration.py`, `tests/test_task_integration.py` |
 | CF2-ORCH-06 | DONE | Opt-in isolated TaskNode → Codex → Factory apply | `scripts/isolated_task_run.py`, `tests/test_isolated_task_run.py` |
 | CF2-ORCH-07 | DONE | Pattern library foundation (archetypes, features, UX, refs) | `scripts/pattern_library.py`, `factory/patterns/catalog.json` |
-| CF2-ORCH-08 | PLANNED | Task expansion consumes patterns as advisory metadata | packet/graph may read search hits |
+| CF2-ORCH-08 | DONE | Task expansion consumes patterns as advisory metadata | `execution_assignment` `pattern_ids`; `tests/test_pattern_consume.py` |
 
 ---
 

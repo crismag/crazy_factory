@@ -149,7 +149,9 @@ class IsolationTests(unittest.TestCase):
             )
             self.assertEqual(intent["original_prompt"], "keep this prompt")
 
-    def test_live_paths_do_not_import_the_library_yet(self) -> None:
+    def test_scheduler_evidence_and_graph_still_do_not_import_the_library(
+        self,
+    ) -> None:
         assignment_src = (ROOT / "scripts/execution_assignment.py").read_text(
             encoding="utf-8"
         )
@@ -163,15 +165,12 @@ class IsolationTests(unittest.TestCase):
             encoding="utf-8"
         )
         graph_src = (ROOT / "scripts/task_graph.py").read_text(encoding="utf-8")
-        for src in (
-            assignment_src,
-            advance_src,
-            isolated_src,
-            evidence_src,
-            graph_src,
-        ):
+        self.assertIn("pattern_library", assignment_src)
+        self.assertIn("match_for_intent", assignment_src)
+        for src in (advance_src, isolated_src, evidence_src, graph_src):
             self.assertNotIn("pattern_library", src)
             self.assertNotIn("search_patterns", src)
+            self.assertNotIn("match_for_intent", src)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             app = root / "apps" / "demo"
@@ -196,7 +195,8 @@ class IsolationTests(unittest.TestCase):
                 obj,
             )
             self.assertEqual(assignment.task_id, "")
-            self.assertFalse(hasattr(assignment, "pattern_refs"))
+            self.assertTrue(hasattr(assignment, "pattern_ids"))
+            self.assertEqual(assignment.pattern_ids, ())
 
 
 if __name__ == "__main__":
