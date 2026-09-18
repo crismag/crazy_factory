@@ -1062,6 +1062,21 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="do not cleanup the workspace after successful integration",
     )
+    pats = sub.add_parser(
+        "patterns",
+        help="search the advisory pattern catalog (does not change execution)",
+    )
+    pats.add_argument("query", nargs="*", help="search words (empty lists all)")
+    pats.add_argument(
+        "--kind",
+        default=None,
+        choices=["archetype", "feature", "ux", "reference"],
+    )
+    pats.add_argument(
+        "--applies-to",
+        default=None,
+        help="optional stack or product-class filter",
+    )
     adv = sub.add_parser("advance")
     adv.add_argument("project_id", nargs="?", default=None)
     adv.add_argument("--path", default=None)
@@ -1310,6 +1325,19 @@ def _dispatch(args: argparse.Namespace, root: Path) -> int:
             return 2
         print(render_isolated_run(result), end="")
         return 0 if result.ok else 1
+    if args.command == "patterns":
+        from pattern_library import render_hits, search_patterns
+
+        query = " ".join(getattr(args, "query", None) or [])
+        hits = search_patterns(
+            query,
+            root=root,
+            kind=getattr(args, "kind", None),
+            applies_to=getattr(args, "applies_to", None),
+            limit=32,
+        )
+        print(render_hits(hits), end="")
+        return 0
     if args.command == "serve-mcp":
         from mcp_server import serve as serve_mcp
 

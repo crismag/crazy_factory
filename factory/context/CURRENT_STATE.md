@@ -93,8 +93,11 @@ path runs one selected TaskNode through isolated workspace →
 Codex/AgentExecutor (still read-only file map) → independent
 collect → Factory apply → canonical validation → product evidence.
 Default `factory_advance` / `crazy-admin run` still write the
-canonical workbench. Next is assess the live isolated Codex beat,
-then the pattern library. Do not start LangChain, UI, network MCP,
+canonical workbench. Slice 5 lands an **advisory** pattern catalog
+(`factory/patterns/catalog.json`) with deterministic search. Patterns
+do not schedule work or verify claims. Next is letting task expansion
+or the bounded packet *read* those hits without overriding owner
+intent or architecture. Do not start LangChain, UI, network MCP,
 KAE-Memory, or parallel coding agents from this reading.
 Evidence: [POST_L0_CAPABILITY_ASSESSMENT.md](../../docs/report/context/crazy-factory-2.0/POST_L0_CAPABILITY_ASSESSMENT.md).
 See [CF2_PHASE_TARGETS.md](../CF2_PHASE_TARGETS.md) and
